@@ -5,6 +5,10 @@ use crate::data::{
 
 use super::string_pair::StringPair;
 
+pub trait Property {
+    const IDENTIFIER: u8;
+}
+
 #[macro_export]
 macro_rules! property_u8 {
     ( $n:ident, $c:literal ) => {
@@ -15,6 +19,10 @@ macro_rules! property_u8 {
                 writer.put_variable_u32($c)?;
                 writer.put_u8(self.0)
             }
+        }
+
+        impl Property for $n {
+            const IDENTIFIER: u8 = $c;
         }
     };
 }
@@ -30,6 +38,10 @@ macro_rules! property_u16 {
                 writer.put_u16(self.0)
             }
         }
+
+        impl Property for $n {
+            const IDENTIFIER: u8 = $c;
+        }
     };
 }
 
@@ -43,6 +55,10 @@ macro_rules! property_u32 {
                 writer.put_variable_u32($c)?;
                 writer.put_u32(self.0)
             }
+        }
+
+        impl Property for $n {
+            const IDENTIFIER: u8 = $c;
         }
     };
 }
@@ -58,6 +74,10 @@ macro_rules! property_variable_u32 {
                 writer.put_variable_u32(self.0)
             }
         }
+
+        impl Property for $n {
+            const IDENTIFIER: u8 = $c;
+        }
     };
 }
 
@@ -71,6 +91,10 @@ macro_rules! property_str {
                 writer.put_variable_u32($c)?;
                 writer.put_str(self.0)
             }
+        }
+
+        impl Property for $n<'_> {
+            const IDENTIFIER: u8 = $c;
         }
     };
 }
@@ -87,6 +111,10 @@ macro_rules! property_string_pair {
                 writer.put_str(self.0.value())
             }
         }
+
+        impl Property for $n<'_> {
+            const IDENTIFIER: u8 = $c;
+        }
     };
 }
 
@@ -100,6 +128,10 @@ macro_rules! property_binary_data {
                 writer.put_variable_u32($c)?;
                 writer.put_binary_data(self.0)
             }
+        }
+
+        impl Property for $n<'_> {
+            const IDENTIFIER: u8 = $c;
         }
     };
 }
