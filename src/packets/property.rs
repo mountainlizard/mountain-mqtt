@@ -49,29 +49,25 @@ impl Write for MessageExpiryInterval {
 
 impl Write for ContentType<'_> {
     fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-        writer.put_str(self.0)?;
-        Ok(())
+        writer.put_str(self.0)
     }
 }
 
 impl Write for ResponseTopic<'_> {
     fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-        writer.put_str(self.0)?;
-        Ok(())
+        writer.put_str(self.0)
     }
 }
 
 impl Write for CorrelationData<'_> {
     fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-        writer.put_binary_data(self.0)?;
-        Ok(())
+        writer.put_binary_data(self.0)
     }
 }
 
 impl Write for SubscriptionIdentifier {
     fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-        writer.put_variable_u32(self.0)?;
-        Ok(())
+        writer.put_variable_u32(self.0)
     }
 }
 
@@ -83,8 +79,7 @@ impl Write for SessionExpiryInterval {
 
 impl Write for AssignedClientIdentifier<'_> {
     fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-        writer.put_str(self.0)?;
-        Ok(())
+        writer.put_str(self.0)
     }
 }
 
