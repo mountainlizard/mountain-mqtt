@@ -3,4 +3,5 @@ pub const DATA_MAX_LEN: usize = 65_535;
 
 pub mod mqtt_reader;
 pub mod mqtt_writer;
+pub mod read;
 pub mod write;

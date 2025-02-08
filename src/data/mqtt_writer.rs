@@ -1,3 +1,5 @@
+use crate::packets::string_pair::StringPair;
+
 use super::{DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -103,6 +105,17 @@ pub trait MqttWriter<'a> {
             self.put_slice(s.as_bytes())?;
             Ok(())
         }
+    }
+
+    /// Put the next bytes of data as a [StringPair], by writing the name then the value
+    /// as strings, as specified by MQTT v5
+    /// Will fail in the same ways as [MqttWriter::put_str] if either call fails.
+    /// In case of a failure, the position will be advanced by however many bytes
+    /// were written in an attempt to encode.
+    fn put_string_pair(&mut self, s: &StringPair) -> Result<()> {
+        self.put_str(s.name())?;
+        self.put_str(s.value())?;
+        Ok(())
     }
 
     /// Put the next bytes of data as a delimited binary data item,
@@ -540,4 +553,6 @@ mod tests {
 
         Ok(())
     }
+
+    // TODO: Test for string pair
 }

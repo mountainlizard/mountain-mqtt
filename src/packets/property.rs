@@ -1,12 +1,14 @@
 use crate::data::{
+    mqtt_reader::{self, MqttReader},
     mqtt_writer::{self, MqttWriter},
+    read::Read,
     write::Write,
 };
 
 use super::string_pair::StringPair;
 
 pub trait Property {
-    const IDENTIFIER: u8;
+    const IDENTIFIER: u32;
 }
 
 #[macro_export]
@@ -16,13 +18,21 @@ macro_rules! property_u8 {
 
         impl Write for $n {
             fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-                writer.put_variable_u32($c)?;
                 writer.put_u8(self.0)
             }
         }
 
+        impl<'a> Read<'a> for $n {
+            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok($n(reader.get_u8()?))
+            }
+        }
+
         impl Property for $n {
-            const IDENTIFIER: u8 = $c;
+            const IDENTIFIER: u32 = $c;
         }
     };
 }
@@ -34,13 +44,21 @@ macro_rules! property_u16 {
 
         impl Write for $n {
             fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-                writer.put_variable_u32($c)?;
                 writer.put_u16(self.0)
             }
         }
 
+        impl<'a> Read<'a> for $n {
+            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok($n(reader.get_u16()?))
+            }
+        }
+
         impl Property for $n {
-            const IDENTIFIER: u8 = $c;
+            const IDENTIFIER: u32 = $c;
         }
     };
 }
@@ -52,13 +70,21 @@ macro_rules! property_u32 {
 
         impl Write for $n {
             fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-                writer.put_variable_u32($c)?;
                 writer.put_u32(self.0)
             }
         }
 
+        impl<'a> Read<'a> for $n {
+            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok($n(reader.get_u32()?))
+            }
+        }
+
         impl Property for $n {
-            const IDENTIFIER: u8 = $c;
+            const IDENTIFIER: u32 = $c;
         }
     };
 }
@@ -70,13 +96,21 @@ macro_rules! property_variable_u32 {
 
         impl Write for $n {
             fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-                writer.put_variable_u32($c)?;
                 writer.put_variable_u32(self.0)
             }
         }
 
+        impl<'a> Read<'a> for $n {
+            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok($n(reader.get_variable_u32()?))
+            }
+        }
+
         impl Property for $n {
-            const IDENTIFIER: u8 = $c;
+            const IDENTIFIER: u32 = $c;
         }
     };
 }
@@ -88,13 +122,21 @@ macro_rules! property_str {
 
         impl Write for $n<'_> {
             fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-                writer.put_variable_u32($c)?;
                 writer.put_str(self.0)
             }
         }
 
+        impl<'a> Read<'a> for $n<'a> {
+            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok($n(reader.get_str()?))
+            }
+        }
+
         impl Property for $n<'_> {
-            const IDENTIFIER: u8 = $c;
+            const IDENTIFIER: u32 = $c;
         }
     };
 }
@@ -106,14 +148,21 @@ macro_rules! property_string_pair {
 
         impl Write for $n<'_> {
             fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-                writer.put_variable_u32($c)?;
-                writer.put_str(self.0.name())?;
-                writer.put_str(self.0.value())
+                writer.put_string_pair(&self.0)
+            }
+        }
+
+        impl<'a> Read<'a> for $n<'a> {
+            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok($n(reader.get_string_pair()?))
             }
         }
 
         impl Property for $n<'_> {
-            const IDENTIFIER: u8 = $c;
+            const IDENTIFIER: u32 = $c;
         }
     };
 }
@@ -125,13 +174,21 @@ macro_rules! property_binary_data {
 
         impl Write for $n<'_> {
             fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-                writer.put_variable_u32($c)?;
                 writer.put_binary_data(self.0)
             }
         }
 
+        impl<'a> Read<'a> for $n<'a> {
+            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok($n(reader.get_binary_data()?))
+            }
+        }
+
         impl Property for $n<'_> {
-            const IDENTIFIER: u8 = $c;
+            const IDENTIFIER: u32 = $c;
         }
     };
 }

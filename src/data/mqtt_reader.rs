@@ -1,11 +1,14 @@
 use core::str::Utf8Error;
 
+use crate::packets::string_pair::StringPair;
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MqttReaderError {
     InsufficientData,
     InvalidUtf8,
     NullCharacterInString,
     InvalidVariableByteIntegerEncoding,
+    MalformedPacket,
 }
 
 impl From<Utf8Error> for MqttReaderError {
@@ -96,6 +99,20 @@ pub trait MqttReader<'a> {
         } else {
             Ok(s)
         }
+    }
+
+    /// Get the next bytes of data as a [StringPair], by attempting to read
+    /// a name as a string, then a value as a string, as specified by MQTT v5
+    /// Advances the position by 4 or more bytes on success.
+    /// If either decoded string contains any null characters, will fail with
+    /// [MqttReaderError::NullCharacterInString].
+    /// If the buffer data contains invalid utf8 data for either strnig, will fail with
+    /// [MqttReaderError::InvalidUtf8].
+    /// Can fail with [MqttReaderError::InsufficientData],
+    fn get_string_pair(&mut self) -> Result<StringPair<'a>> {
+        let name = self.get_str()?;
+        let value = self.get_str()?;
+        Ok(StringPair::new(name, value))
     }
 
     /// Get the next bytes of data as a delimited binary data item,
@@ -394,4 +411,6 @@ mod tests {
 
         Ok(())
     }
+
+    // TODO: Test for string pair
 }
