@@ -1,5 +1,5 @@
 #[repr(u8)]
-pub enum ControlPacketType {
+pub enum PacketType {
     /// Connection request
     /// Client to Server
     Connect = 1,
