@@ -5,6 +5,8 @@ use crate::data::{
 
 use super::{packet::Packet, string_pair::StringPair};
 
+// TODO: MACRO accepting just the data type and generating boilerplate Read/Write impls
+
 pub struct PayloadFormatIndicator(u8);
 pub struct MessageExpiryInterval(u32);
 pub struct ContentType<'a>(&'a str);
