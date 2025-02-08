@@ -1,10 +1,5 @@
 use heapless::Vec;
 
-use crate::data::{
-    mqtt_writer::{self, MqttWriter},
-    write::Write,
-};
-
 use super::property::ConnectionProperty;
 
 pub enum Packet<'a, const PROPERTIES_N: usize> {
