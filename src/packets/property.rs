@@ -320,17 +320,96 @@ property_owned!(SubscriptionIdentifierAvailable, u8, 0x29);
 property_owned!(SharedSubscriptionAvailable, u8, 0x2A);
 
 packet_properties!(
-    ConnectionProperty,
+    ConnectProperty,
     [
         SessionExpiryInterval,
-        ReceiveMaximum,
-        MaximumPacketSize,
-        TopicAliasMaximum,
-        RequestResponseInformation,
-        RequestProblemInformation,
-        UserProperty,
         AuthenticationMethod,
-        AuthenticationData
+        AuthenticationData,
+        RequestProblemInformation,
+        RequestResponseInformation,
+        ReceiveMaximum,
+        TopicAliasMaximum,
+        UserProperty,
+        MaximumPacketSize
+    ]
+);
+packet_properties!(
+    ConnackProperty,
+    [
+        SessionExpiryInterval,
+        AssignedClientIdentifier,
+        ServerKeepAlive,
+        AuthenticationMethod,
+        AuthenticationData,
+        ResponseInformation,
+        ServerReference,
+        ReasonString,
+        ReceiveMaximum,
+        TopicAliasMaximum,
+        MaximumQoS,
+        RetainAvailable,
+        UserProperty,
+        MaximumPacketSize,
+        WildcardSubscriptionAvailable,
+        SubscriptionIdentifierAvailable,
+        SharedSubscriptionAvailable
+    ]
+);
+
+packet_properties!(
+    PublishProperty,
+    [
+        PayloadFormatIndicator,
+        MessageExpiryInterval,
+        ContentType,
+        ResponseTopic,
+        CorrelationData,
+        SubscriptionIdentifier,
+        TopicAlias,
+        UserProperty
+    ]
+);
+packet_properties!(PubackProperty, [ReasonString, UserProperty]);
+packet_properties!(PubrecProperty, [ReasonString, UserProperty]);
+packet_properties!(PubrelProperty, [ReasonString, UserProperty]);
+packet_properties!(PubcompProperty, [ReasonString, UserProperty]);
+
+packet_properties!(SubscribeProperty, [SubscriptionIdentifier, UserProperty]);
+packet_properties!(SubackProperty, [ReasonString, UserProperty]);
+
+packet_properties!(UnsubscribeProperty, [UserProperty]);
+packet_properties!(UnsubackProperty, [ReasonString, UserProperty]);
+
+packet_properties!(
+    DisconnectProperty,
+    [
+        SessionExpiryInterval,
+        ServerReference,
+        ReasonString,
+        UserProperty
+    ]
+);
+
+packet_properties!(
+    AuthProperty,
+    [
+        AuthenticationMethod,
+        AuthenticationData,
+        ReasonString,
+        UserProperty
+    ]
+);
+
+packet_properties!(
+    WillProperty,
+    [
+        PayloadFormatIndicator,
+        MessageExpiryInterval,
+        ContentType,
+        ResponseTopic,
+        CorrelationData,
+        WillDelayInterval,
+        UserProperty
     ]
 );
 
