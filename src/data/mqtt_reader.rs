@@ -412,5 +412,45 @@ mod tests {
         Ok(())
     }
 
-    // TODO: Test for string pair
+    #[test]
+    fn mqtt_buf_reader_can_get_string_pairs() -> Result<()> {
+        let test_cases: &[(&str, &[u8])] = &[
+            // Example taken from mqtt v5 specification
+            ("A\u{2A6D4}", &[0x00, 0x05, 0x41, 0xF0, 0xAA, 0x9B, 0x94]),
+            // Specific requirement from mqtt v5 specification:
+            // A UTF-8 encoded sequence 0xEF 0xBB 0xBF is always interpreted
+            // as U+FEFF ("ZERO WIDTH NO-BREAK SPACE") wherever it appears
+            // in a string and MUST NOT be skipped over or stripped off
+            // by a packet receiver
+            ("\u{FEFF}", &[0x00, 0x03, 0xEF, 0xBB, 0xBF]),
+            ("A\u{FEFF}", &[0x00, 0x04, 0x41, 0xEF, 0xBB, 0xBF]),
+            ("\u{FEFF}A", &[0x00, 0x04, 0xEF, 0xBB, 0xBF, 0x41]),
+            ("A\u{FEFF}A", &[0x00, 0x05, 0x41, 0xEF, 0xBB, 0xBF, 0x41]),
+            // Additional
+            ("", &[0x00, 0x00]),
+            ("A", &[0x00, 0x01, 0x41]),
+            ("ABCDE", &[0x00, 0x05, 0x41, 0x42, 0x43, 0x44, 0x45]),
+            ("😼", &[0x00, 0x04, 0xF0, 0x9F, 0x98, 0xBC]),
+        ];
+
+        let mut encoded_string_pair = [0u8; 30];
+
+        // Test each pair of example strings as a name and value of a string pair
+        for (name, encoded_name) in test_cases.iter() {
+            for (value, encoded_value) in test_cases.iter() {
+                // Assemble hand-encoded string pair data
+                let total_len = encoded_name.len() + encoded_value.len();
+                encoded_string_pair[0..encoded_name.len()].copy_from_slice(encoded_name);
+                encoded_string_pair[encoded_name.len()..total_len].copy_from_slice(encoded_value);
+
+                // Read back hand-encoded data as string pair, and check it matches expected name and value
+                let mut r = MqttBufReader::new(&encoded_string_pair[0..total_len]);
+                let string_pair = r.get_string_pair()?;
+                assert_eq!(*name, string_pair.name());
+                assert_eq!(*value, string_pair.value());
+                assert_eq!(0, r.remaining());
+            }
+        }
+        Ok(())
+    }
 }
