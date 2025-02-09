@@ -1,5 +1,5 @@
 use crate::data::{
-    mqtt_reader::{self, MqttReader},
+    mqtt_reader::{self, MqttReader, MqttReaderError},
     mqtt_writer::{self, MqttWriter},
     read::Read,
     write::Write,
@@ -23,7 +23,7 @@ macro_rules! property_u8 {
         }
 
         impl<'a> Read<'a> for $n {
-            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -49,7 +49,7 @@ macro_rules! property_u16 {
         }
 
         impl<'a> Read<'a> for $n {
-            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -75,7 +75,7 @@ macro_rules! property_u32 {
         }
 
         impl<'a> Read<'a> for $n {
-            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -101,7 +101,7 @@ macro_rules! property_variable_u32 {
         }
 
         impl<'a> Read<'a> for $n {
-            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -127,7 +127,7 @@ macro_rules! property_str {
         }
 
         impl<'a> Read<'a> for $n<'a> {
-            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -153,7 +153,7 @@ macro_rules! property_string_pair {
         }
 
         impl<'a> Read<'a> for $n<'a> {
-            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -179,7 +179,7 @@ macro_rules! property_binary_data {
         }
 
         impl<'a> Read<'a> for $n<'a> {
-            fn read<R: MqttReader<'a>>(&self, reader: &mut R) -> mqtt_reader::Result<Self>
+            fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -233,4 +233,48 @@ pub enum ConnectionProperty<'a> {
     UserProperty(UserProperty<'a>),
     AuthenticationMethod(AuthenticationMethod<'a>),
     AuthenticationData(AuthenticationData<'a>),
+}
+
+impl Write for ConnectionProperty<'_> {
+    fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
+        match self {
+            Self::SessionExpiryInterval(v) => {
+                writer.put_variable_u32(SessionExpiryInterval::IDENTIFIER)?;
+                v.write(writer)?;
+                Ok(())
+            }
+            Self::ReceiveMaximum(v) => todo!(),
+            Self::MaximumPacketSize(v) => todo!(),
+            Self::TopicAliasMaximum(v) => todo!(),
+            Self::RequestResponseInformation(v) => todo!(),
+            Self::RequestProblemInformation(v) => todo!(),
+            Self::UserProperty(v) => {
+                writer.put_variable_u32(UserProperty::IDENTIFIER)?;
+                v.write(writer)?;
+                Ok(())
+            }
+            Self::AuthenticationMethod(v) => todo!(),
+            Self::AuthenticationData(v) => todo!(),
+        }
+    }
+}
+
+impl<'a> Read<'a> for ConnectionProperty<'a> {
+    fn read<R: MqttReader<'a>>(reader: &mut R) -> mqtt_reader::Result<Self>
+    where
+        Self: Sized,
+    {
+        let id = reader.get_variable_u32()?;
+        match id {
+            SessionExpiryInterval::IDENTIFIER => {
+                let v = SessionExpiryInterval::read(reader)?;
+                Ok(Self::SessionExpiryInterval(v))
+            }
+            UserProperty::IDENTIFIER => {
+                let v = UserProperty::read(reader)?;
+                Ok(Self::UserProperty(v))
+            }
+            _ => Err(MqttReaderError::MalformedPacket),
+        }
+    }
 }
