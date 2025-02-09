@@ -170,6 +170,85 @@ impl<'a> MqttWriter<'a> for MqttBufWriter<'a> {
     }
 }
 
+/// An [MqttWriter] that discards data and just adjusts position,
+/// used for quickly finding size of data for headers etc.
+/// Note that this does NOT check strings for null characters,
+/// to avoid performing this potentially expensive check twice.
+pub struct MqttLenWriter {
+    position: usize,
+}
+
+impl MqttLenWriter {
+    pub fn new() -> Self {
+        Self { position: 0 }
+    }
+
+    fn advance(&mut self, len: usize) -> Result<()> {
+        self.position += len;
+        Ok(())
+    }
+
+    pub fn position(&self) -> usize {
+        self.position
+    }
+}
+impl Default for MqttLenWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MqttWriter<'_> for MqttLenWriter {
+    fn put_slice(&mut self, slice: &[u8]) -> Result<()> {
+        self.advance(slice.len())
+    }
+
+    fn put_u8(&mut self, _n: u8) -> Result<()> {
+        self.advance(1)
+    }
+
+    fn put_u16(&mut self, _n: u16) -> Result<()> {
+        self.advance(2)
+    }
+
+    fn put_u32(&mut self, _n: u32) -> Result<()> {
+        self.advance(4)
+    }
+
+    fn put_variable_u32(&mut self, mut n: u32) -> Result<()> {
+        if n > VARIABLE_BYTE_INTEGER_MAX_VALUE {
+            Err(MqttWriterError::VariableByteIntegerTooLarge)
+        } else {
+            loop {
+                n /= 128;
+                self.advance(1)?;
+                if n == 0 {
+                    break;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    fn put_str(&mut self, s: &str) -> Result<()> {
+        let len = s.len();
+        if len > DATA_MAX_LEN {
+            Err(MqttWriterError::DataTooLarge)
+        } else {
+            self.advance(2 + len)
+        }
+    }
+
+    fn put_binary_data(&mut self, data: &[u8]) -> Result<()> {
+        let len = data.len();
+        if len > DATA_MAX_LEN {
+            Err(MqttWriterError::DataTooLarge)
+        } else {
+            self.advance(2 + len)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,26 +260,42 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_writer_can_put_slices() -> Result<()> {
+    fn mqtt_writers_can_put_slices() -> Result<()> {
         let mut buf = [0u8; 4];
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
 
         assert_eq!(4, r.remaining());
 
+        // First slice
         r.put_slice(&[1u8])?;
+        rl.put_slice(&[1u8])?;
+
         assert_eq!(1, r.position());
         assert_eq!(3, r.remaining());
         r.assert_contents(&[1u8]);
 
+        assert_eq!(1, rl.position());
+
+        // Second slice
         r.put_slice(&[2u8, 3])?;
+        rl.put_slice(&[2u8, 3])?;
+
         assert_eq!(3, r.position());
         assert_eq!(1, r.remaining());
         r.assert_contents(&[1u8, 2, 3]);
 
+        assert_eq!(3, rl.position());
+
+        // Third slice
         r.put_slice(&[4u8])?;
+        rl.put_slice(&[4u8])?;
+
         assert_eq!(4, r.position());
         assert_eq!(0, r.remaining());
         r.assert_contents(&[1u8, 2, 3, 4]);
+
+        assert_eq!(4, rl.position());
 
         Ok(())
     }
@@ -228,18 +323,21 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_writer_can_put_u8() -> Result<()> {
+    fn mqtt_writers_can_put_u8() -> Result<()> {
         let mut buf = [0u8; 7];
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
 
         let values = [0u8, 1, 2, 3, 4, 128, 255];
 
         let mut expected_position = 0;
         for value in values.iter() {
             r.put_u8(*value)?;
+            rl.put_u8(*value)?;
             expected_position += 1;
             r.assert_contents(&values[0..expected_position]);
             assert_eq!(r.position(), expected_position);
+            assert_eq!(rl.position(), expected_position);
             assert_eq!(r.remaining(), 7 - expected_position);
         }
 
@@ -250,9 +348,10 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_writer_can_put_u16() -> Result<()> {
+    fn mqtt_writers_can_put_u16() -> Result<()> {
         let mut buf = [0u8; 10];
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
 
         let values = [0u16, 1, 255, 256, 65535];
         let expected: [u8; 10] = [0, 0, 0, 1, 0, 255, 1, 0, 255, 255];
@@ -260,9 +359,11 @@ mod tests {
         let mut expected_position = 0;
         for value in values.iter() {
             r.put_u16(*value)?;
+            rl.put_u16(*value)?;
             expected_position += 2;
             r.assert_contents(&expected[0..expected_position]);
             assert_eq!(r.position(), expected_position);
+            assert_eq!(rl.position(), expected_position);
             assert_eq!(r.remaining(), 10 - expected_position);
         }
 
@@ -273,9 +374,10 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_writer_can_put_u32() -> Result<()> {
+    fn mqtt_writers_can_put_u32() -> Result<()> {
         let mut buf = [0u8; 36];
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
 
         let values: [u32; 9] = [0, 1, 255, 256, 65535, 65536, 16777215, 16777216, 4294967295];
         let expected: [u8; 36] = [
@@ -293,9 +395,12 @@ mod tests {
         let mut expected_position = 0;
         for value in values.iter() {
             r.put_u32(*value)?;
+            rl.put_u32(*value)?;
+
             expected_position += 4;
             r.assert_contents(&expected[0..expected_position]);
             assert_eq!(r.position(), expected_position);
+            assert_eq!(rl.position(), expected_position);
             assert_eq!(r.remaining(), 36 - expected_position);
         }
 
@@ -306,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_writer_can_put_variable_u32_and_gives_correct_len() -> Result<()> {
+    fn mqtt_writers_can_put_variable_u32_and_give_correct_len() -> Result<()> {
         let mut buf = [0u8; 10];
 
         let test_cases: &[(u32, &[u8])] = &[
@@ -334,9 +439,12 @@ mod tests {
         for (value, encoded) in test_cases.iter() {
             buf.fill(0);
             let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
+            let mut rl = MqttLenWriter::default();
 
             r.put_variable_u32(*value)?;
+            rl.put_variable_u32(*value)?;
             assert_eq!(r.position(), encoded.len());
+            assert_eq!(rl.position(), encoded.len());
             assert_eq!(0, r.remaining());
             r.assert_contents(encoded);
         }
@@ -345,9 +453,10 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_reader_errors_on_variable_u32_too_large() -> Result<()> {
+    fn mqtt_writers_error_on_variable_u32_too_large() -> Result<()> {
         let mut buf = [0u8; 4];
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
 
         assert_eq!(r.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE), Ok(()));
         assert_eq!(r.position(), 4);
@@ -360,11 +469,22 @@ mod tests {
             Err(MqttWriterError::VariableByteIntegerTooLarge)
         );
 
+        assert_eq!(rl.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE), Ok(()));
+        assert_eq!(rl.position(), 4);
+        assert_eq!(
+            rl.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE + 1),
+            Err(MqttWriterError::VariableByteIntegerTooLarge)
+        );
+        assert_eq!(
+            rl.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE + 2),
+            Err(MqttWriterError::VariableByteIntegerTooLarge)
+        );
+
         Ok(())
     }
 
     #[test]
-    fn mqtt_buf_writer_can_put_str() -> Result<()> {
+    fn mqtt_writers_can_put_str() -> Result<()> {
         let mut buf = [0u8; 10];
 
         let test_cases: &[(&str, &[u8])] = &[
@@ -389,9 +509,12 @@ mod tests {
         for (s, encoded) in test_cases.iter() {
             buf.fill(0);
             let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
+            let mut rl = MqttLenWriter::default();
 
             r.put_str(s)?;
+            rl.put_str(s)?;
             assert_eq!(r.position(), encoded.len());
+            assert_eq!(rl.position(), encoded.len());
             assert_eq!(0, r.remaining());
             r.assert_contents(encoded);
         }
@@ -400,7 +523,8 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_reader_errors_on_invalid_strings() -> Result<()> {
+    fn mqtt_buf_writer_errors_on_invalid_strings() -> Result<()> {
+        // Note we don't test MqttLenWriter here since it doesn't check for null characters
         let mut buf = [0u8; 10];
 
         let test_cases: &[(&str, MqttWriterError)] = &[
@@ -447,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_writer_errors_if_encoded_string_too_large() -> Result<()> {
+    fn mqtt_writers_error_if_encoded_string_too_large() -> Result<()> {
         // Succeed writing maximum encoded-length string
         // Note encoded length is utf8 data length plus 2
         let mut buf = [0u8; DATA_MAX_LEN + 2];
@@ -455,21 +579,26 @@ mod tests {
         let data = [0x41; DATA_MAX_LEN];
         let s = core::str::from_utf8(&data).unwrap();
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
         r.put_str(s)?;
+        rl.put_str(s)?;
         assert_eq!(r.position(), DATA_MAX_LEN + 2);
+        assert_eq!(rl.position(), DATA_MAX_LEN + 2);
 
         // Fail writing one more than maximum data size
         let mut buf = [0u8; DATA_MAX_LEN + 1 + 2];
         let data = [0x41; DATA_MAX_LEN + 1];
         let s = core::str::from_utf8(&data).unwrap();
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
         assert_eq!(r.put_str(s), Err(MqttWriterError::DataTooLarge));
+        assert_eq!(rl.put_str(s), Err(MqttWriterError::DataTooLarge));
 
         Ok(())
     }
 
     #[test]
-    fn mqtt_buf_writer_can_put_binary_data() -> Result<()> {
+    fn mqtt_writers_can_put_binary_data() -> Result<()> {
         let mut buf = [0u8; 10];
 
         let test_cases: &[(&[u8], &[u8])] = &[
@@ -498,9 +627,12 @@ mod tests {
             // fill with non-zero for this one, since the first case actually encodes to all zeros
             buf.fill(0xFF);
             let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
+            let mut rl = MqttLenWriter::default();
 
             r.put_binary_data(data)?;
+            rl.put_binary_data(data)?;
             assert_eq!(r.position(), encoded.len());
+            assert_eq!(rl.position(), encoded.len());
             assert_eq!(0, r.remaining());
             r.assert_contents(encoded);
         }
@@ -536,23 +668,79 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_writer_errors_if_binary_data_too_large() -> Result<()> {
+    fn mqtt_writers_error_if_binary_data_too_large() -> Result<()> {
         // Succeed writing maximum data size
         // Note encoded length is data length plus 2
         let mut buf = [0u8; DATA_MAX_LEN + 2];
         let data = [0xFF; DATA_MAX_LEN];
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
         r.put_binary_data(&data)?;
+        rl.put_binary_data(&data)?;
         assert_eq!(r.position(), DATA_MAX_LEN + 2);
+        assert_eq!(rl.position(), DATA_MAX_LEN + 2);
 
         // Fail writing one more than maximum data size
         let mut buf = [0u8; DATA_MAX_LEN + 1 + 2];
         let data = [0xFF; DATA_MAX_LEN + 1];
         let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
         assert_eq!(r.put_binary_data(&data), Err(MqttWriterError::DataTooLarge));
+        assert_eq!(
+            rl.put_binary_data(&data),
+            Err(MqttWriterError::DataTooLarge)
+        );
 
         Ok(())
     }
 
-    // TODO: Test for string pair
+    #[test]
+    fn mqtt_writers_can_put_string_pairs() -> Result<()> {
+        let mut buf = [0u8; 30];
+        let mut expected_buf = [0u8; 30];
+
+        let test_cases: &[(&str, &[u8])] = &[
+            // Example taken from mqtt v5 specification
+            ("A\u{2A6D4}", &[0x00, 0x05, 0x41, 0xF0, 0xAA, 0x9B, 0x94]),
+            // Specific requirement from mqtt v5 specification:
+            // A UTF-8 encoded sequence 0xEF 0xBB 0xBF is always interpreted
+            // as U+FEFF ("ZERO WIDTH NO-BREAK SPACE") wherever it appears
+            // in a string and MUST NOT be skipped over or stripped off
+            // by a packet receiver
+            ("\u{FEFF}", &[0x00, 0x03, 0xEF, 0xBB, 0xBF]),
+            ("A\u{FEFF}", &[0x00, 0x04, 0x41, 0xEF, 0xBB, 0xBF]),
+            ("\u{FEFF}A", &[0x00, 0x04, 0xEF, 0xBB, 0xBF, 0x41]),
+            ("A\u{FEFF}A", &[0x00, 0x05, 0x41, 0xEF, 0xBB, 0xBF, 0x41]),
+            // Additional
+            ("", &[0x00, 0x00]),
+            ("A", &[0x00, 0x01, 0x41]),
+            ("ABCDE", &[0x00, 0x05, 0x41, 0x42, 0x43, 0x44, 0x45]),
+            ("😼", &[0x00, 0x04, 0xF0, 0x9F, 0x98, 0xBC]),
+        ];
+
+        for (name, encoded_name) in test_cases.iter() {
+            for (value, encoded_value) in test_cases.iter() {
+                buf.fill(0);
+                let string_pair = StringPair::new(name, value);
+                let total_len = encoded_name.len() + encoded_value.len();
+                let mut r = MqttBufWriter::new(&mut buf[0..total_len]);
+                let mut rl = MqttLenWriter::default();
+
+                r.put_string_pair(&string_pair)?;
+                rl.put_string_pair(&string_pair)?;
+
+                assert_eq!(r.position(), total_len);
+                assert_eq!(rl.position(), total_len);
+                assert_eq!(0, r.remaining());
+
+                // Assemble combined encoded string pair from the encoded name and value
+                expected_buf[0..encoded_name.len()].copy_from_slice(encoded_name);
+                expected_buf[encoded_name.len()..total_len].copy_from_slice(encoded_value);
+
+                r.assert_contents(&expected_buf[0..total_len]);
+            }
+        }
+
+        Ok(())
+    }
 }
