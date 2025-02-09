@@ -53,6 +53,12 @@ macro_rules! property_owned {
                 self.value
             }
         }
+
+        impl From<$t> for $n<'_> {
+            fn from(value: $t) -> Self {
+                Self::new(value)
+            }
+        }
     };
 }
 
@@ -96,6 +102,12 @@ macro_rules! property_variable_u32 {
                 self.value
             }
         }
+
+        impl From<u32> for $n<'_> {
+            fn from(value: u32) -> Self {
+                Self::new(value)
+            }
+        }
     };
 }
 
@@ -133,6 +145,12 @@ macro_rules! property_str {
             const IDENTIFIER: u32 = $c;
             fn value(&self) -> &'a str {
                 self.value
+            }
+        }
+
+        impl<'a> From<&'a str> for $n<'a> {
+            fn from(value: &'a str) -> Self {
+                Self::new(value)
             }
         }
     };
@@ -174,6 +192,12 @@ macro_rules! property_string_pair {
                 self.value
             }
         }
+
+        impl<'a> From<StringPair<'a>> for $n<'a> {
+            fn from(value: StringPair<'a>) -> Self {
+                Self::new(value)
+            }
+        }
     };
 }
 
@@ -211,6 +235,12 @@ macro_rules! property_binary_data {
             const IDENTIFIER: u32 = $c;
             fn value(&self) -> &'a [u8] {
                 self.value
+            }
+        }
+
+        impl<'a> From<&'a [u8]> for $n<'a> {
+            fn from(value: &'a [u8]) -> Self {
+                Self::new(value)
             }
         }
     };
@@ -380,18 +410,16 @@ mod tests {
     #[test]
     fn write_and_read_a_full_set_of_properties() {
         let mut buf = [0xFFu8; 1024];
-        let data = [1u8, 2, 3, 4, 5, 6];
+        let data: &[u8] = &[1u8, 2, 3, 4, 5, 6];
 
         let properties = [
-            PacketAnyProperty::PropertyU8(PropertyU8::new(1)),
-            PacketAnyProperty::PropertyU16(PropertyU16::new(2)),
-            PacketAnyProperty::PropertyU32(PropertyU32::new(3)),
-            PacketAnyProperty::PropertyVariableU32(PropertyVariableU32::new(4)),
-            PacketAnyProperty::PropertyString(PropertyString::new("hello world")),
-            PacketAnyProperty::PropertyStringPair(PropertyStringPair::new(StringPair::new(
-                "name", "value",
-            ))),
-            PacketAnyProperty::PropertyBinaryData(PropertyBinaryData::new(&data)),
+            PacketAnyProperty::PropertyU8(1.into()),
+            PacketAnyProperty::PropertyU16(2.into()),
+            PacketAnyProperty::PropertyU32(3.into()),
+            PacketAnyProperty::PropertyVariableU32(4.into()),
+            PacketAnyProperty::PropertyString("hello world".into()),
+            PacketAnyProperty::PropertyStringPair(StringPair::new("name", "value").into()),
+            PacketAnyProperty::PropertyBinaryData(data.into()),
         ];
 
         let position = {
@@ -407,6 +435,71 @@ mod tests {
         for p in properties.iter() {
             let p_read = PacketAnyProperty::read(&mut r).unwrap();
             assert_eq!(&p_read, p);
+        }
+    }
+
+    #[test]
+    fn write_and_read_expected_subset_of_properties_for_packet() {
+        let mut buf = [0xFFu8; 1024];
+
+        // These properties are from "PacketAny" that can accept any property,
+        // but are also accepted by PacketFirstThreeProperty
+        let properties = [
+            PacketAnyProperty::PropertyU8(1.into()),
+            PacketAnyProperty::PropertyU16(2.into()),
+            PacketAnyProperty::PropertyU32(3.into()),
+        ];
+
+        let expected_properties = [
+            PacketFirstThreeProperty::PropertyU8(1.into()),
+            PacketFirstThreeProperty::PropertyU16(2.into()),
+            PacketFirstThreeProperty::PropertyU32(3.into()),
+        ];
+
+        // Write out the properties as properties of PacketAnyProperty
+        let position = {
+            let mut r = MqttBufWriter::new(&mut buf);
+
+            for p in properties.iter() {
+                p.write(&mut r).unwrap();
+            }
+            r.position()
+        };
+
+        // Read back as PacketFirstThreeProperty properties, so we can check they work
+        let mut r = MqttBufReader::new(&buf[0..position]);
+        for p in expected_properties.iter() {
+            let p_read = PacketFirstThreeProperty::read(&mut r).unwrap();
+            assert_eq!(&p_read, p);
+        }
+    }
+
+    #[test]
+    fn fail_with_malformed_packet_on_reading_unexpected_properties_outside_subset_for_packet() {
+        // These properties are in PacketAnyProperty but not in PacketFirstThreeProperty,
+        // so reading any of them should fail
+        let data: &[u8] = &[1u8, 2, 3, 4, 5, 6];
+        let unexpected_properties = [
+            PacketAnyProperty::PropertyVariableU32(4.into()),
+            PacketAnyProperty::PropertyString("hello world".into()),
+            PacketAnyProperty::PropertyStringPair(StringPair::new("name", "value").into()),
+            PacketAnyProperty::PropertyBinaryData(data.into()),
+        ];
+
+        let mut buf = [0xFFu8; 1024];
+        for p in unexpected_properties.iter() {
+            buf.fill(0xFFu8);
+            let position = {
+                let mut r = MqttBufWriter::new(&mut buf);
+                p.write(&mut r).unwrap();
+                r.position()
+            };
+
+            let mut r = MqttBufReader::new(&buf[0..position]);
+            assert_eq!(
+                PacketFirstThreeProperty::read(&mut r),
+                Err(mqtt_reader::MqttReaderError::MalformedPacket)
+            );
         }
     }
 }
