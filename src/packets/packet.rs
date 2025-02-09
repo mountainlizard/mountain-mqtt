@@ -1,11 +1,11 @@
 use heapless::Vec;
 
-// use super::property::ConnectionProperty;
+use super::property::ConnectionProperty;
 
 pub enum Packet<'a, const PROPERTIES_N: usize> {
     Connect {
         keep_alive: u16,
-        // properties: Vec<ConnectionProperty<'a>, PROPERTIES_N>,
+        properties: Vec<ConnectionProperty<'a>, PROPERTIES_N>,
         username: Option<&'a str>,
         password: Option<&'a str>,
         client_id: &'a str,

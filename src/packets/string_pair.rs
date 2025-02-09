@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct StringPair<'a> {
     name: &'a str,
     value: &'a str,
