@@ -2,7 +2,7 @@
 /// than 128 indicate successful completion of an operation. The normal Reason Code for success is 0.
 /// Reason Code values of 128 or greater indicate failure.
 #[repr(u8)]
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum ReasonCode {
     Success = 0,
     GrantedQoS1 = 1,
@@ -51,6 +51,6 @@ pub enum ReasonCode {
 
 impl ReasonCode {
     pub fn is_error(&self) -> bool {
-        (self.clone() as u8) > 128
+        (*self as u8) > 128
     }
 }

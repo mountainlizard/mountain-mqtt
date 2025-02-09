@@ -2,11 +2,9 @@ use crate::error::Error;
 
 use super::packet_type::PacketType;
 
-pub struct FixedHeaderFirstByte(u8);
-
-impl From<PacketType> for FixedHeaderFirstByte {
+impl From<PacketType> for u8 {
     fn from(value: PacketType) -> Self {
-        let byte = match value {
+        match value {
             PacketType::Connect => 0x10,
             PacketType::Connack => 0x20,
             PacketType::Publish => 0x30,
@@ -22,16 +20,15 @@ impl From<PacketType> for FixedHeaderFirstByte {
             PacketType::Pingresp => 0xD0,
             PacketType::Disconnect => 0xE0,
             PacketType::Auth => 0xF0,
-        };
-        FixedHeaderFirstByte(byte)
+        }
     }
 }
 
-impl TryFrom<FixedHeaderFirstByte> for PacketType {
+impl TryFrom<u8> for PacketType {
     type Error = Error;
 
-    fn try_from(value: FixedHeaderFirstByte) -> Result<Self, Self::Error> {
-        match value.0 {
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
             0x10 => Ok(PacketType::Connect),
             0x20 => Ok(PacketType::Connack),
             0x30 => Ok(PacketType::Publish),
