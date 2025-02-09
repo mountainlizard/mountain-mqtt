@@ -1,4 +1,4 @@
-use crate::packets::string_pair::StringPair;
+use crate::data::string_pair::StringPair;
 
 use super::{DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE};
 

@@ -1,6 +1,6 @@
 use core::str::Utf8Error;
 
-use crate::packets::string_pair::StringPair;
+use crate::data::string_pair::StringPair;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MqttReaderError {

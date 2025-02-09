@@ -2,10 +2,9 @@ use crate::data::{
     mqtt_reader::{self, MqttReader},
     mqtt_writer::{self, MqttWriter},
     read::Read,
+    string_pair::StringPair,
     write::Write,
 };
-
-use super::string_pair::StringPair;
 
 use core::marker::PhantomData;
 pub trait Property<'a, T> {
