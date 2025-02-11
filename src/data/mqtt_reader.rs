@@ -17,6 +17,7 @@ pub enum MqttReaderError {
     UnknownReasonCode,
     InvalidBooleanValue,
     TooManyProperties,
+    InvalidQoSValue,
 }
 
 impl From<Utf8Error> for MqttReaderError {

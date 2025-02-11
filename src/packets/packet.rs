@@ -42,6 +42,21 @@ impl<P: PacketWrite> Write for P {
 }
 
 pub trait PacketRead<'a>: Packet {
+    /// Read the variable header and payload from a reader
+    /// Note that the reader is NOT necessarily at position 0 when provided,
+    /// so implementations must check position if needed.
+    /// The first header byte is provided - this only needs to be used if
+    /// it may contain information in addition to the [PacketType] -
+    /// since this trait extends [Packet] it's required that
+    /// any user of this trait independently checks that the
+    /// first header byte matches the expected [PacketType] before
+    /// calling this method.
+    /// `len` is the remaining length read from the fixed header,
+    /// and so is the amount of data expected to be present in the
+    /// reader and needed to decode the variable header and payload.
+    /// As noted above, the reader position may not begin at 0, so
+    /// if you need to track the amount of data read against len,
+    /// make sure to check the reader position before using it.
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         first_header_byte: u8,
