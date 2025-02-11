@@ -1,6 +1,6 @@
 use heapless::Vec;
 
-use crate::data::string_pair::StringPair;
+use crate::{data::string_pair::StringPair, packets::reason_code::ReasonCode};
 
 use super::{write::Write, DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE};
 
@@ -40,6 +40,13 @@ pub trait MqttWriter<'a>: Sized {
     fn put_bool_zero_one(&mut self, b: bool) -> Result<()> {
         let value = if b { 1 } else { 0 };
         self.put_u8(value)
+    }
+
+    /// Put the next byte of data as a reason code
+    /// Advances the position by 1
+    /// Can fail with [MqttWriterError::Overflow]
+    fn put_reason_code(&mut self, c: &ReasonCode) -> Result<()> {
+        self.put_u8(*c as u8)
     }
 
     /// Put the next byte of data as a u8
@@ -798,6 +805,33 @@ mod tests {
 
                 r.assert_contents(&expected_buf[0..total_len]);
             }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_writers_can_put_reason_code() -> Result<()> {
+        // Test a selection of codes
+        let codes = [
+            ReasonCode::AdministrativeAction,
+            ReasonCode::Banned,
+            ReasonCode::GrantedQoS1,
+            ReasonCode::PayloadFormatInvalid,
+            ReasonCode::Success,
+            ReasonCode::UnspecifiedError,
+            ReasonCode::WildcardSubscriptionsNotSupported,
+        ];
+
+        for code in codes.iter() {
+            let mut buf = [0xFF];
+            {
+                let mut r = MqttBufWriter::new(&mut buf);
+                r.put_reason_code(code)?;
+                assert_eq!(1, r.position());
+                assert_eq!(0, r.remaining());
+            }
+            assert_eq!(buf[0], *code as u8);
         }
 
         Ok(())

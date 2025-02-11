@@ -45,6 +45,7 @@ pub trait PacketRead<'a>: Packet {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         first_header_byte: u8,
+        len: usize,
     ) -> mqtt_reader::Result<Self>
     where
         Self: Sized;
@@ -60,8 +61,11 @@ impl<'a, P: PacketRead<'a>> Read<'a> for P {
         let remaining_length = reader.get_variable_u32()? as usize;
         let packet_end_position = reader.position() + remaining_length;
 
-        let packet =
-            <Self as PacketRead>::get_variable_header_and_payload(reader, first_header_byte)?;
+        let packet = <Self as PacketRead>::get_variable_header_and_payload(
+            reader,
+            first_header_byte,
+            remaining_length,
+        )?;
 
         // Check that packet type is as expected, so `PacketRead` implementation
         // doesn't have to

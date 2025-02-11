@@ -1,0 +1,123 @@
+use super::{
+    packet::{Packet, PacketRead, PacketWrite},
+    packet_type::PacketType,
+    property::DisconnectProperty,
+    reason_code::ReasonCode,
+};
+use crate::data::{
+    mqtt_reader::{self, MqttReader},
+    mqtt_writer::{self, MqttWriter},
+};
+use heapless::Vec;
+
+#[derive(Debug, PartialEq)]
+pub struct Disconnect<'a, const PROPERTIES_N: usize> {
+    disconnect_reason_code: ReasonCode,
+    properties: Vec<DisconnectProperty<'a>, PROPERTIES_N>,
+}
+
+impl<const PROPERTIES_N: usize> Disconnect<'_, PROPERTIES_N> {
+    pub fn new(disconnect_reason_code: ReasonCode) -> Self {
+        Self {
+            disconnect_reason_code,
+            properties: Vec::new(),
+        }
+    }
+}
+
+impl<const PROPERTIES_N: usize> Default for Disconnect<'_, PROPERTIES_N> {
+    fn default() -> Self {
+        Self::new(ReasonCode::Success)
+    }
+}
+
+impl<const PROPERTIES_N: usize> Packet for Disconnect<'_, PROPERTIES_N> {
+    fn packet_type(&self) -> PacketType {
+        PacketType::Disconnect
+    }
+}
+
+impl<const PROPERTIES_N: usize> PacketWrite for Disconnect<'_, PROPERTIES_N> {
+    fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
+        &self,
+        writer: &mut W,
+    ) -> mqtt_writer::Result<()> {
+        // Variable header:
+
+        // 3.14.2.1 Disconnect Reason Code
+        writer.put_reason_code(&self.disconnect_reason_code)?;
+
+        // 3.14.2.2 DISCONNECT Properties
+        writer.put_variable_u32_delimited_vec(&self.properties)?;
+
+        Ok(())
+    }
+}
+
+impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Disconnect<'a, PROPERTIES_N> {
+    fn get_variable_header_and_payload<R: MqttReader<'a>>(
+        reader: &mut R,
+        _first_header_byte: u8,
+        len: usize,
+    ) -> mqtt_reader::Result<Self>
+    where
+        Self: Sized,
+    {
+        // Special case - if length of variable header and payload is 0, treat as
+        // reason code success, with no properties
+        if len == 0 {
+            Ok(Disconnect::new(ReasonCode::Success))
+        } else {
+            let reason_code = reader.get_reason_code()?;
+            let mut packet = Disconnect::new(reason_code);
+            reader.get_variable_u32_delimited_vec(&mut packet.properties)?;
+
+            Ok(packet)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::data::{
+        mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, read::Read, write::Write,
+    };
+
+    use super::*;
+
+    fn example_packet<'a>() -> Disconnect<'a, 1> {
+        let mut packet: Disconnect<'_, 1> = Disconnect::new(ReasonCode::Success);
+        packet
+            .properties
+            .push(DisconnectProperty::SessionExpiryInterval(512.into()))
+            .unwrap();
+        packet
+    }
+
+    const EXAMPLE_DATA: [u8; 9] = [0xE0, 0x07, 0x00, 0x05, 0x11, 0x00, 0x00, 0x02, 0x00];
+
+    #[test]
+    fn encode_example() {
+        let packet = example_packet();
+
+        let mut buf = [0; 9];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA);
+    }
+
+    #[test]
+    fn decode_example() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA);
+
+        let packet: Disconnect<'_, 1> = Disconnect::read(&mut r).unwrap();
+        assert_eq!(packet, example_packet());
+        assert_eq!(
+            packet.properties.first().unwrap(),
+            &DisconnectProperty::SessionExpiryInterval(512.into())
+        )
+    }
+}

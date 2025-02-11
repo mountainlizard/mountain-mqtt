@@ -58,6 +58,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N>
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
+        _len: usize,
     ) -> mqtt_reader::Result<Self>
     where
         Self: Sized,
