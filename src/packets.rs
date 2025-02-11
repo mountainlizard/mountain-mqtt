@@ -4,6 +4,8 @@ pub mod disconnect;
 pub mod packet;
 pub mod packet_identifier;
 pub mod packet_type;
+pub mod pingreq;
+pub mod pingresp;
 pub mod property;
 pub mod puback;
 pub mod publish;
