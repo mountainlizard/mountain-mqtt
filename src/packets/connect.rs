@@ -114,6 +114,49 @@ mod tests {
         0x14, 0x00, 0x00,
     ];
 
+    fn example_packet_username<'a>() -> Connect<'a, 1> {
+        let mut packet = Connect::new(60, Some("user"), None, "", true);
+        packet
+            .properties
+            .push(ConnectProperty::ReceiveMaximum(20.into()))
+            .unwrap();
+        packet
+    }
+
+    const EXAMPLE_DATA_USERNAME: [u8; 24] = [
+        0x10, 0x16, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0x82, 0x00, 0x3c, 0x03, 0x21, 0x00,
+        0x14, 0x00, 0x00, 0x00, 0x04, 0x75, 0x73, 0x65, 0x72,
+    ];
+
+    fn example_packet_username_password<'a>() -> Connect<'a, 1> {
+        let mut packet = Connect::new(60, Some("user"), Some("pass".as_bytes()), "", true);
+        packet
+            .properties
+            .push(ConnectProperty::ReceiveMaximum(20.into()))
+            .unwrap();
+        packet
+    }
+
+    const EXAMPLE_DATA_USERNAME_PASSWORD: [u8; 30] = [
+        0x10, 0x1C, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0xC2, 0x00, 0x3c, 0x03, 0x21, 0x00,
+        0x14, 0x00, 0x00, 0x00, 0x04, 0x75, 0x73, 0x65, 0x72, 0x00, 0x04, 0x70, 0x61, 0x73, 0x73,
+    ];
+
+    fn example_packet_clientid_username_password<'a>() -> Connect<'a, 1> {
+        let mut packet = Connect::new(60, Some("user"), Some("pass".as_bytes()), "client", true);
+        packet
+            .properties
+            .push(ConnectProperty::ReceiveMaximum(20.into()))
+            .unwrap();
+        packet
+    }
+
+    const EXAMPLE_DATA_CLIENTID_USERNAME_PASSWORD: [u8; 36] = [
+        0x10, 0x22, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0xC2, 0x00, 0x3c, 0x03, 0x21, 0x00,
+        0x14, 0x00, 0x06, 0x63, 0x6c, 0x69, 0x65, 0x6e, 0x74, 0x00, 0x04, 0x75, 0x73, 0x65, 0x72,
+        0x00, 0x04, 0x70, 0x61, 0x73, 0x73,
+    ];
+
     #[test]
     fn encode_example() {
         let packet = example_packet();
@@ -127,9 +170,42 @@ mod tests {
         assert_eq!(buf[0..len], EXAMPLE_DATA);
     }
 
-    // #[test]
-    // fn decode_example() {
-    //     let mut r = MqttBufReader::new(&EXAMPLE_DATA);
-    //     assert_eq!(Connect::read(&mut r).unwrap(), example_packet());
-    // }
+    #[test]
+    fn encode_example_username() {
+        let packet = example_packet_username();
+
+        let mut buf = [0; EXAMPLE_DATA_USERNAME.len()];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA_USERNAME);
+    }
+
+    #[test]
+    fn encode_example_username_password() {
+        let packet = example_packet_username_password();
+
+        let mut buf = [0; EXAMPLE_DATA_USERNAME_PASSWORD.len()];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA_USERNAME_PASSWORD);
+    }
+
+    #[test]
+    fn encode_example_clientid_username_password() {
+        let packet = example_packet_clientid_username_password();
+
+        let mut buf = [0; EXAMPLE_DATA_CLIENTID_USERNAME_PASSWORD.len()];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA_CLIENTID_USERNAME_PASSWORD);
+    }
 }
