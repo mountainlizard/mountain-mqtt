@@ -1,12 +1,9 @@
 use super::{
-    packet::{PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5},
+    packet::{Packet, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5},
     packet_type::PacketType,
     property::ConnectProperty,
 };
-use crate::data::{
-    mqtt_writer::{self, MqttLenWriter, MqttWriter},
-    write::Write,
-};
+use crate::data::mqtt_writer::{self, MqttWriter};
 use heapless::Vec;
 
 pub struct Connect<'a, const PROPERTIES_N: usize> {
@@ -40,13 +37,6 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
         self.properties.push(p)
     }
 
-    fn write_properties<'w, W: MqttWriter<'w>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
-        for p in self.properties.iter() {
-            p.write(writer)?;
-        }
-        Ok(())
-    }
-
     fn connect_flags(&self) -> u8 {
         let mut flags = 0u8;
         if self.clean_start {
@@ -63,30 +53,25 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
     }
 }
 
-impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
+impl<const PROPERTIES_N: usize> Packet for Connect<'_, PROPERTIES_N> {
     fn packet_type(&self) -> PacketType {
         PacketType::Connect
     }
+}
 
+impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
     fn write_variable_header<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
     ) -> mqtt_writer::Result<()> {
-        // Find length of written properties
-        let mut lw = MqttLenWriter::new();
-        self.write_properties(&mut lw)?;
-        let properties_len = lw.position();
-
         // Write the fixed parts of the variable header
         writer.put_str(PROTOCOL_NAME)?; // 3.1.2.1 Protocol name
         writer.put_u8(PROTOCOL_VERSION_5)?; // 3.1.2.2 Protocol Version
         writer.put_u8(self.connect_flags())?; // 3.1.2.3 Connect Flags
         writer.put_u16(self.keep_alive)?; // 3.1.2.10 Keep Alive
 
-        // Write the properties array
-        writer.put_variable_u32(properties_len as u32)?; // 3.1.2.11.1 Property Length
-        self.write_properties(writer)?; // 3.1.2.11.2 onwards, properties
-
+        // Write the properties vec (3.1.2.11)
+        writer.put_variable_u32_delimited_vec(&self.properties)?;
         Ok(())
     }
 

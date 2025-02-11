@@ -9,11 +9,14 @@ pub const KEEP_ALIVE_DEFAULT: u16 = 60;
 pub const PROTOCOL_NAME: &str = "MQTT";
 pub const PROTOCOL_VERSION_5: u8 = 0x05;
 
-pub trait PacketWrite {
+pub trait Packet {
     fn packet_type(&self) -> PacketType;
     fn fixed_header_first_byte(&self) -> u8 {
         self.packet_type().into()
     }
+}
+
+pub trait PacketWrite: Packet {
     fn write_variable_header<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,

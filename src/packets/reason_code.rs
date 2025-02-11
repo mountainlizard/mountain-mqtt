@@ -2,7 +2,7 @@
 /// than 128 indicate successful completion of an operation. The normal Reason Code for success is 0.
 /// Reason Code values of 128 or greater indicate failure.
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ReasonCode {
     Success = 0,
     GrantedQoS1 = 1,

@@ -1,6 +1,8 @@
+use heapless::Vec;
+
 use crate::data::string_pair::StringPair;
 
-use super::{DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE};
+use super::{write::Write, DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MqttWriterError {
@@ -22,7 +24,7 @@ pub type Result<A> = core::result::Result<A, MqttWriterError>;
 /// written before the error was detected. Since an error always indicates
 /// invalid data, there's no reason to allow recovering, and the writer/data
 /// should not be used further.
-pub trait MqttWriter<'a> {
+pub trait MqttWriter<'a>: Sized {
     /// Put the whole of a slice as raw data
     /// This generally should not be used directly - it is
     /// used by the other put methods, which handle checking
@@ -30,6 +32,15 @@ pub trait MqttWriter<'a> {
     /// Advances the position by length of slice
     /// Can fail with [MqttWriterError::Overflow]
     fn put_slice(&mut self, slice: &[u8]) -> Result<()>;
+
+    /// Put the next byte of data as a bool,
+    /// encoded with 0 for false, 1 for true
+    /// Advances the position by 1
+    /// Can fail with [MqttWriterError::Overflow]
+    fn put_bool_zero_one(&mut self, b: bool) -> Result<()> {
+        let value = if b { 1 } else { 0 };
+        self.put_u8(value)
+    }
 
     /// Put the next byte of data as a u8
     /// Advances the position by 1
@@ -135,6 +146,26 @@ pub trait MqttWriter<'a> {
             self.put_slice(data)?;
             Ok(())
         }
+    }
+
+    /// Put a list of [Write]able objects, prefixed with their total
+    /// encoded length as a variable u32 value
+    fn put_variable_u32_delimited_vec<T: Write, const N: usize>(
+        &mut self,
+        vec: &Vec<T, N>,
+    ) -> Result<()> {
+        let mut lw = MqttLenWriter::new();
+        for p in vec.iter() {
+            p.write(&mut lw)?;
+        }
+        let properties_len = lw.position();
+
+        self.put_variable_u32(properties_len as u32)?;
+        for p in vec.iter() {
+            p.write(self)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -253,6 +284,8 @@ impl MqttWriter<'_> for MqttLenWriter {
 mod tests {
     use super::*;
 
+    // Note - tests for `put_variable_u32_delimited_vec` are in property module
+
     impl MqttBufWriter<'_> {
         fn assert_contents(&self, expected: &[u8]) {
             assert_eq!(&self.buf[0..self.position], expected);
@@ -318,6 +351,32 @@ mod tests {
 
         // Can still put an empty slice
         assert_eq!(r.put_slice(&[]), Ok(()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_writers_can_put_bool_zero_one() -> Result<()> {
+        let mut buf = [0u8; 7];
+        let mut r = MqttBufWriter::new(&mut buf);
+        let mut rl = MqttLenWriter::default();
+
+        let values = [false, true, false, false, true, true, true];
+        let encoded = [0, 1, 0, 0, 1, 1, 1];
+
+        let mut expected_position = 0;
+        for value in values.iter() {
+            r.put_bool_zero_one(*value)?;
+            rl.put_bool_zero_one(*value)?;
+            expected_position += 1;
+            r.assert_contents(&encoded[0..expected_position]);
+            assert_eq!(r.position(), expected_position);
+            assert_eq!(rl.position(), expected_position);
+            assert_eq!(r.remaining(), 7 - expected_position);
+        }
+
+        // We've filled the buffer
+        assert_eq!(0, r.remaining());
 
         Ok(())
     }

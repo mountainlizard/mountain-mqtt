@@ -1,6 +1,10 @@
 use core::str::Utf8Error;
 
-use crate::data::string_pair::StringPair;
+use heapless::Vec;
+
+use crate::{data::string_pair::StringPair, packets::reason_code::ReasonCode};
+
+use super::read::Read;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MqttReaderError {
@@ -9,6 +13,10 @@ pub enum MqttReaderError {
     NullCharacterInString,
     InvalidVariableByteIntegerEncoding,
     MalformedPacket,
+    IncorrectPacketType,
+    UnknownReasonCode,
+    InvalidBooleanValue,
+    TooManyProperties,
 }
 
 impl From<Utf8Error> for MqttReaderError {
@@ -26,11 +34,68 @@ pub type Result<A> = core::result::Result<A, MqttReaderError>;
 /// before the error was detected. Since an error always indicates invalid
 /// data, there's no reason to allow recovering, and the reader should not
 /// be used further.
-pub trait MqttReader<'a> {
+pub trait MqttReader<'a>: Sized {
+    /// Get the current position of the reader - this is 0 when reader is
+    /// created, and increments by the number of bytes read on each successful
+    /// `get` method call
+    fn position(&self) -> usize;
+
     /// Get a slice with given length, as a view of this reader's buffer
     /// Advances the position by given length
     /// Can fail with [MqttReaderError::InsufficientData]
     fn get_slice(&mut self, len: usize) -> Result<&'a [u8]>;
+
+    // /// Make a view of this reader that is limited to returning at most
+    // /// `remaining` bytes of data. If more than this is requested from the,
+    // /// new reader, this will result in [MqttReaderError::InsufficientData], even
+    // /// if this reader itself still has more data.
+    // /// This can be used to ensure that we respected the length of an embedded
+    // /// piece of data, for example in an encoded properties list, where we
+    // /// must stop reading data exactly at the limit specified in the encoded
+    // /// property list.
+    // ///
+    // /// In order for this to work as expected, the underlying reader should not
+    // /// be read from directly while the limited reader is in use - all reads should be
+    // /// through the limited reader (this is not currently enforced).
+    // ///
+    // /// Note that limited readers can be nested, and the limits will be checked
+    // /// from the deepest level of nesting upwards, if any limits are reached in any
+    // /// nested reader this will error. In this case, only the deepest level of nesting
+    // /// should be read from, and this will pass the request through each layer of nesting,
+    // /// tracking and enforcing all limits.
+    // ///
+    // /// This design is intended to support structures used in MQTT packets - for example
+    // /// the entire packet has a length as part of the fixed header, and this can be used
+    // /// to apply a limit to read the rest of the whole packet, but then within the packet
+    // /// there may be a properties list with a length, and this can be used to produce
+    // /// another nested limit while reading the properties data. When this is complete, the
+    // /// nested limited reader can be discarded and the "whole packet" reader used again.
+    // ///
+    // /// So for example calling limited with 70 bytes remaining could produce
+    // /// a new reader `r1``, then calling `r1.limited` with 50 bytes remaining would
+    // /// produce another reader `r2`. We can then read up to 50 bytes from `r2`.
+    // /// If we read 50 bytes then discard `r2` we can continue reading from `r1`,
+    // /// which will permit reading another 20 bytes (up to a total of 70 as specified).
+    // /// Finally we can discard `r1` and resume reading from the original base
+    // /// reader.
+    // ///
+    // fn limited(&'a mut self, remaining: usize) -> MqttLimitReader<'a, Self> {
+    //     MqttLimitReader::new(self, remaining)
+    // }
+
+    /// Get the next byte of data as a bool, where
+    /// false is encoded as 0, true as 1, and any other
+    /// value gives [MqttReaderError::InvalidBooleanValue]
+    /// Advances the position by 1
+    /// Can fail with [MqttReaderError::InsufficientData]
+    fn get_bool_zero_one(&mut self) -> Result<bool> {
+        let value = self.get_u8()?;
+        match value {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(MqttReaderError::InvalidBooleanValue),
+        }
+    }
 
     /// Get the next byte of data as a u8
     /// Advances the position by 1
@@ -124,6 +189,72 @@ pub trait MqttReader<'a> {
         let len = self.get_u16()?;
         self.get_slice(len as usize)
     }
+
+    fn get_reason_code(&mut self) -> Result<ReasonCode> {
+        let value = self.get_u8()?;
+        match value {
+            0 => Ok(ReasonCode::Success),
+            1 => Ok(ReasonCode::GrantedQoS1),
+            2 => Ok(ReasonCode::GrantedQoS2),
+            4 => Ok(ReasonCode::DisconnectWithWillMessage),
+            16 => Ok(ReasonCode::NoMatchingSubscribers),
+            17 => Ok(ReasonCode::NoSubscriptionExisted),
+            24 => Ok(ReasonCode::ContinueAuthentication),
+            25 => Ok(ReasonCode::ReAuthenticate),
+            128 => Ok(ReasonCode::UnspecifiedError),
+            129 => Ok(ReasonCode::MalformedPacket),
+            130 => Ok(ReasonCode::ProtocolError),
+            131 => Ok(ReasonCode::ImplementationSpecificError),
+            132 => Ok(ReasonCode::UnsupportedProtocolVersion),
+            133 => Ok(ReasonCode::ClientIdentifierNotValid),
+            134 => Ok(ReasonCode::BadUserNameOrPassword),
+            135 => Ok(ReasonCode::NotAuthorized),
+            136 => Ok(ReasonCode::ServerUnavailable),
+            137 => Ok(ReasonCode::ServerBusy),
+            138 => Ok(ReasonCode::Banned),
+            139 => Ok(ReasonCode::ServerShuttingDown),
+            140 => Ok(ReasonCode::BadAuthenticationMethod),
+            141 => Ok(ReasonCode::KeepAliveTimeout),
+            142 => Ok(ReasonCode::SessionTakenOver),
+            143 => Ok(ReasonCode::TopicFilterInvalid),
+            144 => Ok(ReasonCode::TopicNameInvalid),
+            145 => Ok(ReasonCode::PacketIdentifierInUse),
+            146 => Ok(ReasonCode::PacketIdentifierNotFound),
+            147 => Ok(ReasonCode::ReceiveMaximumExceeded),
+            148 => Ok(ReasonCode::TopicAliasInvalid),
+            149 => Ok(ReasonCode::PacketTooLarge),
+            150 => Ok(ReasonCode::MessageRateTooHigh),
+            151 => Ok(ReasonCode::QuotaExceeded),
+            152 => Ok(ReasonCode::AdministrativeAction),
+            153 => Ok(ReasonCode::PayloadFormatInvalid),
+            154 => Ok(ReasonCode::RetainNotSupported),
+            155 => Ok(ReasonCode::QoSNotSupported),
+            156 => Ok(ReasonCode::UseAnotherServer),
+            157 => Ok(ReasonCode::ServerMoved),
+            158 => Ok(ReasonCode::SharedSubscriptionsNotSupported),
+            159 => Ok(ReasonCode::ConnectionRateExceeded),
+            160 => Ok(ReasonCode::MaximumConnectTime),
+            161 => Ok(ReasonCode::SubscriptionIdentifiersNotSupported),
+            162 => Ok(ReasonCode::WildcardSubscriptionsNotSupported),
+            _ => Err(MqttReaderError::UnknownReasonCode),
+        }
+    }
+
+    fn get_variable_u32_delimited_vec<T: Read<'a>, const N: usize>(
+        &mut self,
+        vec: &mut Vec<T, N>,
+    ) -> Result<()> {
+        let properties_len = self.get_variable_u32()? as usize;
+        let properties_end = self.position() + properties_len;
+
+        while self.position() < properties_end {
+            let item = T::read(self)?;
+            vec.push(item)
+                .map_err(|_e| MqttReaderError::TooManyProperties)?;
+        }
+
+        Ok(())
+    }
 }
 
 pub struct MqttBufReader<'a> {
@@ -142,6 +273,10 @@ impl<'a> MqttBufReader<'a> {
 }
 
 impl<'a> MqttReader<'a> for MqttBufReader<'a> {
+    fn position(&self) -> usize {
+        self.position
+    }
+
     fn get_slice(&mut self, len: usize) -> Result<&'a [u8]> {
         let end = self.position + len;
         if end > self.buf.len() {
@@ -154,9 +289,46 @@ impl<'a> MqttReader<'a> for MqttBufReader<'a> {
     }
 }
 
+// pub struct MqttLimitReader<'a, R>
+// where
+//     R: MqttReader<'a>,
+// {
+//     reader: &'a mut R,
+//     remaining: usize,
+// }
+
+// impl<'a, R> MqttLimitReader<'a, R>
+// where
+//     R: MqttReader<'a>,
+// {
+//     pub fn new(reader: &'a mut R, remaining: usize) -> MqttLimitReader<'a, R> {
+//         MqttLimitReader { reader, remaining }
+//     }
+
+//     pub fn remaining(&self) -> usize {
+//         self.remaining
+//     }
+// }
+
+// impl<'a, R> MqttReader<'a> for MqttLimitReader<'a, R>
+// where
+//     R: MqttReader<'a>,
+// {
+//     fn get_slice(&mut self, len: usize) -> Result<&'a [u8]> {
+//         if len > self.remaining {
+//             Err(MqttReaderError::InsufficientData)
+//         } else {
+//             self.remaining -= len;
+//             self.reader.get_slice(len)
+//         }
+//     }
+// }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Note - tests for `get_variable_u32_delimited_vec` are in property module
 
     #[test]
     fn mqtt_buf_reader_can_get_slices() -> Result<()> {
@@ -196,6 +368,39 @@ mod tests {
         let slice_empty = r.get_slice(0)?;
         assert_eq!(slice_empty, &[]);
 
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_buf_reader_can_get_bool_zero_one() -> Result<()> {
+        let buf = [0, 1, 0, 1];
+        let mut r = MqttBufReader::new(&buf);
+
+        for value in buf.iter() {
+            let expected = *value == 1;
+            assert_eq!(expected, r.get_bool_zero_one()?);
+        }
+
+        // We've consumed all data
+        assert_eq!(0, r.remaining());
+        assert_eq!(r.get_slice(1), Err(MqttReaderError::InsufficientData));
+
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_buf_reader_fails_on_bool_zero_one_invalid_values() -> Result<()> {
+        for value in 2u8..255 {
+            let buf = [0, 1, value];
+            let mut r = MqttBufReader::new(&buf);
+
+            assert!(!r.get_bool_zero_one()?);
+            assert!(r.get_bool_zero_one()?);
+            assert_eq!(
+                Err(MqttReaderError::InvalidBooleanValue),
+                r.get_bool_zero_one()
+            );
+        }
         Ok(())
     }
 
@@ -451,6 +656,31 @@ mod tests {
                 assert_eq!(0, r.remaining());
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_buf_reader_can_get_reason_code() -> Result<()> {
+        // Test a selection of codes
+        let codes = [
+            ReasonCode::AdministrativeAction,
+            ReasonCode::Banned,
+            ReasonCode::GrantedQoS1,
+            ReasonCode::PayloadFormatInvalid,
+            ReasonCode::Success,
+            ReasonCode::UnspecifiedError,
+            ReasonCode::WildcardSubscriptionsNotSupported,
+        ];
+
+        for code in codes.iter() {
+            let buf = [*code as u8];
+            let mut r = MqttBufReader::new(&buf);
+            let read_code = r.get_reason_code()?;
+            assert_eq!(read_code, *code);
+            assert_eq!(1, r.position());
+            assert_eq!(0, r.remaining());
+        }
+
         Ok(())
     }
 }

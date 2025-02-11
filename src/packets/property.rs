@@ -31,7 +31,10 @@ macro_rules! property_owned {
         }
 
         impl Write for $n<'_> {
-            fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
+            fn write<'a, W: MqttWriter<'a> + ?Sized>(
+                &self,
+                writer: &mut W,
+            ) -> mqtt_writer::Result<()> {
                 self.value.write(writer)
             }
         }
@@ -80,7 +83,10 @@ macro_rules! property_variable_u32 {
         }
 
         impl Write for $n<'_> {
-            fn write<'a, W: MqttWriter<'a>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
+            fn write<'a, W: MqttWriter<'a> + ?Sized>(
+                &self,
+                writer: &mut W,
+            ) -> mqtt_writer::Result<()> {
                 writer.put_variable_u32(self.value)
             }
         }
@@ -415,7 +421,12 @@ packet_properties!(
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter};
+    use heapless::Vec;
+
+    use crate::data::{
+        mqtt_reader::{MqttBufReader, MqttReaderError},
+        mqtt_writer::MqttBufWriter,
+    };
 
     use super::*;
 
@@ -514,6 +525,57 @@ mod tests {
             let p_read = PacketAnyProperty::read(&mut r).unwrap();
             assert_eq!(&p_read, p);
         }
+    }
+
+    #[test]
+    fn write_and_read_a_variable_u32_delimited_vec_of_properties() {
+        let data: &[u8] = &[1u8, 2, 3, 4, 5, 6];
+
+        let mut vec: Vec<PacketAnyProperty<'_>, 16> = Vec::new();
+        vec.extend([
+            PacketAnyProperty::PropertyU8(1.into()),
+            PacketAnyProperty::PropertyU16(2.into()),
+            PacketAnyProperty::PropertyU32(3.into()),
+            PacketAnyProperty::PropertyVariableU32(4.into()),
+            PacketAnyProperty::PropertyString("hello world".into()),
+            PacketAnyProperty::PropertyStringPair(StringPair::new("name", "value").into()),
+            PacketAnyProperty::PropertyBinaryData(data.into()),
+        ]);
+
+        let mut buf = [0xFFu8; 1024];
+        let encoded_length = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            r.put_variable_u32_delimited_vec(&vec).unwrap();
+            r.position()
+        };
+
+        // Check length is as expected
+        // 7 single-byte property identifiers
+        // 8 bytes total for u8, u16, u32 and single-byte variable u32
+        // 2 + 11 bytes for length and utf8 bytes of "hello world"
+        // 2 + 4 + 2 + 5 bytes for lengths and utf8 bytes of string pair
+        // 2 + 6 for bytes length and contents of data
+        // = 49 byte payload
+        // + 1 for the variable u32 length of the whole encoded properties list
+        // = 50 bytes
+        assert_eq!(encoded_length, 50);
+
+        // Decode again - provide only the exact amount of data, to check
+        // that getting properties respects encoded length
+        let mut r = MqttBufReader::new(&buf[0..encoded_length]);
+        let mut read_vec: Vec<PacketAnyProperty<'_>, 16> = Vec::new();
+        r.get_variable_u32_delimited_vec(&mut read_vec).unwrap();
+
+        assert_eq!(0, r.remaining());
+        assert_eq!(read_vec, vec);
+
+        // Expected error for decoding into too short a vec
+        let mut r = MqttBufReader::new(&buf[0..encoded_length]);
+        let mut read_vec: Vec<PacketAnyProperty<'_>, 3> = Vec::new();
+        assert_eq!(
+            r.get_variable_u32_delimited_vec(&mut read_vec),
+            Err(MqttReaderError::TooManyProperties)
+        );
     }
 
     #[test]
