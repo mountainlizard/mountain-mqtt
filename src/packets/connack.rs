@@ -33,8 +33,6 @@ impl<const PROPERTIES_N: usize> Packet for Connack<'_, PROPERTIES_N> {
     }
 }
 
-// TODO: combine variable header and payload, doesn't seem like there's really a meaningful distinction in terms of handling?
-
 impl<const PROPERTIES_N: usize> PacketWrite for Connack<'_, PROPERTIES_N> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
