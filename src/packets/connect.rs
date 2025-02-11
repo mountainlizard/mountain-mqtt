@@ -33,10 +33,6 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
         }
     }
 
-    pub fn push_property(&mut self, p: ConnectProperty<'a>) -> Result<(), ConnectProperty<'a>> {
-        self.properties.push(p)
-    }
-
     fn connect_flags(&self) -> u8 {
         let mut flags = 0u8;
         if self.clean_start {
@@ -60,10 +56,12 @@ impl<const PROPERTIES_N: usize> Packet for Connect<'_, PROPERTIES_N> {
 }
 
 impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
-    fn write_variable_header<'w, W: MqttWriter<'w>>(
+    fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
     ) -> mqtt_writer::Result<()> {
+        // Variable header:
+
         // Write the fixed parts of the variable header
         writer.put_str(PROTOCOL_NAME)?; // 3.1.2.1 Protocol name
         writer.put_u8(PROTOCOL_VERSION_5)?; // 3.1.2.2 Protocol Version
@@ -72,10 +70,8 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
 
         // Write the properties vec (3.1.2.11)
         writer.put_variable_u32_delimited_vec(&self.properties)?;
-        Ok(())
-    }
 
-    fn write_payload<'w, W: MqttWriter<'w>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
+        // Payload:
         // 3.1.3.1 Client Identifier (ClientID)
         writer.put_str(self.client_id)?;
 

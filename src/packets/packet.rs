@@ -17,27 +17,23 @@ pub trait Packet {
 }
 
 pub trait PacketWrite: Packet {
-    fn write_variable_header<'w, W: MqttWriter<'w>>(
+    fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
     ) -> mqtt_writer::Result<()>;
-
-    fn write_payload<'w, W: MqttWriter<'w>>(&self, writer: &mut W) -> mqtt_writer::Result<()>;
 }
 
 impl<P: PacketWrite> Write for P {
     fn write<'w, W: MqttWriter<'w>>(&self, writer: &mut W) -> mqtt_writer::Result<()> {
         // Find length of variable header, and payload
         let mut lw = MqttLenWriter::new();
-        self.write_variable_header(&mut lw)?;
-        self.write_payload(&mut lw)?;
+        self.put_variable_header_and_payload(&mut lw)?;
         let remaining_length = lw.position();
 
         // fixed header including length, then variable header and payload
         writer.put_u8(self.fixed_header_first_byte())?;
         writer.put_variable_u32(remaining_length as u32)?;
-        self.write_variable_header(writer)?;
-        self.write_payload(writer)?;
+        self.put_variable_header_and_payload(writer)?;
 
         Ok(())
     }

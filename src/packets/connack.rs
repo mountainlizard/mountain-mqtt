@@ -36,10 +36,12 @@ impl<const PROPERTIES_N: usize> Packet for Connack<'_, PROPERTIES_N> {
 // TODO: combine variable header and payload, doesn't seem like there's really a meaningful distinction in terms of handling?
 
 impl<const PROPERTIES_N: usize> PacketWrite for Connack<'_, PROPERTIES_N> {
-    fn write_variable_header<'w, W: MqttWriter<'w>>(
+    fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
     ) -> mqtt_writer::Result<()> {
+        // Variable header:
+
         // Write the fixed parts of the variable header
         // Note this byte is technically "connack_flags", but only contains one bit of data, which
         // is encoded the same way as a bool-zero-one used for other data
@@ -49,10 +51,8 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connack<'_, PROPERTIES_N> {
         // Write the properties vec (3.2.2.3)
         writer.put_variable_u32_delimited_vec(&self.properties)?;
 
-        Ok(())
-    }
+        // Payload: Empty
 
-    fn write_payload<'w, W: MqttWriter<'w>>(&self, _writer: &mut W) -> mqtt_writer::Result<()> {
         Ok(())
     }
 }
