@@ -125,13 +125,7 @@ mod tests {
     #[test]
     fn decode_example() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA);
-
-        let packet: Disconnect<'_, 1> = Disconnect::read(&mut r).unwrap();
-        assert_eq!(packet, example_packet());
-        assert_eq!(
-            packet.properties.first().unwrap(),
-            &DisconnectProperty::SessionExpiryInterval(512.into())
-        )
+        assert_eq!(Disconnect::read(&mut r).unwrap(), example_packet());
     }
 
     #[test]
@@ -150,8 +144,9 @@ mod tests {
     #[test]
     fn decode_example_zero_length() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_ZERO_LENGTH);
-
-        let packet: Disconnect<'_, 0> = Disconnect::read(&mut r).unwrap();
-        assert_eq!(packet, example_packet_zero_length());
+        assert_eq!(
+            Disconnect::read(&mut r).unwrap(),
+            example_packet_zero_length()
+        );
     }
 }

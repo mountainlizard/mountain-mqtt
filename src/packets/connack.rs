@@ -10,6 +10,7 @@ use crate::data::{
 };
 use heapless::Vec;
 
+#[derive(Debug, PartialEq)]
 pub struct Connack<'a, const PROPERTIES_N: usize> {
     session_present: bool,
     connect_reason_code: ReasonCode,
@@ -76,5 +77,53 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N>
         reader.get_variable_u32_delimited_vec(&mut packet.properties)?;
 
         Ok(packet)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::data::{
+        mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, read::Read, write::Write,
+    };
+
+    use super::*;
+
+    fn example_packet<'a>() -> Connack<'a, 2> {
+        let mut packet: Connack<'_, 2> = Connack::new(true, ReasonCode::ServerMoved);
+        packet
+            .properties
+            .push(ConnackProperty::ReceiveMaximum(21.into()))
+            .unwrap();
+        packet
+    }
+
+    const EXAMPLE_DATA: [u8; 8] = [
+        0x20,
+        0x06,
+        0x01,
+        ReasonCode::ServerMoved as u8,
+        0x03,
+        0x21,
+        0x00,
+        0x15,
+    ];
+
+    #[test]
+    fn encode_example() {
+        let packet = example_packet();
+
+        let mut buf = [0; EXAMPLE_DATA.len()];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA);
+    }
+
+    #[test]
+    fn decode_example() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA);
+        assert_eq!(Connack::read(&mut r).unwrap(), example_packet());
     }
 }
