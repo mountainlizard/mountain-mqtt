@@ -93,3 +93,43 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::data::{mqtt_writer::MqttBufWriter, write::Write};
+
+    use super::*;
+
+    fn example_packet<'a>() -> Connect<'a, 1> {
+        let mut packet = Connect::new(60, None, None, "", true);
+        packet
+            .properties
+            .push(ConnectProperty::ReceiveMaximum(20.into()))
+            .unwrap();
+        packet
+    }
+
+    const EXAMPLE_DATA: [u8; 18] = [
+        0x10, 0x10, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0x02, 0x00, 0x3c, 0x03, 0x21, 0x00,
+        0x14, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn encode_example() {
+        let packet = example_packet();
+
+        let mut buf = [0; EXAMPLE_DATA.len()];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA);
+    }
+
+    // #[test]
+    // fn decode_example() {
+    //     let mut r = MqttBufReader::new(&EXAMPLE_DATA);
+    //     assert_eq!(Connect::read(&mut r).unwrap(), example_packet());
+    // }
+}
