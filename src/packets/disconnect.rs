@@ -42,15 +42,23 @@ impl<const PROPERTIES_N: usize> PacketWrite for Disconnect<'_, PROPERTIES_N> {
         &self,
         writer: &mut W,
     ) -> mqtt_writer::Result<()> {
-        // Variable header:
+        // Special case - if we have reason code success and no properties,
+        // output no data
+        if self.disconnect_reason_code == ReasonCode::Success && self.properties.is_empty() {
+            Ok(())
+        } else {
+            // Variable header:
 
-        // 3.14.2.1 Disconnect Reason Code
-        writer.put_reason_code(&self.disconnect_reason_code)?;
+            // 3.14.2.1 Disconnect Reason Code
+            writer.put_reason_code(&self.disconnect_reason_code)?;
 
-        // 3.14.2.2 DISCONNECT Properties
-        writer.put_variable_u32_delimited_vec(&self.properties)?;
+            // 3.14.2.2 DISCONNECT Properties
+            writer.put_variable_u32_delimited_vec(&self.properties)?;
 
-        Ok(())
+            // Payload: Empty
+
+            Ok(())
+        }
     }
 }
 
@@ -96,6 +104,11 @@ mod tests {
 
     const EXAMPLE_DATA: [u8; 9] = [0xE0, 0x07, 0x00, 0x05, 0x11, 0x00, 0x00, 0x02, 0x00];
 
+    fn example_packet_zero_length<'a>() -> Disconnect<'a, 0> {
+        Disconnect::new(ReasonCode::Success)
+    }
+    const EXAMPLE_DATA_ZERO_LENGTH: [u8; 2] = [0xE0, 0x00];
+
     #[test]
     fn encode_example() {
         let packet = example_packet();
@@ -119,5 +132,26 @@ mod tests {
             packet.properties.first().unwrap(),
             &DisconnectProperty::SessionExpiryInterval(512.into())
         )
+    }
+
+    #[test]
+    fn encode_example_zero_length() {
+        let packet = example_packet_zero_length();
+
+        let mut buf = [0; 2];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA_ZERO_LENGTH);
+    }
+
+    #[test]
+    fn decode_example_zero_length() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_ZERO_LENGTH);
+
+        let packet: Disconnect<'_, 0> = Disconnect::read(&mut r).unwrap();
+        assert_eq!(packet, example_packet_zero_length());
     }
 }
