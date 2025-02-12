@@ -12,14 +12,14 @@ use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
 pub struct Disconnect<'a, const PROPERTIES_N: usize> {
-    disconnect_reason_code: DisconnectReasonCode,
+    reason_code: DisconnectReasonCode,
     properties: Vec<DisconnectProperty<'a>, PROPERTIES_N>,
 }
 
 impl<const PROPERTIES_N: usize> Disconnect<'_, PROPERTIES_N> {
-    pub fn new(disconnect_reason_code: DisconnectReasonCode) -> Self {
+    pub fn new(reason_code: DisconnectReasonCode) -> Self {
         Self {
-            disconnect_reason_code,
+            reason_code,
             properties: Vec::new(),
         }
     }
@@ -44,15 +44,13 @@ impl<const PROPERTIES_N: usize> PacketWrite for Disconnect<'_, PROPERTIES_N> {
     ) -> mqtt_writer::Result<()> {
         // Special case - if we have reason code success and no properties,
         // output no data
-        if self.disconnect_reason_code == DisconnectReasonCode::Success
-            && self.properties.is_empty()
-        {
+        if self.reason_code == DisconnectReasonCode::Success && self.properties.is_empty() {
             Ok(())
         } else {
             // Variable header:
 
             // 3.14.2.1 Disconnect Reason Code
-            writer.put(&self.disconnect_reason_code)?;
+            writer.put(&self.reason_code)?;
 
             // 3.14.2.2 DISCONNECT Properties
             writer.put_variable_u32_delimited_vec(&self.properties)?;

@@ -3,7 +3,7 @@
 ## TODO
 
 - [x] Implement subscribe and unsubscribe packets (including ack)
-- [ ] Implement reason code subsets for packets, similarly to what we have for properties
+- [x] Implement reason code subsets for packets, similarly to what we have for properties
 - [ ] Neater modules
   - `data` for all raw data (i.e. everything but packets - include packet_identifier etc. since we might want to support read/write of this)
   - `codec` for reader, writer, read/write - should only operate on stuff from `data`

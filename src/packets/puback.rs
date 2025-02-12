@@ -14,19 +14,19 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Puback<'a, const PROPERTIES_N: usize> {
     packet_identifier: PacketIdentifier,
-    publish_reason_code: PublishReasonCode,
+    reason_code: PublishReasonCode,
     properties: Vec<PubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize> Puback<'a, PROPERTIES_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        publish_reason_code: PublishReasonCode,
+        reason_code: PublishReasonCode,
         properties: Vec<PubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            publish_reason_code,
+            reason_code,
             properties,
         }
     }
@@ -50,8 +50,8 @@ impl<const PROPERTIES_N: usize> PacketWrite for Puback<'_, PROPERTIES_N> {
         // properties, we can just skip the reason code and properties,
         // this will be detected by having only two bytes of length for
         // the packet identifier
-        if self.publish_reason_code != PublishReasonCode::Success || !self.properties.is_empty() {
-            writer.put(&self.publish_reason_code)?;
+        if self.reason_code != PublishReasonCode::Success || !self.properties.is_empty() {
+            writer.put(&self.reason_code)?;
 
             // Write the properties vec (3.4.2.2)
             writer.put_variable_u32_delimited_vec(&self.properties)?;
@@ -84,14 +84,10 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Puback<'a, PROPERTIES_N> 
                 Vec::new(),
             ))
         } else {
-            let publish_reason_code = reader.get()?;
+            let reason_code = reader.get()?;
             let mut properties = Vec::new();
             reader.get_variable_u32_delimited_vec(&mut properties)?;
-            Ok(Puback::new(
-                packet_identifier,
-                publish_reason_code,
-                properties,
-            ))
+            Ok(Puback::new(packet_identifier, reason_code, properties))
         }
     }
 }
@@ -110,13 +106,13 @@ mod tests {
 
     fn example_packet<'a>() -> Puback<'a, 1> {
         let packet_identifier = PacketIdentifier(35420);
-        let publish_reason_code = PublishReasonCode::Success;
+        let reason_code = PublishReasonCode::Success;
 
         let mut properties = Vec::new();
         properties
             .push(PubackProperty::ReasonString("Hello".into()))
             .unwrap();
-        let packet: Puback<'_, 1> = Puback::new(packet_identifier, publish_reason_code, properties);
+        let packet: Puback<'_, 1> = Puback::new(packet_identifier, reason_code, properties);
         packet
     }
 
@@ -124,9 +120,9 @@ mod tests {
 
     fn example_packet_length2<'a>() -> Puback<'a, 0> {
         let packet_identifier = PacketIdentifier(35420);
-        let publish_reason_code = PublishReasonCode::Success;
+        let reason_code = PublishReasonCode::Success;
 
-        let packet: Puback<'_, 0> = Puback::new(packet_identifier, publish_reason_code, Vec::new());
+        let packet: Puback<'_, 0> = Puback::new(packet_identifier, reason_code, Vec::new());
         packet
     }
 

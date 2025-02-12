@@ -13,15 +13,15 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Connack<'a, const PROPERTIES_N: usize> {
     session_present: bool,
-    connect_reason_code: ConnectReasonCode,
+    reason_code: ConnectReasonCode,
     properties: Vec<ConnackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<const PROPERTIES_N: usize> Connack<'_, PROPERTIES_N> {
-    pub fn new(session_present: bool, connect_reason_code: ConnectReasonCode) -> Self {
+    pub fn new(session_present: bool, reason_code: ConnectReasonCode) -> Self {
         Self {
             session_present,
-            connect_reason_code,
+            reason_code,
             properties: Vec::new(),
         }
     }
@@ -44,7 +44,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connack<'_, PROPERTIES_N> {
         // Note this byte is technically "connack_flags", but only contains one bit of data, which
         // is encoded the same way as a bool-zero-one used for other data
         writer.put_bool_zero_one(self.session_present)?; // 3.2.2.1 Connect Acknowledge Flags
-        writer.put_u8(self.connect_reason_code as u8)?; // 3.2.2.2 Connect Reason Code
+        writer.put_u8(self.reason_code as u8)?; // 3.2.2.2 Connect Reason Code
 
         // Write the properties vec (3.2.2.3)
         writer.put_variable_u32_delimited_vec(&self.properties)?;
@@ -68,10 +68,9 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N>
         // is encoded the same way as a bool-zero-one used for other data
         let session_present = reader.get_bool_zero_one()?;
 
-        let connect_reason_code = reader.get()?;
+        let reason_code = reader.get()?;
 
-        let mut packet: Connack<'a, PROPERTIES_N> =
-            Connack::new(session_present, connect_reason_code);
+        let mut packet: Connack<'a, PROPERTIES_N> = Connack::new(session_present, reason_code);
 
         // Add properties into packet
         reader.get_variable_u32_delimited_vec(&mut packet.properties)?;

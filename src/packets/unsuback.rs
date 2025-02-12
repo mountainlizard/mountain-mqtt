@@ -14,19 +14,19 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Unsuback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    unsubscription_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
+    reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
     properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Unsuback<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        unsubscription_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
+        reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
         properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            unsubscription_reason_codes,
+            reason_codes,
             properties,
         }
     }
@@ -53,7 +53,7 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
 
         // Payload:
         // Note we just put the reason codes in without a delimiter, they end at the end of the packet
-        for r in self.unsubscription_reason_codes.iter() {
+        for r in self.reason_codes.iter() {
             writer.put(r)?;
         }
 
@@ -83,15 +83,15 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
 
         // Payload:
         // Read subscription requests until we run out of data
-        let mut unsubscription_reason_codes = Vec::new();
+        let mut reason_codes = Vec::new();
         while reader.position() < payload_end_position {
             let code = reader.get()?;
-            unsubscription_reason_codes
+            reason_codes
                 .push(code)
                 .map_err(|_e| MqttReaderError::MalformedPacket)?;
         }
 
-        let packet = Unsuback::new(packet_identifier, unsubscription_reason_codes, properties);
+        let packet = Unsuback::new(packet_identifier, reason_codes, properties);
         Ok(packet)
     }
 }
@@ -105,25 +105,21 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Unsuback<'a, 1, 3> {
-        let mut unsubscription_reason_codes = Vec::new();
-        unsubscription_reason_codes
+        let mut reason_codes = Vec::new();
+        reason_codes
             .push(UnsubscriptionReasonCode::UnspecifiedError)
             .unwrap();
-        unsubscription_reason_codes
+        reason_codes
             .push(UnsubscriptionReasonCode::ImplementationSpecificError)
             .unwrap();
-        unsubscription_reason_codes
+        reason_codes
             .push(UnsubscriptionReasonCode::NotAuthorized)
             .unwrap();
         let mut properties = Vec::new();
         properties
             .push(UnsubackProperty::ReasonString("reasonString".into()))
             .unwrap();
-        let packet = Unsuback::new(
-            PacketIdentifier(52232),
-            unsubscription_reason_codes,
-            properties,
-        );
+        let packet = Unsuback::new(PacketIdentifier(52232), reason_codes, properties);
         packet
     }
 
