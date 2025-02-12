@@ -164,6 +164,41 @@ packet_reason_codes!(
     ]
 );
 
+packet_reason_codes!(
+    DisconnectReasonCode,
+    [
+        Success, //Normal disconnection in spec
+        DisconnectWithWillMessage,
+        UnspecifiedError,
+        MalformedPacket,
+        ProtocolError,
+        ImplementationSpecificError,
+        NotAuthorized,
+        ServerBusy,
+        ServerShuttingDown,
+        KeepAliveTimeout,
+        SessionTakenOver,
+        TopicFilterInvalid,
+        TopicNameInvalid,
+        ReceiveMaximumExceeded,
+        TopicAliasInvalid,
+        PacketTooLarge,
+        MessageRateTooHigh,
+        QuotaExceeded,
+        AdministrativeAction,
+        PayloadFormatInvalid,
+        RetainNotSupported,
+        QoSNotSupported,
+        UseAnotherServer,
+        ServerMoved,
+        SharedSubscriptionsNotSupported,
+        ConnectionRateExceeded,
+        MaximumConnectTime,
+        SubscriptionIdentifiersNotSupported,
+        WildcardSubscriptionsNotSupported
+    ]
+);
+
 #[cfg(test)]
 mod tests {
     use crate::data::{

@@ -2,7 +2,7 @@ use super::{
     packet::{Packet, PacketRead, PacketWrite},
     packet_type::PacketType,
     property::ConnackProperty,
-    reason_code::ReasonCode,
+    reason_code::ConnectReasonCode,
 };
 use crate::data::{
     mqtt_reader::{self, MqttReader},
@@ -13,12 +13,12 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Connack<'a, const PROPERTIES_N: usize> {
     session_present: bool,
-    connect_reason_code: ReasonCode,
+    connect_reason_code: ConnectReasonCode,
     properties: Vec<ConnackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<const PROPERTIES_N: usize> Connack<'_, PROPERTIES_N> {
-    pub fn new(session_present: bool, connect_reason_code: ReasonCode) -> Self {
+    pub fn new(session_present: bool, connect_reason_code: ConnectReasonCode) -> Self {
         Self {
             session_present,
             connect_reason_code,
@@ -68,7 +68,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N>
         // is encoded the same way as a bool-zero-one used for other data
         let session_present = reader.get_bool_zero_one()?;
 
-        let connect_reason_code = reader.get_reason_code()?;
+        let connect_reason_code = reader.get()?;
 
         let mut packet: Connack<'a, PROPERTIES_N> =
             Connack::new(session_present, connect_reason_code);
@@ -89,7 +89,7 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Connack<'a, 2> {
-        let mut packet: Connack<'_, 2> = Connack::new(true, ReasonCode::ServerMoved);
+        let mut packet: Connack<'_, 2> = Connack::new(true, ConnectReasonCode::ServerMoved);
         packet
             .properties
             .push(ConnackProperty::ReceiveMaximum(21.into()))
@@ -101,7 +101,7 @@ mod tests {
         0x20,
         0x06,
         0x01,
-        ReasonCode::ServerMoved as u8,
+        ConnectReasonCode::ServerMoved as u8,
         0x03,
         0x21,
         0x00,

@@ -2,7 +2,7 @@ use super::{
     packet::{Packet, PacketRead, PacketWrite},
     packet_type::PacketType,
     property::DisconnectProperty,
-    reason_code::ReasonCode,
+    reason_code::DisconnectReasonCode,
 };
 use crate::data::{
     mqtt_reader::{self, MqttReader},
@@ -12,12 +12,12 @@ use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
 pub struct Disconnect<'a, const PROPERTIES_N: usize> {
-    disconnect_reason_code: ReasonCode,
+    disconnect_reason_code: DisconnectReasonCode,
     properties: Vec<DisconnectProperty<'a>, PROPERTIES_N>,
 }
 
 impl<const PROPERTIES_N: usize> Disconnect<'_, PROPERTIES_N> {
-    pub fn new(disconnect_reason_code: ReasonCode) -> Self {
+    pub fn new(disconnect_reason_code: DisconnectReasonCode) -> Self {
         Self {
             disconnect_reason_code,
             properties: Vec::new(),
@@ -27,7 +27,7 @@ impl<const PROPERTIES_N: usize> Disconnect<'_, PROPERTIES_N> {
 
 impl<const PROPERTIES_N: usize> Default for Disconnect<'_, PROPERTIES_N> {
     fn default() -> Self {
-        Self::new(ReasonCode::Success)
+        Self::new(DisconnectReasonCode::Success)
     }
 }
 
@@ -44,13 +44,15 @@ impl<const PROPERTIES_N: usize> PacketWrite for Disconnect<'_, PROPERTIES_N> {
     ) -> mqtt_writer::Result<()> {
         // Special case - if we have reason code success and no properties,
         // output no data
-        if self.disconnect_reason_code == ReasonCode::Success && self.properties.is_empty() {
+        if self.disconnect_reason_code == DisconnectReasonCode::Success
+            && self.properties.is_empty()
+        {
             Ok(())
         } else {
             // Variable header:
 
             // 3.14.2.1 Disconnect Reason Code
-            writer.put_reason_code(&self.disconnect_reason_code)?;
+            writer.put(&self.disconnect_reason_code)?;
 
             // 3.14.2.2 DISCONNECT Properties
             writer.put_variable_u32_delimited_vec(&self.properties)?;
@@ -74,9 +76,9 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Disconnect<'a, PROPERTIES
         // Special case - if length of variable header and payload is 0, treat as
         // reason code success, with no properties
         if len == 0 {
-            Ok(Disconnect::new(ReasonCode::Success))
+            Ok(Disconnect::new(DisconnectReasonCode::Success))
         } else {
-            let reason_code = reader.get_reason_code()?;
+            let reason_code = reader.get()?;
             let mut packet = Disconnect::new(reason_code);
             reader.get_variable_u32_delimited_vec(&mut packet.properties)?;
 
@@ -94,7 +96,7 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Disconnect<'a, 1> {
-        let mut packet: Disconnect<'_, 1> = Disconnect::new(ReasonCode::Success);
+        let mut packet: Disconnect<'_, 1> = Disconnect::new(DisconnectReasonCode::Success);
         packet
             .properties
             .push(DisconnectProperty::SessionExpiryInterval(512.into()))
@@ -105,7 +107,7 @@ mod tests {
     const EXAMPLE_DATA: [u8; 9] = [0xE0, 0x07, 0x00, 0x05, 0x11, 0x00, 0x00, 0x02, 0x00];
 
     fn example_packet_zero_length<'a>() -> Disconnect<'a, 0> {
-        Disconnect::new(ReasonCode::Success)
+        Disconnect::new(DisconnectReasonCode::Success)
     }
     const EXAMPLE_DATA_ZERO_LENGTH: [u8; 2] = [0xE0, 0x00];
 
