@@ -140,6 +140,7 @@ impl ReasonCode {
 packet_reason_codes!(
     ConnectReasonCode,
     [
+        Success,
         UnspecifiedError,
         MalformedPacket,
         ProtocolError,
@@ -196,6 +197,21 @@ packet_reason_codes!(
         MaximumConnectTime,
         SubscriptionIdentifiersNotSupported,
         WildcardSubscriptionsNotSupported
+    ]
+);
+
+packet_reason_codes!(
+    PublishReasonCode,
+    [
+        Success,
+        NoMatchingSubscribers,
+        UnspecifiedError,
+        ImplementationSpecificError,
+        NotAuthorized,
+        TopicNameInvalid,
+        PacketIdentifierInUse,
+        QuotaExceeded,
+        PayloadFormatInvalid
     ]
 );
 
