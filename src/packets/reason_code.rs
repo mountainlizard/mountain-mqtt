@@ -1,3 +1,85 @@
+use crate::data::{mqtt_reader::MqttReaderError, read::Read, write::Write};
+
+#[macro_export]
+macro_rules! packet_reason_codes {
+    ( $n:ident, [ $( $c:ident ),+ ] ) => {
+        #[derive(Debug, PartialEq, Clone, Copy)]
+        #[repr(u8)]
+        pub enum $n{
+            $(
+                $c = ReasonCode::$c as u8,
+            )*
+        }
+
+        impl From<$n> for ReasonCode {
+            fn from(value: $n) -> Self {
+                match value {
+                    $(
+                        $n::$c => ReasonCode::$c,
+                    )*
+                }
+            }
+        }
+
+        impl TryFrom<u8> for $n {
+            type Error = MqttReaderError;
+
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                $(
+                    if value == ReasonCode::$c as u8 {
+                        Ok(Self::$c)
+                    } else
+                )*
+                {
+                    Err(MqttReaderError::UnknownReasonCode)
+                }
+            }
+        }
+
+        impl TryFrom<ReasonCode> for $n {
+            type Error = MqttReaderError;
+
+            fn try_from(value: ReasonCode) -> Result<Self, Self::Error> {
+                match value {
+                    $(
+                        ReasonCode::$c => Ok(Self::$c),
+                    )*
+
+                    _ => Err(MqttReaderError::UnknownReasonCode),
+                }
+            }
+        }
+
+        impl $n {
+            pub fn is_error(&self) -> bool {
+                (*self as u8) > 128
+            }
+        }
+
+        impl<'a> Read<'a> for $n {
+            fn read<R: $crate::data::mqtt_reader::MqttReader<'a>>(
+                reader: &mut R,
+            ) -> $crate::data::mqtt_reader::Result<Self>
+            where
+                Self: Sized,
+            {
+                let encoded = reader.get_u8()?;
+                encoded.try_into()
+            }
+        }
+
+        impl Write for $n {
+            fn write<'a, W: $crate::data::mqtt_writer::MqttWriter<'a>>(
+                &self,
+                writer: &mut W,
+            ) -> $crate::data::mqtt_writer::Result<()> {
+                writer.put_u8(*self as u8)
+            }
+        }
+
+    };
+}
+
 /// A Reason Code is a one byte unsigned value that indicates the result of an operation. Reason Codes less
 /// than 128 indicate successful completion of an operation. The normal Reason Code for success is 0.
 /// Reason Code values of 128 or greater indicate failure.
@@ -52,5 +134,51 @@ pub enum ReasonCode {
 impl ReasonCode {
     pub fn is_error(&self) -> bool {
         (*self as u8) > 128
+    }
+}
+
+packet_reason_codes!(
+    ConnectReasonCode,
+    [
+        UnspecifiedError,
+        MalformedPacket,
+        ProtocolError,
+        ImplementationSpecificError,
+        UnsupportedProtocolVersion,
+        ClientIdentifierNotValid,
+        BadUserNameOrPassword,
+        NotAuthorized,
+        ServerUnavailable,
+        ServerBusy,
+        Banned,
+        BadAuthenticationMethod,
+        TopicNameInvalid,
+        PacketTooLarge,
+        QuotaExceeded,
+        PayloadFormatInvalid,
+        RetainNotSupported,
+        QoSNotSupported,
+        UseAnotherServer,
+        ServerMoved,
+        ConnectionRateExceeded
+    ]
+);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    packet_reason_codes!(ExampleReasonCode, [UnspecifiedError, MalformedPacket]);
+
+    #[test]
+    fn all_expected_codes_exist_with_expected_u8_value() {
+        assert_eq!(
+            ExampleReasonCode::UnspecifiedError as u8,
+            ReasonCode::UnspecifiedError as u8
+        );
+        assert_eq!(
+            ExampleReasonCode::MalformedPacket as u8,
+            ReasonCode::MalformedPacket as u8
+        );
     }
 }
