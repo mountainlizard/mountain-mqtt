@@ -102,6 +102,7 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
 
         // Payload:
         writer.put_subscription_request(&self.primary_request)?;
+        // Note we just put the requests in without a delimiter, they end at the end of the packet
         for r in self.additional_requests.iter() {
             writer.put_subscription_request(r)?;
         }
