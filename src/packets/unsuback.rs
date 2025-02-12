@@ -3,7 +3,7 @@ use super::{
     packet_identifier::PacketIdentifier,
     packet_type::PacketType,
     property::UnsubackProperty,
-    reason_code::ReasonCode,
+    reason_code::UnsubscriptionReasonCode,
 };
 use crate::data::{
     mqtt_reader::{self, MqttReader, MqttReaderError},
@@ -14,19 +14,19 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Unsuback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    request_reason_codes: Vec<ReasonCode, REQUEST_N>,
+    unsubscription_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
     properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Unsuback<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        request_reason_codes: Vec<ReasonCode, REQUEST_N>,
+        unsubscription_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
         properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            request_reason_codes,
+            unsubscription_reason_codes,
             properties,
         }
     }
@@ -53,8 +53,8 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
 
         // Payload:
         // Note we just put the reason codes in without a delimiter, they end at the end of the packet
-        for r in self.request_reason_codes.iter() {
-            writer.put_reason_code(r)?;
+        for r in self.unsubscription_reason_codes.iter() {
+            writer.put(r)?;
         }
 
         Ok(())
@@ -83,15 +83,15 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
 
         // Payload:
         // Read subscription requests until we run out of data
-        let mut request_reason_codes = Vec::new();
+        let mut unsubscription_reason_codes = Vec::new();
         while reader.position() < payload_end_position {
-            let code = reader.get_reason_code()?;
-            request_reason_codes
+            let code = reader.get()?;
+            unsubscription_reason_codes
                 .push(code)
                 .map_err(|_e| MqttReaderError::MalformedPacket)?;
         }
 
-        let packet = Unsuback::new(packet_identifier, request_reason_codes, properties);
+        let packet = Unsuback::new(packet_identifier, unsubscription_reason_codes, properties);
         Ok(packet)
     }
 }
@@ -105,21 +105,25 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Unsuback<'a, 1, 3> {
-        let mut request_reason_codes = Vec::new();
-        request_reason_codes
-            .push(ReasonCode::UnspecifiedError)
+        let mut unsubscription_reason_codes = Vec::new();
+        unsubscription_reason_codes
+            .push(UnsubscriptionReasonCode::UnspecifiedError)
             .unwrap();
-        request_reason_codes
-            .push(ReasonCode::ImplementationSpecificError)
+        unsubscription_reason_codes
+            .push(UnsubscriptionReasonCode::ImplementationSpecificError)
             .unwrap();
-        request_reason_codes
-            .push(ReasonCode::NotAuthorized)
+        unsubscription_reason_codes
+            .push(UnsubscriptionReasonCode::NotAuthorized)
             .unwrap();
         let mut properties = Vec::new();
         properties
             .push(UnsubackProperty::ReasonString("reasonString".into()))
             .unwrap();
-        let packet = Unsuback::new(PacketIdentifier(52232), request_reason_codes, properties);
+        let packet = Unsuback::new(
+            PacketIdentifier(52232),
+            unsubscription_reason_codes,
+            properties,
+        );
         packet
     }
 

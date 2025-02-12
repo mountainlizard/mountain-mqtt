@@ -3,7 +3,7 @@ use super::{
     packet_identifier::PacketIdentifier,
     packet_type::PacketType,
     property::SubackProperty,
-    reason_code::ReasonCode,
+    reason_code::SubscriptionReasonCode,
 };
 use crate::data::{
     mqtt_reader::{self, MqttReader, MqttReaderError},
@@ -14,19 +14,19 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Suback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    request_reason_codes: Vec<ReasonCode, REQUEST_N>,
+    subscription_reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
     properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        request_reason_codes: Vec<ReasonCode, REQUEST_N>,
+        subscription_reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
         properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            request_reason_codes,
+            subscription_reason_codes,
             properties,
         }
     }
@@ -53,8 +53,8 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
 
         // Payload:
         // Note we just put the reason codes in without a delimiter, they end at the end of the packet
-        for r in self.request_reason_codes.iter() {
-            writer.put_reason_code(r)?;
+        for r in self.subscription_reason_codes.iter() {
+            writer.put(r)?;
         }
 
         Ok(())
@@ -83,15 +83,15 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
 
         // Payload:
         // Read subscription requests until we run out of data
-        let mut request_reason_codes = Vec::new();
+        let mut subscription_reason_codes = Vec::new();
         while reader.position() < payload_end_position {
-            let code = reader.get_reason_code()?;
-            request_reason_codes
+            let code = reader.get()?;
+            subscription_reason_codes
                 .push(code)
                 .map_err(|_e| MqttReaderError::MalformedPacket)?;
         }
 
-        let packet = Suback::new(packet_identifier, request_reason_codes, properties);
+        let packet = Suback::new(packet_identifier, subscription_reason_codes, properties);
         Ok(packet)
     }
 }
@@ -105,21 +105,25 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Suback<'a, 1, 3> {
-        let mut request_reason_codes = Vec::new();
-        request_reason_codes
-            .push(ReasonCode::UnspecifiedError)
+        let mut subscription_reason_codes = Vec::new();
+        subscription_reason_codes
+            .push(SubscriptionReasonCode::UnspecifiedError)
             .unwrap();
-        request_reason_codes
-            .push(ReasonCode::ImplementationSpecificError)
+        subscription_reason_codes
+            .push(SubscriptionReasonCode::ImplementationSpecificError)
             .unwrap();
-        request_reason_codes
-            .push(ReasonCode::NotAuthorized)
+        subscription_reason_codes
+            .push(SubscriptionReasonCode::NotAuthorized)
             .unwrap();
         let mut properties = Vec::new();
         properties
             .push(SubackProperty::ReasonString("reasonString".into()))
             .unwrap();
-        let packet = Suback::new(PacketIdentifier(52232), request_reason_codes, properties);
+        let packet = Suback::new(
+            PacketIdentifier(52232),
+            subscription_reason_codes,
+            properties,
+        );
         packet
     }
 

@@ -215,6 +215,37 @@ packet_reason_codes!(
     ]
 );
 
+packet_reason_codes!(
+    SubscriptionReasonCode,
+    [
+        Success,
+        GrantedQoS1,
+        GrantedQoS2,
+        UnspecifiedError,
+        ImplementationSpecificError,
+        NotAuthorized,
+        TopicFilterInvalid,
+        PacketIdentifierInUse,
+        QuotaExceeded,
+        SharedSubscriptionsNotSupported,
+        SubscriptionIdentifiersNotSupported,
+        WildcardSubscriptionsNotSupported
+    ]
+);
+
+packet_reason_codes!(
+    UnsubscriptionReasonCode,
+    [
+        Success,
+        NoSubscriptionExisted,
+        UnspecifiedError,
+        ImplementationSpecificError,
+        NotAuthorized,
+        TopicFilterInvalid,
+        PacketIdentifierInUse
+    ]
+);
+
 #[cfg(test)]
 mod tests {
     use crate::data::{
