@@ -200,6 +200,10 @@ pub trait MqttWriter<'a>: Sized {
         self.put_str(r.topic_name)?;
         self.put_subscription_options(&r.options)
     }
+
+    fn put<T: Write>(&mut self, t: &T) -> Result<()> {
+        t.write(self)
+    }
 }
 
 pub struct MqttBufWriter<'a> {

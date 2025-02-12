@@ -296,6 +296,10 @@ pub trait MqttReader<'a>: Sized {
             options,
         })
     }
+
+    fn get<T: Read<'a>>(&mut self) -> Result<T> {
+        T::read(self)
+    }
 }
 
 pub struct MqttBufReader<'a> {

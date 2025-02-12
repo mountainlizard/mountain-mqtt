@@ -166,19 +166,100 @@ packet_reason_codes!(
 
 #[cfg(test)]
 mod tests {
+    use crate::data::{
+        mqtt_reader::{MqttBufReader, MqttReader},
+        mqtt_writer::{MqttBufWriter, MqttWriter},
+    };
+
     use super::*;
 
     packet_reason_codes!(ExampleReasonCode, [UnspecifiedError, MalformedPacket]);
 
+    const DATA: [(ExampleReasonCode, u8); 2] = [
+        (
+            ExampleReasonCode::UnspecifiedError,
+            ReasonCode::UnspecifiedError as u8,
+        ),
+        (
+            ExampleReasonCode::MalformedPacket,
+            ReasonCode::MalformedPacket as u8,
+        ),
+    ];
+
     #[test]
     fn all_expected_codes_exist_with_expected_u8_value() {
+        for (code, value) in DATA.iter() {
+            assert_eq!(*code as u8, *value);
+        }
+    }
+
+    #[test]
+    fn can_write_codes() {
+        for (code, value) in DATA.iter() {
+            let mut buf = [0u8];
+            {
+                let mut r = MqttBufWriter::new(&mut buf);
+                r.put(code).unwrap();
+                assert_eq!(r.position(), 1);
+                assert_eq!(r.remaining(), 0);
+            }
+            assert_eq!(buf, [*value]);
+        }
+    }
+
+    #[test]
+    fn can_read_codes() {
+        for (code, value) in DATA.iter() {
+            let buf = [*value];
+            let mut r = MqttBufReader::new(&buf);
+            let read_code: ExampleReasonCode = r.get().unwrap();
+            assert_eq!(r.position(), 1);
+            assert_eq!(r.remaining(), 0);
+            assert_eq!(&read_code, code);
+        }
+    }
+
+    #[test]
+    fn can_try_to_get_packet_reason_code_from_reason_code() {
         assert_eq!(
-            ExampleReasonCode::UnspecifiedError as u8,
-            ReasonCode::UnspecifiedError as u8
+            ExampleReasonCode::try_from(ReasonCode::UnspecifiedError),
+            Ok(ExampleReasonCode::UnspecifiedError)
         );
         assert_eq!(
-            ExampleReasonCode::MalformedPacket as u8,
-            ReasonCode::MalformedPacket as u8
+            ExampleReasonCode::try_from(ReasonCode::MalformedPacket),
+            Ok(ExampleReasonCode::MalformedPacket)
+        );
+        assert_eq!(
+            ExampleReasonCode::try_from(ReasonCode::AdministrativeAction),
+            Err(MqttReaderError::UnknownReasonCode)
+        );
+    }
+
+    #[test]
+    fn can_try_to_get_packet_reason_code_from_u8() {
+        assert_eq!(
+            ExampleReasonCode::try_from(ReasonCode::UnspecifiedError as u8),
+            Ok(ExampleReasonCode::UnspecifiedError)
+        );
+        assert_eq!(
+            ExampleReasonCode::try_from(ReasonCode::MalformedPacket as u8),
+            Ok(ExampleReasonCode::MalformedPacket)
+        );
+        assert_eq!(
+            ExampleReasonCode::try_from(ReasonCode::AdministrativeAction as u8),
+            Err(MqttReaderError::UnknownReasonCode)
+        );
+    }
+
+    #[test]
+    fn can_get_reason_code_from_packet_reason_code() {
+        assert_eq!(
+            ReasonCode::from(ExampleReasonCode::UnspecifiedError),
+            ReasonCode::UnspecifiedError
+        );
+        assert_eq!(
+            ReasonCode::from(ExampleReasonCode::MalformedPacket),
+            ReasonCode::MalformedPacket
         );
     }
 }
