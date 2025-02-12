@@ -13,4 +13,5 @@ pub mod quality_of_service;
 pub mod reason_code;
 pub mod suback;
 pub mod subscribe;
+pub mod unsuback;
 pub mod unsubscribe;
