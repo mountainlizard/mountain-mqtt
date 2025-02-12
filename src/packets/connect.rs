@@ -1,10 +1,19 @@
 use super::{
     packet::{Packet, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5},
     packet_type::PacketType,
-    property::ConnectProperty,
+    property::{ConnectProperty, WillProperty},
+    quality_of_service::QualityOfService,
 };
 use crate::data::mqtt_writer::{self, MqttWriter};
 use heapless::Vec;
+
+pub struct Will<'a, const PROPERTIES_N: usize> {
+    qos: QualityOfService,
+    retain: bool,
+    topic_name: &'a str,
+    payload: &'a [u8],
+    properties: Vec<WillProperty<'a>, PROPERTIES_N>,
+}
 
 pub struct Connect<'a, const PROPERTIES_N: usize> {
     keep_alive: u16,
@@ -12,6 +21,7 @@ pub struct Connect<'a, const PROPERTIES_N: usize> {
     password: Option<&'a [u8]>,
     client_id: &'a str,
     clean_start: bool,
+    will: Option<Will<'a, PROPERTIES_N>>,
     properties: Vec<ConnectProperty<'a>, PROPERTIES_N>,
 }
 
@@ -22,6 +32,7 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
         password: Option<&'a [u8]>,
         client_id: &'a str,
         clean_start: bool,
+        will: Option<Will<'a, PROPERTIES_N>>,
     ) -> Self {
         Self {
             keep_alive,
@@ -29,6 +40,7 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
             password,
             client_id,
             clean_start,
+            will,
             properties: Vec::new(),
         }
     }
@@ -38,13 +50,19 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
         if self.clean_start {
             flags |= 1 << 1;
         }
+        if let Some(ref will) = self.will {
+            flags |= 1 << 2; // Will present
+            flags |= (will.qos as u8) << 3;
+            if will.retain {
+                flags |= 1 << 5;
+            }
+        }
         if self.password.is_some() {
             flags |= 1 << 6;
         }
         if self.username.is_some() {
             flags |= 1 << 7;
         }
-        // TODO: Will flags, stored in bits 2, 3, 4, 5
         flags
     }
 }
@@ -75,10 +93,12 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
         // 3.1.3.1 Client Identifier (ClientID)
         writer.put_str(self.client_id)?;
 
-        // TODO: Omitted for now - they are optional and we omit them in connect flags
-        // 3.1.3.2 Will Properties
-        // 3.1.3.3 Will Topic
-        // 3.1.3.4 Will Payload
+        // Will
+        if let Some(ref will) = self.will {
+            writer.put_variable_u32_delimited_vec(&will.properties)?; // 3.1.3.2 Will Properties
+            writer.put_str(will.topic_name)?; // 3.1.3.3 Will Topic
+            writer.put_binary_data(will.payload)?; // 3.1.3.4 Will Payload
+        }
 
         // 3.1.3.5 User Name
         if let Some(username) = self.username {
@@ -101,7 +121,7 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Connect<'a, 1> {
-        let mut packet = Connect::new(60, None, None, "", true);
+        let mut packet = Connect::new(60, None, None, "", true, None);
         packet
             .properties
             .push(ConnectProperty::ReceiveMaximum(20.into()))
@@ -115,7 +135,7 @@ mod tests {
     ];
 
     fn example_packet_username<'a>() -> Connect<'a, 1> {
-        let mut packet = Connect::new(60, Some("user"), None, "", true);
+        let mut packet = Connect::new(60, Some("user"), None, "", true, None);
         packet
             .properties
             .push(ConnectProperty::ReceiveMaximum(20.into()))
@@ -129,7 +149,7 @@ mod tests {
     ];
 
     fn example_packet_username_password<'a>() -> Connect<'a, 1> {
-        let mut packet = Connect::new(60, Some("user"), Some("pass".as_bytes()), "", true);
+        let mut packet = Connect::new(60, Some("user"), Some("pass".as_bytes()), "", true, None);
         packet
             .properties
             .push(ConnectProperty::ReceiveMaximum(20.into()))
@@ -143,7 +163,14 @@ mod tests {
     ];
 
     fn example_packet_clientid_username_password<'a>() -> Connect<'a, 1> {
-        let mut packet = Connect::new(60, Some("user"), Some("pass".as_bytes()), "client", true);
+        let mut packet = Connect::new(
+            60,
+            Some("user"),
+            Some("pass".as_bytes()),
+            "client",
+            true,
+            None,
+        );
         packet
             .properties
             .push(ConnectProperty::ReceiveMaximum(20.into()))
@@ -157,55 +184,42 @@ mod tests {
         0x00, 0x04, 0x70, 0x61, 0x73, 0x73,
     ];
 
-    #[test]
-    fn encode_example() {
-        let packet = example_packet();
-
-        let mut buf = [0; EXAMPLE_DATA.len()];
+    fn encode_and_check<const PROPERTIES_N: usize>(
+        packet: &Connect<'_, PROPERTIES_N>,
+        encoded: &[u8],
+    ) {
+        let mut buf = [0u8; 1024];
         let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
+            let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
             packet.write(&mut r).unwrap();
             r.position()
         };
-        assert_eq!(buf[0..len], EXAMPLE_DATA);
+        assert_eq!(&buf[0..len], encoded);
+    }
+
+    #[test]
+    fn encode_example() {
+        encode_and_check(&example_packet(), &EXAMPLE_DATA);
     }
 
     #[test]
     fn encode_example_username() {
-        let packet = example_packet_username();
-
-        let mut buf = [0; EXAMPLE_DATA_USERNAME.len()];
-        let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
-            packet.write(&mut r).unwrap();
-            r.position()
-        };
-        assert_eq!(buf[0..len], EXAMPLE_DATA_USERNAME);
+        encode_and_check(&example_packet_username(), &EXAMPLE_DATA_USERNAME);
     }
 
     #[test]
     fn encode_example_username_password() {
-        let packet = example_packet_username_password();
-
-        let mut buf = [0; EXAMPLE_DATA_USERNAME_PASSWORD.len()];
-        let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
-            packet.write(&mut r).unwrap();
-            r.position()
-        };
-        assert_eq!(buf[0..len], EXAMPLE_DATA_USERNAME_PASSWORD);
+        encode_and_check(
+            &example_packet_username_password(),
+            &EXAMPLE_DATA_USERNAME_PASSWORD,
+        );
     }
 
     #[test]
     fn encode_example_clientid_username_password() {
-        let packet = example_packet_clientid_username_password();
-
-        let mut buf = [0; EXAMPLE_DATA_CLIENTID_USERNAME_PASSWORD.len()];
-        let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
-            packet.write(&mut r).unwrap();
-            r.position()
-        };
-        assert_eq!(buf[0..len], EXAMPLE_DATA_CLIENTID_USERNAME_PASSWORD);
+        encode_and_check(
+            &example_packet_clientid_username_password(),
+            &EXAMPLE_DATA_CLIENTID_USERNAME_PASSWORD,
+        );
     }
 }
