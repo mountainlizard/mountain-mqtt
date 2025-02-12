@@ -51,7 +51,8 @@ pub enum PacketType {
 }
 
 /// Note this only provides the "base" representation, with no
-/// additional flags set for [PacketType::Publish]
+/// additional flags set for [PacketType::Publish], but does
+/// include the fixed additional bits that some packets require.
 impl From<PacketType> for u8 {
     fn from(value: PacketType) -> Self {
         match value {

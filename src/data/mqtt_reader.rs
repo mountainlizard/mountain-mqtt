@@ -2,7 +2,14 @@ use core::str::Utf8Error;
 
 use heapless::Vec;
 
-use crate::{data::string_pair::StringPair, packets::reason_code::ReasonCode};
+use crate::{
+    data::string_pair::StringPair,
+    packets::{
+        quality_of_service::QualityOfService,
+        reason_code::ReasonCode,
+        subscribe::{RetainHandling, SubscriptionOptions, SubscriptionRequest},
+    },
+};
 
 use super::read::Read;
 
@@ -256,6 +263,39 @@ pub trait MqttReader<'a>: Sized {
 
         Ok(())
     }
+
+    fn get_subscription_options(&mut self) -> Result<SubscriptionOptions> {
+        let encoded = self.get_u8()?;
+        let maximum_qos = match encoded & 0x3 {
+            0 => Ok(QualityOfService::QoS0),
+            1 => Ok(QualityOfService::QoS1),
+            2 => Ok(QualityOfService::QoS2),
+            _ => Err(MqttReaderError::InvalidQoSValue),
+        }?;
+        let no_local = encoded & (1 << 2) != 0;
+        let retain_as_published = encoded & (1 << 3) != 0;
+        let retain_handling = match (encoded >> 4) & 0x3 {
+            0 => Ok(RetainHandling::SendOnSubscribe),
+            1 => Ok(RetainHandling::SendOnNewSubscribe),
+            2 => Ok(RetainHandling::DoNotSend),
+            _ => Err(MqttReaderError::InvalidQoSValue),
+        }?;
+        Ok(SubscriptionOptions {
+            maximum_qos,
+            no_local,
+            retain_as_published,
+            retain_handling,
+        })
+    }
+
+    fn get_subscription_request(&mut self) -> Result<SubscriptionRequest<'a>> {
+        let topic_name = self.get_str()?;
+        let options = self.get_subscription_options()?;
+        Ok(SubscriptionRequest {
+            topic_name,
+            options,
+        })
+    }
 }
 
 pub struct MqttBufReader<'a> {
@@ -330,6 +370,7 @@ mod tests {
     use super::*;
 
     // Note - tests for `get_variable_u32_delimited_vec` are in property module
+    // Note - tests for `get_subscription_options` are in subscribe module
 
     #[test]
     fn mqtt_buf_reader_can_get_slices() -> Result<()> {

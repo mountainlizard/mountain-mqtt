@@ -1,6 +1,12 @@
 use heapless::Vec;
 
-use crate::{data::string_pair::StringPair, packets::reason_code::ReasonCode};
+use crate::{
+    data::string_pair::StringPair,
+    packets::{
+        reason_code::ReasonCode,
+        subscribe::{SubscriptionOptions, SubscriptionRequest},
+    },
+};
 
 use super::{write::Write, DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE};
 
@@ -174,6 +180,26 @@ pub trait MqttWriter<'a>: Sized {
 
         Ok(())
     }
+
+    // Put subscription options, encoded as a u8
+    fn put_subscription_options(&mut self, o: &SubscriptionOptions) -> Result<()> {
+        let mut encoded = o.maximum_qos as u8;
+        if o.no_local {
+            encoded |= 1 << 2;
+        }
+        if o.retain_as_published {
+            encoded |= 1 << 3;
+        }
+        encoded |= (o.retain_handling as u8) << 4;
+
+        self.put_u8(encoded)
+    }
+
+    // Put a subscription request, with topic name encoded as a standard string, then the encoded options as a u8
+    fn put_subscription_request(&mut self, r: &SubscriptionRequest<'_>) -> Result<()> {
+        self.put_str(r.topic_name)?;
+        self.put_subscription_options(&r.options)
+    }
 }
 
 pub struct MqttBufWriter<'a> {
@@ -292,6 +318,7 @@ mod tests {
     use super::*;
 
     // Note - tests for `put_variable_u32_delimited_vec` are in property module
+    // Note - tests for `put_subscription_options` are in subscribe module
 
     impl MqttBufWriter<'_> {
         fn assert_contents(&self, expected: &[u8]) {

@@ -11,3 +11,4 @@ pub mod puback;
 pub mod publish;
 pub mod quality_of_service;
 pub mod reason_code;
+pub mod subscribe;
