@@ -12,6 +12,7 @@
   - `data` for all raw data (i.e. everything but packets - include packet_identifier etc. since we might want to support read/write of this)
   - `codec` for reader, writer, read/write - should only operate on stuff from `data`
   - `packets` just the packets themselves (including generic packet in future?)
+- [ ] Review errors - check we're not over-using MalformedPacket, work out what error we want to expose at raw client level, should reader/writer just use this directly?
 - [ ] Implement QoS2 packets (remaining Pub... packets)
 - [ ] Simple tokio network adapter, see if we can connect and disconnect from mosquitto server
 - [ ] Embedded network adapter, connect and disconnect from a pico w
