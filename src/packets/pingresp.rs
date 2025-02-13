@@ -1,11 +1,9 @@
-use super::{
-    packet::{Packet, PacketRead, PacketWrite},
-    packet_type::PacketType,
-};
-use crate::data::{
+use super::packet::{Packet, PacketRead, PacketWrite};
+use crate::codec::{
     mqtt_reader::{self, MqttReader, MqttReaderError},
     mqtt_writer::{self, MqttWriter},
 };
+use crate::data::packet_type::PacketType;
 
 #[derive(Debug, PartialEq)]
 pub struct Pingresp {}
@@ -58,7 +56,7 @@ impl<'a> PacketRead<'a> for Pingresp {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{
+    use crate::codec::{
         mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, read::Read, write::Write,
     };
 

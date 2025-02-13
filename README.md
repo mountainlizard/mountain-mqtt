@@ -8,8 +8,8 @@
 - [x] Implement `PacketRead` for connect packet (this should be the only missing read?)
 - [x] Tests for connect packets with will
 - [x] Implement QoS2 packets (remaining Pub... packets)
-- [ ] Look at a bit flag library, or at least share the shifts between encode/decode?
-- [ ] Neater modules
+- [x] Look at a bit flag library, or at least share the shifts between encode/decode? - implemented using consts for shifts, bits and masks, and moving code to from/try_from where it makes sense.
+- [x] Neater modules
   - `data` for all raw data (i.e. everything but packets - include packet_identifier etc. since we might want to support read/write of this)
   - `codec` for reader, writer, read/write - should only operate on stuff from `data`
   - `packets` just the packets themselves (including generic packet in future?)

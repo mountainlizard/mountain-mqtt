@@ -1,11 +1,10 @@
-use crate::data::{
+use crate::codec::{
     mqtt_reader::{self, MqttReader, MqttReaderError},
     mqtt_writer::{self, MqttLenWriter, MqttWriter},
     read::Read,
     write::Write,
 };
-
-use super::packet_type::PacketType;
+use crate::data::packet_type::PacketType;
 
 pub const KEEP_ALIVE_DEFAULT: u16 = 60;
 pub const PROTOCOL_NAME: &str = "MQTT";

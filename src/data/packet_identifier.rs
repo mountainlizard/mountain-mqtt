@@ -1,4 +1,4 @@
-use super::quality_of_service::QualityOfService;
+use crate::data::quality_of_service::QualityOfService;
 
 #[derive(Debug, PartialEq)]
 pub struct PacketIdentifier(pub u16);

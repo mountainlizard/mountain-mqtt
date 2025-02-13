@@ -1,12 +1,10 @@
-use super::{
-    packet::{Packet, PacketRead, PacketWrite},
-    packet_identifier::PacketIdentifier,
-    packet_type::PacketType,
-    property::UnsubscribeProperty,
-};
-use crate::data::{
+use super::packet::{Packet, PacketRead, PacketWrite};
+use crate::codec::{
     mqtt_reader::{self, MqttReader, MqttReaderError},
     mqtt_writer::{self, MqttWriter},
+};
+use crate::data::{
+    packet_identifier::PacketIdentifier, packet_type::PacketType, property::UnsubscribeProperty,
 };
 use heapless::Vec;
 
@@ -110,9 +108,9 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{
-        mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, read::Read,
-        string_pair::StringPair, write::Write,
+    use crate::{
+        codec::{mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, read::Read, write::Write},
+        data::string_pair::StringPair,
     };
 
     use super::*;

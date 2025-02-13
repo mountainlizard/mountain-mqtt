@@ -1,12 +1,12 @@
-use super::{
-    packet::{Packet, PacketRead, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5},
+use super::packet::{Packet, PacketRead, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5};
+use crate::codec::{
+    mqtt_reader::MqttReaderError,
+    mqtt_writer::{self, MqttWriter},
+};
+use crate::data::{
     packet_type::PacketType,
     property::{ConnectProperty, WillProperty},
     quality_of_service::QualityOfService,
-};
-use crate::data::{
-    mqtt_reader::MqttReaderError,
-    mqtt_writer::{self, MqttWriter},
 };
 use heapless::Vec;
 
@@ -18,6 +18,14 @@ pub struct Will<'a, const PROPERTIES_N: usize> {
     payload: &'a [u8],
     properties: Vec<WillProperty<'a>, PROPERTIES_N>,
 }
+
+const CLEAN_START_BIT: u8 = 1 << 1;
+const WILL_PRESENT_BIT: u8 = 1 << 2;
+const WILL_QOS_SHIFT: i32 = 3;
+const WILL_QOS_MASK: u8 = 0x03;
+const WILL_RETAIN_BIT: u8 = 1 << 5;
+const PASSWORD_PRESENT_BIT: u8 = 1 << 6;
+const USERNAME_PRESENT_BIT: u8 = 1 << 7;
 
 #[derive(Debug, PartialEq)]
 pub struct Connect<'a, const PROPERTIES_N: usize> {
@@ -55,20 +63,20 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
         let mut flags = 0u8;
         // Note bit 0 is reserved, must be left as 0 (MQTT-3.1.2-2)
         if self.clean_start {
-            flags |= 1 << 1;
+            flags |= CLEAN_START_BIT;
         }
         if let Some(ref will) = self.will {
-            flags |= 1 << 2; // Will present
-            flags |= (will.qos as u8) << 3;
+            flags |= WILL_PRESENT_BIT; // Will present
+            flags |= (will.qos as u8) << WILL_QOS_SHIFT;
             if will.retain {
-                flags |= 1 << 5;
+                flags |= WILL_RETAIN_BIT;
             }
         }
         if self.password.is_some() {
-            flags |= 1 << 6;
+            flags |= PASSWORD_PRESENT_BIT;
         }
         if self.username.is_some() {
-            flags |= 1 << 7;
+            flags |= USERNAME_PRESENT_BIT;
         }
         flags
     }
@@ -122,11 +130,11 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
 }
 
 impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N> {
-    fn get_variable_header_and_payload<R: crate::data::mqtt_reader::MqttReader<'a>>(
+    fn get_variable_header_and_payload<R: crate::codec::mqtt_reader::MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
         _len: usize,
-    ) -> crate::data::mqtt_reader::Result<Self>
+    ) -> crate::codec::mqtt_reader::Result<Self>
     where
         Self: Sized,
     {
@@ -147,7 +155,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
         if connect_flags & 0x01 != 0 {
             return Err(MqttReaderError::MalformedPacket);
         }
-        let clean_start = connect_flags & (1 << 1) != 0;
+        let clean_start = connect_flags & (CLEAN_START_BIT) != 0;
 
         let keep_alive = reader.get_u16()?; // 3.1.2.10 Keep Alive
 
@@ -160,11 +168,11 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
         let client_id = reader.get_str()?;
 
         // Will
-        let has_will = connect_flags & (1 << 2) != 0;
+        let has_will = connect_flags & (WILL_PRESENT_BIT) != 0;
         let will = if has_will {
-            let will_qos_value = (connect_flags >> 3) & 0x03;
+            let will_qos_value = (connect_flags >> WILL_QOS_SHIFT) & WILL_QOS_MASK;
             let will_qos = will_qos_value.try_into()?;
-            let will_retain = connect_flags & (1 << 5) != 0;
+            let will_retain = connect_flags & (WILL_RETAIN_BIT) != 0;
 
             let mut will_properties = Vec::new();
             reader.get_variable_u32_delimited_vec(&mut will_properties)?; // 3.1.3.2 Will Properties
@@ -183,7 +191,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
         };
 
         // 3.1.3.5 User Name
-        let has_username = connect_flags & (1 << 7) != 0;
+        let has_username = connect_flags & (USERNAME_PRESENT_BIT) != 0;
         let username = if has_username {
             Some(reader.get_str()?)
         } else {
@@ -191,7 +199,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
         };
 
         // 3.1.3.6 Password
-        let has_password = connect_flags & (1 << 6) != 0;
+        let has_password = connect_flags & (PASSWORD_PRESENT_BIT) != 0;
         let password = if has_password {
             Some(reader.get_binary_data()?)
         } else {
@@ -213,7 +221,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{
+    use crate::codec::{
         mqtt_reader::{MqttBufReader, MqttReader},
         mqtt_writer::MqttBufWriter,
         write::Write,
