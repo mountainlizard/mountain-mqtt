@@ -145,63 +145,50 @@ mod tests {
         packet
     }
 
-    #[test]
-    fn encode_example() {
-        let packet = example_packet();
+    fn encode_decode_and_check<const PROPERTIES_N: usize>(
+        packet: &Pubrec<'_, PROPERTIES_N>,
+        encoded: &[u8],
+    ) {
+        encode_and_check(packet, encoded);
+        decode_and_check(packet, encoded);
+    }
 
-        let mut buf = [0; EXAMPLE_DATA.len()];
+    fn encode_and_check<const PROPERTIES_N: usize>(
+        packet: &Pubrec<'_, PROPERTIES_N>,
+        encoded: &[u8],
+    ) {
+        let mut buf = [0u8; 1024];
         let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
+            let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
             packet.write(&mut r).unwrap();
             r.position()
         };
-        assert_eq!(&buf[0..len], EXAMPLE_DATA);
+        assert_eq!(&buf[0..len], encoded);
+    }
+
+    fn decode_and_check<const PROPERTIES_N: usize>(
+        packet: &Pubrec<'_, PROPERTIES_N>,
+        encoded: &[u8],
+    ) {
+        let mut r = MqttBufReader::new(encoded);
+        let read_packet: Pubrec<'_, PROPERTIES_N> = r.get().unwrap();
+        assert_eq!(&read_packet, packet);
+        assert_eq!(r.position(), encoded.len());
+        assert_eq!(r.remaining(), 0);
     }
 
     #[test]
-    fn decode_example() {
-        let mut r = MqttBufReader::new(&EXAMPLE_DATA);
-        assert_eq!(Pubrec::read(&mut r).unwrap(), example_packet());
+    fn encode_and_decode_example() {
+        encode_decode_and_check(&example_packet(), &EXAMPLE_DATA);
     }
 
     #[test]
-    fn encode_example_length2() {
-        let packet = example_packet_length2();
-
-        let mut buf = [0; EXAMPLE_DATA_LENGTH2.len()];
-        let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
-            packet.write(&mut r).unwrap();
-            r.position()
-        };
-        assert_eq!(&buf[0..len], EXAMPLE_DATA_LENGTH2);
+    fn encode_and_decode_example_length2() {
+        encode_decode_and_check(&example_packet_length2(), &EXAMPLE_DATA_LENGTH2);
     }
 
     #[test]
-    fn decode_example_length2() {
-        let mut r = MqttBufReader::new(&EXAMPLE_DATA_LENGTH2);
-        assert_eq!(Pubrec::read(&mut r).unwrap(), example_packet_length2());
-    }
-
-    #[test]
-    fn encode_example_user_property() {
-        let packet = example_packet_user_property();
-
-        let mut buf = [0; EXAMPLE_DATA_USER_PROPERTY.len()];
-        let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
-            packet.write(&mut r).unwrap();
-            r.position()
-        };
-        assert_eq!(&buf[0..len], EXAMPLE_DATA_USER_PROPERTY);
-    }
-
-    #[test]
-    fn decode_example_user_property() {
-        let mut r = MqttBufReader::new(&EXAMPLE_DATA_USER_PROPERTY);
-        assert_eq!(
-            Pubrec::read(&mut r).unwrap(),
-            example_packet_user_property()
-        );
+    fn encode_and_decode_example_user_property() {
+        encode_decode_and_check(&example_packet_user_property(), &EXAMPLE_DATA_USER_PROPERTY);
     }
 }
