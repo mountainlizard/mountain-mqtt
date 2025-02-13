@@ -1,8 +1,9 @@
-use crate::data::{
+use crate::data::string_pair::StringPair;
+
+use crate::codec::{
     mqtt_reader::{self, MqttReader},
     mqtt_writer::{self, MqttWriter},
     read::Read,
-    string_pair::StringPair,
     write::Write,
 };
 
@@ -289,7 +290,7 @@ macro_rules! packet_properties {
                             Ok(Self::$p(v))
                         }
                     )*
-                    _ => Err($crate::packets::property::mqtt_reader::MqttReaderError::MalformedPacket),
+                    _ => Err($crate::data::property::mqtt_reader::MqttReaderError::MalformedPacket),
                 }
             }
         }
@@ -423,7 +424,7 @@ packet_properties!(
 mod tests {
     use heapless::Vec;
 
-    use crate::data::{
+    use crate::codec::{
         mqtt_reader::{MqttBufReader, MqttReaderError},
         mqtt_writer::MqttBufWriter,
     };

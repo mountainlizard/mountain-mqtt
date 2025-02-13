@@ -3,11 +3,10 @@ use core::str::Utf8Error;
 use heapless::Vec;
 
 use crate::{
-    data::string_pair::StringPair,
-    packets::{
-        reason_code::ReasonCode,
-        subscribe::{RetainHandling, SubscriptionOptions, SubscriptionRequest},
+    data::{
+        reason_code::ReasonCode, string_pair::StringPair, subscription_options::SubscriptionOptions,
     },
+    packets::subscribe::SubscriptionRequest,
 };
 
 use super::read::Read;
@@ -269,22 +268,7 @@ pub trait MqttReader<'a>: Sized {
 
     fn get_subscription_options(&mut self) -> Result<SubscriptionOptions> {
         let encoded = self.get_u8()?;
-        let maximum_qos_value = encoded & 0x3;
-        let maximum_qos = maximum_qos_value.try_into()?;
-        let no_local = encoded & (1 << 2) != 0;
-        let retain_as_published = encoded & (1 << 3) != 0;
-        let retain_handling = match (encoded >> 4) & 0x3 {
-            0 => Ok(RetainHandling::SendOnSubscribe),
-            1 => Ok(RetainHandling::SendOnNewSubscribe),
-            2 => Ok(RetainHandling::DoNotSend),
-            _ => Err(MqttReaderError::MalformedPacket),
-        }?;
-        Ok(SubscriptionOptions {
-            maximum_qos,
-            no_local,
-            retain_as_published,
-            retain_handling,
-        })
+        encoded.try_into()
     }
 
     fn get_subscription_request(&mut self) -> Result<SubscriptionRequest<'a>> {

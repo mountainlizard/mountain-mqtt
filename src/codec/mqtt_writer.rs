@@ -1,14 +1,14 @@
 use heapless::Vec;
 
 use crate::{
-    data::string_pair::StringPair,
-    packets::{
-        reason_code::ReasonCode,
-        subscribe::{SubscriptionOptions, SubscriptionRequest},
+    data::{
+        reason_code::ReasonCode, string_pair::StringPair,
+        subscription_options::SubscriptionOptions, DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE,
     },
+    packets::subscribe::SubscriptionRequest,
 };
 
-use super::{write::Write, DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE};
+use super::write::Write;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MqttWriterError {
@@ -183,16 +183,7 @@ pub trait MqttWriter<'a>: Sized {
 
     // Put subscription options, encoded as a u8
     fn put_subscription_options(&mut self, o: &SubscriptionOptions) -> Result<()> {
-        let mut encoded = o.maximum_qos as u8;
-        if o.no_local {
-            encoded |= 1 << 2;
-        }
-        if o.retain_as_published {
-            encoded |= 1 << 3;
-        }
-        encoded |= (o.retain_handling as u8) << 4;
-
-        self.put_u8(encoded)
+        self.put_u8(o.into())
     }
 
     // Put a subscription request, with topic name encoded as a standard string, then the encoded options as a u8

@@ -1,32 +1,18 @@
-use super::{
-    packet::{Packet, PacketRead, PacketWrite},
-    packet_identifier::PacketIdentifier,
-    packet_type::PacketType,
-    property::SubscribeProperty,
-    quality_of_service::QualityOfService,
-};
-use crate::data::{
+use super::packet::{Packet, PacketRead, PacketWrite};
+use crate::codec::{
     mqtt_reader::{self, MqttReader, MqttReaderError},
     mqtt_writer::{self, MqttWriter},
     read::Read,
 };
+use crate::data::{
+    packet_identifier::PacketIdentifier,
+    packet_type::PacketType,
+    property::SubscribeProperty,
+    quality_of_service::QualityOfService,
+    subscription_options::{RetainHandling, SubscriptionOptions},
+};
+
 use heapless::Vec;
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-#[repr(u8)]
-pub enum RetainHandling {
-    SendOnSubscribe = 0,
-    SendOnNewSubscribe = 1,
-    DoNotSend = 2,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub struct SubscriptionOptions {
-    pub maximum_qos: QualityOfService,
-    pub no_local: bool,
-    pub retain_as_published: bool,
-    pub retain_handling: RetainHandling,
-}
 
 #[derive(Debug, PartialEq)]
 pub struct SubscriptionRequest<'a> {
@@ -155,7 +141,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{
+    use crate::codec::{
         mqtt_reader::MqttBufReader,
         mqtt_writer::{MqttBufWriter, MqttLenWriter},
         read::Read,

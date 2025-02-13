@@ -1,14 +1,13 @@
-use super::{
-    packet::{Packet, PacketRead, PacketWrite},
-    packet_identifier::PacketIdentifier,
-    packet_type::PacketType,
-    property::PubrecProperty,
-    reason_code::PublishReasonCode,
-};
-use crate::data::{
+use super::packet::{Packet, PacketRead, PacketWrite};
+use crate::codec::{
     mqtt_reader::{self, MqttReader},
     mqtt_writer::{self, MqttWriter},
 };
+use crate::data::{
+    packet_identifier::PacketIdentifier, packet_type::PacketType, property::PubrecProperty,
+    reason_code::PublishReasonCode,
+};
+
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
@@ -94,9 +93,9 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Pubrec<'a, PROPERTIES_N> 
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{
-        mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, string_pair::StringPair,
-        write::Write,
+    use crate::{
+        codec::{mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, write::Write},
+        data::string_pair::StringPair,
     };
 
     use super::*;

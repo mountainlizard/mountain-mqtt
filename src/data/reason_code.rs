@@ -1,4 +1,4 @@
-use crate::data::{mqtt_reader::MqttReaderError, read::Read, write::Write};
+use crate::codec::{mqtt_reader::MqttReaderError, read::Read, write::Write};
 
 #[macro_export]
 macro_rules! packet_reason_codes {
@@ -57,9 +57,9 @@ macro_rules! packet_reason_codes {
         }
 
         impl<'a> Read<'a> for $n {
-            fn read<R: $crate::data::mqtt_reader::MqttReader<'a>>(
+            fn read<R: $crate::codec::mqtt_reader::MqttReader<'a>>(
                 reader: &mut R,
-            ) -> $crate::data::mqtt_reader::Result<Self>
+            ) -> $crate::codec::mqtt_reader::Result<Self>
             where
                 Self: Sized,
             {
@@ -69,10 +69,10 @@ macro_rules! packet_reason_codes {
         }
 
         impl Write for $n {
-            fn write<'a, W: $crate::data::mqtt_writer::MqttWriter<'a>>(
+            fn write<'a, W: $crate::codec::mqtt_writer::MqttWriter<'a>>(
                 &self,
                 writer: &mut W,
-            ) -> $crate::data::mqtt_writer::Result<()> {
+            ) -> $crate::codec::mqtt_writer::Result<()> {
                 writer.put_u8(*self as u8)
             }
         }
@@ -250,7 +250,7 @@ packet_reason_codes!(
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{
+    use crate::codec::{
         mqtt_reader::{MqttBufReader, MqttReader},
         mqtt_writer::{MqttBufWriter, MqttWriter},
     };

@@ -1,12 +1,10 @@
-use super::{
-    packet::{Packet, PacketRead, PacketWrite},
-    packet_type::PacketType,
-    property::DisconnectProperty,
-    reason_code::DisconnectReasonCode,
-};
-use crate::data::{
+use super::packet::{Packet, PacketRead, PacketWrite};
+use crate::codec::{
     mqtt_reader::{self, MqttReader},
     mqtt_writer::{self, MqttWriter},
+};
+use crate::data::{
+    packet_type::PacketType, property::DisconnectProperty, reason_code::DisconnectReasonCode,
 };
 use heapless::Vec;
 
@@ -87,7 +85,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Disconnect<'a, PROPERTIES
 
 #[cfg(test)]
 mod tests {
-    use crate::data::{
+    use crate::codec::{
         mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, read::Read, write::Write,
     };
 
