@@ -5,8 +5,8 @@
 - [x] Implement subscribe and unsubscribe packets (including ack)
 - [x] Implement reason code subsets for packets, similarly to what we have for properties
 - [x] Implement will in connect (new Will struct, optional instance in connect packet)
-- [ ] Implement `PacketRead` for connect packet (this should be the only missing read?)
-- [ ] Tests for connect packets with will
+- [x] Implement `PacketRead` for connect packet (this should be the only missing read?)
+- [x] Tests for connect packets with will
 - [ ] Look at a bit flag library, or at least share the shifts between encode/decode?
 - [ ] Neater modules
   - `data` for all raw data (i.e. everything but packets - include packet_identifier etc. since we might want to support read/write of this)
