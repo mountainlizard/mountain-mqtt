@@ -5,7 +5,6 @@ use heapless::Vec;
 use crate::{
     data::string_pair::StringPair,
     packets::{
-        quality_of_service::QualityOfService,
         reason_code::ReasonCode,
         subscribe::{RetainHandling, SubscriptionOptions, SubscriptionRequest},
     },
@@ -25,6 +24,10 @@ pub enum MqttReaderError {
     InvalidBooleanValue,
     TooManyProperties,
     InvalidQoSValue,
+    // A Connect packet was decoded which did not contain the expected protocol name (MQTT) and version (5)
+    // This can be returned to clients, but it is also acceptable to simply close the network connection,
+    // see spec 3.1.2.1 and 3.1.2.2
+    UnsupportedProtocolVersion,
 }
 
 impl From<Utf8Error> for MqttReaderError {
@@ -266,19 +269,15 @@ pub trait MqttReader<'a>: Sized {
 
     fn get_subscription_options(&mut self) -> Result<SubscriptionOptions> {
         let encoded = self.get_u8()?;
-        let maximum_qos = match encoded & 0x3 {
-            0 => Ok(QualityOfService::QoS0),
-            1 => Ok(QualityOfService::QoS1),
-            2 => Ok(QualityOfService::QoS2),
-            _ => Err(MqttReaderError::InvalidQoSValue),
-        }?;
+        let maximum_qos_value = encoded & 0x3;
+        let maximum_qos = maximum_qos_value.try_into()?;
         let no_local = encoded & (1 << 2) != 0;
         let retain_as_published = encoded & (1 << 3) != 0;
         let retain_handling = match (encoded >> 4) & 0x3 {
             0 => Ok(RetainHandling::SendOnSubscribe),
             1 => Ok(RetainHandling::SendOnNewSubscribe),
             2 => Ok(RetainHandling::DoNotSend),
-            _ => Err(MqttReaderError::InvalidQoSValue),
+            _ => Err(MqttReaderError::MalformedPacket),
         }?;
         Ok(SubscriptionOptions {
             maximum_qos,

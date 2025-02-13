@@ -1,12 +1,16 @@
 use super::{
-    packet::{Packet, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5},
+    packet::{Packet, PacketRead, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5},
     packet_type::PacketType,
     property::{ConnectProperty, WillProperty},
     quality_of_service::QualityOfService,
 };
-use crate::data::mqtt_writer::{self, MqttWriter};
+use crate::data::{
+    mqtt_reader::MqttReaderError,
+    mqtt_writer::{self, MqttWriter},
+};
 use heapless::Vec;
 
+#[derive(Debug, PartialEq)]
 pub struct Will<'a, const PROPERTIES_N: usize> {
     qos: QualityOfService,
     retain: bool,
@@ -15,6 +19,7 @@ pub struct Will<'a, const PROPERTIES_N: usize> {
     properties: Vec<WillProperty<'a>, PROPERTIES_N>,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Connect<'a, const PROPERTIES_N: usize> {
     keep_alive: u16,
     username: Option<&'a str>,
@@ -33,6 +38,7 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
         client_id: &'a str,
         clean_start: bool,
         will: Option<Will<'a, PROPERTIES_N>>,
+        properties: Vec<ConnectProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             keep_alive,
@@ -41,12 +47,13 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
             client_id,
             clean_start,
             will,
-            properties: Vec::new(),
+            properties,
         }
     }
 
     fn connect_flags(&self) -> u8 {
         let mut flags = 0u8;
+        // Note bit 0 is reserved, must be left as 0 (MQTT-3.1.2-2)
         if self.clean_start {
             flags |= 1 << 1;
         }
@@ -114,14 +121,108 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
     }
 }
 
+impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N> {
+    fn get_variable_header_and_payload<R: crate::data::mqtt_reader::MqttReader<'a>>(
+        reader: &mut R,
+        _first_header_byte: u8,
+        _len: usize,
+    ) -> crate::data::mqtt_reader::Result<Self>
+    where
+        Self: Sized,
+    {
+        // Variable header:
+
+        // Read the fixed parts of the variable header
+        let protocol_name = reader.get_str()?; // 3.1.2.1 Protocol name
+        let protocol_version = reader.get_u8()?; // 3.1.2.2 Protocol Version
+
+        // See 3.1.2.1 and 3.1.2.2
+        if protocol_name != PROTOCOL_NAME || protocol_version != PROTOCOL_VERSION_5 {
+            return Err(MqttReaderError::UnsupportedProtocolVersion);
+        }
+
+        let connect_flags = reader.get_u8()?; // 3.1.2.3 Connect Flags
+
+        // Check MQTT-3.1.2-2 (connect flags bit 0 must be 0)
+        if connect_flags & 0x01 != 0 {
+            return Err(MqttReaderError::MalformedPacket);
+        }
+        let clean_start = connect_flags & (1 << 1) != 0;
+
+        let keep_alive = reader.get_u16()?; // 3.1.2.10 Keep Alive
+
+        // Read the properties vec (3.1.2.11)
+        let mut properties = Vec::new();
+        reader.get_variable_u32_delimited_vec(&mut properties)?;
+
+        // Payload:
+        // 3.1.3.1 Client Identifier (ClientID)
+        let client_id = reader.get_str()?;
+
+        // Will
+        let has_will = connect_flags & (1 << 2) != 0;
+        let will = if has_will {
+            let will_qos_value = (connect_flags >> 3) & 0x03;
+            let will_qos = will_qos_value.try_into()?;
+            let will_retain = connect_flags & (1 << 5) != 0;
+
+            let mut will_properties = Vec::new();
+            reader.get_variable_u32_delimited_vec(&mut will_properties)?; // 3.1.3.2 Will Properties
+            let will_topic_name = reader.get_str()?; // 3.1.3.3 Will Topic
+            let will_payload = reader.get_binary_data()?; // 3.1.3.4 Will Payload
+
+            Some(Will {
+                qos: will_qos,
+                retain: will_retain,
+                topic_name: will_topic_name,
+                payload: will_payload,
+                properties: will_properties,
+            })
+        } else {
+            None
+        };
+
+        // 3.1.3.5 User Name
+        let has_username = connect_flags & (1 << 7) != 0;
+        let username = if has_username {
+            Some(reader.get_str()?)
+        } else {
+            None
+        };
+
+        // 3.1.3.6 Password
+        let has_password = connect_flags & (1 << 6) != 0;
+        let password = if has_password {
+            Some(reader.get_binary_data()?)
+        } else {
+            None
+        };
+
+        let packet = Connect::new(
+            keep_alive,
+            username,
+            password,
+            client_id,
+            clean_start,
+            will,
+            properties,
+        );
+        Ok(packet)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::data::{mqtt_writer::MqttBufWriter, write::Write};
+    use crate::data::{
+        mqtt_reader::{MqttBufReader, MqttReader},
+        mqtt_writer::MqttBufWriter,
+        write::Write,
+    };
 
     use super::*;
 
     fn example_packet<'a>() -> Connect<'a, 1> {
-        let mut packet = Connect::new(60, None, None, "", true, None);
+        let mut packet = Connect::new(60, None, None, "", true, None, Vec::new());
         packet
             .properties
             .push(ConnectProperty::ReceiveMaximum(20.into()))
@@ -134,8 +235,120 @@ mod tests {
         0x14, 0x00, 0x00,
     ];
 
+    fn example_packet_will<'a>() -> Connect<'a, 1> {
+        let mut will_properties = Vec::new();
+        will_properties
+            .push(WillProperty::MessageExpiryInterval(12345.into()))
+            .unwrap();
+        let will = Will {
+            qos: QualityOfService::QoS2,
+            retain: true,
+            topic_name: "wt",
+            payload: &[1, 2, 3],
+            properties: will_properties,
+        };
+        let mut packet = Connect::new(60, None, None, "", true, Some(will), Vec::new());
+        packet
+            .properties
+            .push(ConnectProperty::ReceiveMaximum(20.into()))
+            .unwrap();
+        packet
+    }
+
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_WILL: [u8; 33] = [
+        // header byte
+        0x10,
+        // packet length
+        0x1F,
+        // protocol name and version
+        0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will QoS (2),
+        // bit 5 will retain, bit 6 password, bit 7 username
+        0b0011_0110,
+        // Keep alive
+        0x00, 0x3c,
+        // length of encoded properties
+        0x03,
+        // Receive maximum id 0x21, contents
+        0x21, 0x00, 0x14,
+        // Client id (length 0, no data)
+        0x00, 0x00,
+        // Will properties
+        // length of encoded properties
+        0x05,
+        // Property: Message expiry interval id 0x02, u32 value
+        0x02, 0x00, 0x00, 0x30, 0x39,
+        // Will topic
+        0x00, 0x02, 0x77, 0x74,
+        // Will payload
+        0x00, 0x03, 0x01, 0x02, 0x03,
+    ];
+
+    fn example_packet_will2<'a>() -> Connect<'a, 1> {
+        let mut will_properties = Vec::new();
+        will_properties
+            .push(WillProperty::MessageExpiryInterval(12345.into()))
+            .unwrap();
+        let will = Will {
+            qos: QualityOfService::QoS1,
+            retain: false,
+            topic_name: "tw",
+            payload: &[3, 2, 1],
+            properties: will_properties,
+        };
+        let mut packet = Connect::new(
+            60,
+            Some("user1"),
+            Some(&[0x42, 0x84]),
+            "",
+            false,
+            Some(will),
+            Vec::new(),
+        );
+        packet
+            .properties
+            .push(ConnectProperty::ReceiveMaximum(20.into()))
+            .unwrap();
+        packet
+    }
+
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_WILL2: [u8; 44] = [
+        // header byte
+        0x10,
+        // packet length
+        0x2A,
+        // protocol name and version
+        0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will QoS (1),
+        // bit 5 will retain, bit 6 password, bit 7 username
+        0b1100_1100,
+        // Keep alive
+        0x00, 0x3c,
+        // length of encoded properties
+        0x03,
+        // Receive maximum id 0x21, contents
+        0x21, 0x00, 0x14,
+        // Client id (length 0, no data)
+        0x00, 0x00,
+        // Will properties
+        // length of encoded properties
+        0x05,
+        // Property: Message expiry interval id 0x02, u32 value
+        0x02, 0x00, 0x00, 0x30, 0x39,
+        // Will topic
+        0x00, 0x02, 0x74, 0x77,
+        // Will payload
+        0x00, 0x03, 0x03, 0x02, 0x01,
+        // User name
+        0x00, 0x05, 0x75, 0x73, 0x65, 0x72, 0x31,
+        // Password
+        0x00, 0x02, 0x42,0x84
+    ];
+
     fn example_packet_username<'a>() -> Connect<'a, 1> {
-        let mut packet = Connect::new(60, Some("user"), None, "", true, None);
+        let mut packet = Connect::new(60, Some("user"), None, "", true, None, Vec::new());
         packet
             .properties
             .push(ConnectProperty::ReceiveMaximum(20.into()))
@@ -149,7 +362,15 @@ mod tests {
     ];
 
     fn example_packet_username_password<'a>() -> Connect<'a, 1> {
-        let mut packet = Connect::new(60, Some("user"), Some("pass".as_bytes()), "", true, None);
+        let mut packet = Connect::new(
+            60,
+            Some("user"),
+            Some("pass".as_bytes()),
+            "",
+            true,
+            None,
+            Vec::new(),
+        );
         packet
             .properties
             .push(ConnectProperty::ReceiveMaximum(20.into()))
@@ -170,6 +391,7 @@ mod tests {
             "client",
             true,
             None,
+            Vec::new(),
         );
         packet
             .properties
@@ -184,6 +406,14 @@ mod tests {
         0x00, 0x04, 0x70, 0x61, 0x73, 0x73,
     ];
 
+    fn encode_decode_and_check<const PROPERTIES_N: usize>(
+        packet: &Connect<'_, PROPERTIES_N>,
+        encoded: &[u8],
+    ) {
+        encode_and_check(packet, encoded);
+        decode_and_check(packet, encoded);
+    }
+
     fn encode_and_check<const PROPERTIES_N: usize>(
         packet: &Connect<'_, PROPERTIES_N>,
         encoded: &[u8],
@@ -197,19 +427,30 @@ mod tests {
         assert_eq!(&buf[0..len], encoded);
     }
 
+    fn decode_and_check<const PROPERTIES_N: usize>(
+        packet: &Connect<'_, PROPERTIES_N>,
+        encoded: &[u8],
+    ) {
+        let mut r = MqttBufReader::new(encoded);
+        let read_packet: Connect<'_, PROPERTIES_N> = r.get().unwrap();
+        assert_eq!(&read_packet, packet);
+        assert_eq!(r.position(), encoded.len());
+        assert_eq!(r.remaining(), 0);
+    }
+
     #[test]
     fn encode_example() {
-        encode_and_check(&example_packet(), &EXAMPLE_DATA);
+        encode_decode_and_check(&example_packet(), &EXAMPLE_DATA);
     }
 
     #[test]
     fn encode_example_username() {
-        encode_and_check(&example_packet_username(), &EXAMPLE_DATA_USERNAME);
+        encode_decode_and_check(&example_packet_username(), &EXAMPLE_DATA_USERNAME);
     }
 
     #[test]
     fn encode_example_username_password() {
-        encode_and_check(
+        encode_decode_and_check(
             &example_packet_username_password(),
             &EXAMPLE_DATA_USERNAME_PASSWORD,
         );
@@ -217,9 +458,19 @@ mod tests {
 
     #[test]
     fn encode_example_clientid_username_password() {
-        encode_and_check(
+        encode_decode_and_check(
             &example_packet_clientid_username_password(),
             &EXAMPLE_DATA_CLIENTID_USERNAME_PASSWORD,
         );
+    }
+
+    #[test]
+    fn encode_example_will() {
+        encode_decode_and_check(&example_packet_will(), &EXAMPLE_DATA_WILL);
+    }
+
+    #[test]
+    fn encode_example_will2() {
+        encode_decode_and_check(&example_packet_will2(), &EXAMPLE_DATA_WILL2);
     }
 }
