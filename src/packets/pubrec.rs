@@ -95,8 +95,8 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Pubrec<'a, PROPERTIES_N> 
 #[cfg(test)]
 mod tests {
     use crate::data::{
-        mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, read::Read,
-        string_pair::StringPair, write::Write,
+        mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter, string_pair::StringPair,
+        write::Write,
     };
 
     use super::*;
