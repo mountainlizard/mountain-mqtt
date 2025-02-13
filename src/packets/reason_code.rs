@@ -215,6 +215,8 @@ packet_reason_codes!(
     ]
 );
 
+packet_reason_codes!(PubrelReasonCode, [Success, PacketIdentifierNotFound]);
+
 packet_reason_codes!(
     SubscriptionReasonCode,
     [
