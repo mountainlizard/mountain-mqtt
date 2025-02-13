@@ -8,6 +8,7 @@ pub mod pingreq;
 pub mod pingresp;
 pub mod property;
 pub mod puback;
+pub mod pubcomp;
 pub mod publish;
 pub mod pubrec;
 pub mod pubrel;
