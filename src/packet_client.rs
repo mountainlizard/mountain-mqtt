@@ -129,6 +129,11 @@ where
                 .map_err(|_| Error::ConnectionReceiveInvalidData)?
         } as usize;
 
+        // If packet will not fit in buffer, error
+        if position + remaining_length > self.buf.len() {
+            return Err(Error::ConnectionReceivePacketBufferOverflow);
+        }
+
         // Read the rest of the packet
         self.connection
             .receive(&mut self.buf[position..position + remaining_length])
@@ -168,6 +173,8 @@ mod tests {
     const ENCODED: [u8; 2] = [0xC0, 0x00];
     const INVALID_PACKET_TYPE: [u8; 2] = [0xC1, 0x00];
     const INVALID_LENGTH: [u8; 5] = [0xC0, 0x80, 0x80, 0x80, 0x80];
+    // Packet has first header byte then a length of 16, implying total packet length of 18 (after the first header byte and the single byte length)
+    const ENCODED_IMPLIES_PACKET_LENGTH_18: [u8; 2] = [0xC0, 0x10];
 
     struct BufferConnection<'a> {
         reader: MqttBufReader<'a>,
@@ -251,6 +258,20 @@ mod tests {
         assert_eq!(
             client.receive::<16, 16>().await,
             Err(Error::ConnectionReceiveInvalidPacketLength)
+        );
+    }
+
+    #[tokio::test]
+    async fn decode_fails_on_packet_length_bigger_than_buffer() {
+        let mut write_buf = [];
+        let connection = BufferConnection::new(&ENCODED_IMPLIES_PACKET_LENGTH_18, &mut write_buf);
+
+        let mut buf = [0; 17];
+        let mut client = PacketClient::new(connection, &mut buf);
+
+        assert_eq!(
+            client.receive::<16, 16>().await,
+            Err(Error::ConnectionReceivePacketBufferOverflow)
         );
     }
 }
