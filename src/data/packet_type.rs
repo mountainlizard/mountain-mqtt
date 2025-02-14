@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::{error::Error, packets::publish::is_valid_publish_first_header_byte};
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
@@ -48,6 +48,20 @@ pub enum PacketType {
     /// Authentication exchange
     /// Client to Server or Server to Client
     Auth = 15,
+}
+
+impl PacketType {
+    /// Check whether a u8 value is a valid first header byte of a packet
+    pub fn is_valid_first_header_byte(encoded: u8) -> bool {
+        if let Ok(packet_type) = PacketType::try_from(encoded) {
+            match packet_type {
+                PacketType::Publish => is_valid_publish_first_header_byte(encoded),
+                _ => encoded == packet_type.into(),
+            }
+        } else {
+            false
+        }
+    }
 }
 
 /// Note this only provides the "base" representation, with no

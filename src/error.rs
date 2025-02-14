@@ -4,4 +4,5 @@ pub enum Error {
     ConnectionReceive,
     ConnectionSend,
     ConnectionReceiveInvalidData,
+    ConnectionReceiveInvalidPacketLength,
 }

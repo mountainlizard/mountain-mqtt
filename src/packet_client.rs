@@ -92,11 +92,11 @@ where
             .await?;
         position += 1;
 
-        // Check we can parse the packet type, so we can error early on invalid data
-        // without trying to read the rest of a packet
-        let _packet_type: PacketType = self.buf[0]
-            .try_into()
-            .map_err(|_| Error::ConnectionReceiveInvalidData)?;
+        // Check first header byte is valid, if not we can error early without
+        // trying to read the rest of a packet
+        if !PacketType::is_valid_first_header_byte(self.buf[0]) {
+            return Err(Error::ConnectionReceiveInvalidData);
+        }
 
         // Read up to 4 bytes into buffer as variable u32
         // First byte always exists
@@ -119,7 +119,7 @@ where
 
         // Error if we didn't see the end of the length
         if self.buf[position - 1] & 128 != 0 {
-            return Err(Error::ConnectionReceiveInvalidData);
+            return Err(Error::ConnectionReceiveInvalidPacketLength);
         }
 
         // We have a valid length, decode it
@@ -166,6 +166,8 @@ mod tests {
     use super::*;
 
     const ENCODED: [u8; 2] = [0xC0, 0x00];
+    const INVALID_PACKET_TYPE: [u8; 2] = [0xC1, 0x00];
+    const INVALID_LENGTH: [u8; 5] = [0xC0, 0x80, 0x80, 0x80, 0x80];
 
     struct BufferConnection<'a> {
         reader: MqttBufReader<'a>,
@@ -224,5 +226,31 @@ mod tests {
         assert_eq!(write_buf[0..ENCODED.len()], ENCODED);
     }
 
-    // TODO: tests for failing on invalid packet type (first byte) and invalid length (doesn't terminate in 4 bytes)
+    #[tokio::test]
+    async fn decode_fails_on_invalid_packet_type() {
+        let mut write_buf = [];
+        let connection = BufferConnection::new(&INVALID_PACKET_TYPE, &mut write_buf);
+
+        let mut buf = [0; 1024];
+        let mut client = PacketClient::new(connection, &mut buf);
+
+        assert_eq!(
+            client.receive::<16, 16>().await,
+            Err(Error::ConnectionReceiveInvalidData)
+        );
+    }
+
+    #[tokio::test]
+    async fn decode_fails_on_invalid_length_encoding() {
+        let mut write_buf = [];
+        let connection = BufferConnection::new(&INVALID_LENGTH, &mut write_buf);
+
+        let mut buf = [0; 1024];
+        let mut client = PacketClient::new(connection, &mut buf);
+
+        assert_eq!(
+            client.receive::<16, 16>().await,
+            Err(Error::ConnectionReceiveInvalidPacketLength)
+        );
+    }
 }

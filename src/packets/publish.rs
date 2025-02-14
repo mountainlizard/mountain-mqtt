@@ -12,7 +12,14 @@ use heapless::Vec;
 
 const RETAIN_SHIFT: i32 = 0;
 const QOS_SHIFT: i32 = 1;
+const QOS_MASK: u8 = 0x03;
 const DUPLICATE_SHIFT: i32 = 3;
+
+pub fn is_valid_publish_first_header_byte(encoded: u8) -> bool {
+    let first_nibble_ok = (encoded & 0xF0) == u8::from(PacketType::Publish);
+    let qos_ok = (encoded >> QOS_SHIFT & QOS_MASK) != 3;
+    first_nibble_ok && qos_ok
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Publish<'a, const PROPERTIES_N: usize> {
@@ -105,7 +112,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
         // Data from the first header byte
         let retain = first_header_byte & (1 << RETAIN_SHIFT) != 0;
         let duplicate = first_header_byte & (1 << DUPLICATE_SHIFT) != 0;
-        let qos_value = (first_header_byte >> QOS_SHIFT) & 0x03;
+        let qos_value = (first_header_byte >> QOS_SHIFT) & QOS_MASK;
 
         let topic_name = reader.get_str()?;
         let packet_identifier = match qos_value {
