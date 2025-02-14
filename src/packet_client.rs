@@ -5,16 +5,13 @@ use crate::{
     codec::{
         mqtt_reader::{MqttBufReader, MqttReader},
         mqtt_writer::{MqttBufWriter, MqttWriter},
+        write,
     },
     data::packet_type::PacketType,
     error::Error,
-    packets::{
-        packet::{Packet, PacketWrite},
-        packet_generic::PacketGeneric,
-    },
+    packets::{packet::Packet, packet_generic::PacketGeneric},
 };
 
-// TODO: review this
 #[allow(async_fn_in_trait)]
 pub trait Connection {
     // Send and flush all data in `buf`
@@ -73,7 +70,7 @@ where
 
     pub async fn send<P>(&mut self, packet: P) -> Result<(), Error>
     where
-        P: Packet + PacketWrite,
+        P: Packet + write::Write,
     {
         let len = {
             let mut r = MqttBufWriter::new(self.buf);
@@ -95,7 +92,9 @@ where
             .await?;
         position += 1;
 
-        let packet_type: PacketType = self.buf[0]
+        // Check we can parse the packet type, so we can error early on invalid data
+        // without trying to read the rest of a packet
+        let _packet_type: PacketType = self.buf[0]
             .try_into()
             .map_err(|_| Error::ConnectionReceiveInvalidData)?;
 
@@ -106,7 +105,7 @@ where
             .await?;
         position += 1;
 
-        // Read bytes until we see the last one or run out
+        // Read up to 3 more bytes looking for the end of the encoded length
         for _extra in 0..3 {
             if self.buf[position - 1] & 128 == 0 {
                 break;
@@ -118,7 +117,7 @@ where
             }
         }
 
-        // We didn't see the end of the length
+        // Error if we didn't see the end of the length
         if self.buf[position - 1] & 128 != 0 {
             return Err(Error::ConnectionReceiveInvalidData);
         }
@@ -139,69 +138,91 @@ where
         // We can now decode the packet from the buffer
         let packet_buf = &mut self.buf[0..position];
         let mut packet_reader = MqttBufReader::new(packet_buf);
-        let packet_generic = match packet_type {
-            PacketType::Connect => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Connect(packet)
-            }
-            PacketType::Connack => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Connack(packet)
-            }
-            PacketType::Publish => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Publish(packet)
-            }
-            PacketType::Puback => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Puback(packet)
-            }
-            PacketType::Pubrec => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Pubrec(packet)
-            }
-            PacketType::Pubrel => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Pubrel(packet)
-            }
-            PacketType::Pubcomp => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Pubcomp(packet)
-            }
-            PacketType::Subscribe => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Subscribe(packet)
-            }
-            PacketType::Suback => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Suback(packet)
-            }
-            PacketType::Unsubscribe => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Unsubscribe(packet)
-            }
-            PacketType::Unsuback => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Unsuback(packet)
-            }
-            PacketType::Pingreq => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Pingreq(packet)
-            }
-            PacketType::Pingresp => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Pingresp(packet)
-            }
-            PacketType::Disconnect => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Disconnect(packet)
-            }
-            PacketType::Auth => {
-                let packet = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
-                PacketGeneric::Auth(packet)
-            }
-        };
+        let packet_generic = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
 
         Ok(packet_generic)
     }
+}
+
+impl<C> PacketClient<'_, C>
+where
+    C: ConnectionReady,
+{
+    pub async fn receive_if_ready<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+        &mut self,
+    ) -> Result<Option<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>>, Error> {
+        if !self.connection.receive_ready()? {
+            Ok(None)
+        } else {
+            self.receive().await.map(Some)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{codec::mqtt_reader::MqttBufReader, packets::pingreq::Pingreq};
+
+    use super::*;
+
+    const ENCODED: [u8; 2] = [0xC0, 0x00];
+
+    struct BufferConnection<'a> {
+        reader: MqttBufReader<'a>,
+        writer: MqttBufWriter<'a>,
+    }
+
+    impl<'a> BufferConnection<'a> {
+        pub fn new(read_buf: &'a [u8], write_buf: &'a mut [u8]) -> Self {
+            let reader = MqttBufReader::new(read_buf);
+            let writer = MqttBufWriter::new(write_buf);
+            BufferConnection { reader, writer }
+        }
+    }
+
+    impl Connection for BufferConnection<'_> {
+        async fn send(&mut self, buf: &[u8]) -> Result<(), Error> {
+            self.writer
+                .put_slice(buf)
+                .map_err(|_| Error::ConnectionSend)
+        }
+
+        async fn receive(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+            let slice = self
+                .reader
+                .get_slice(buf.len())
+                .map_err(|_| Error::ConnectionReceive)?;
+            buf.copy_from_slice(slice);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn decode() {
+        let mut write_buf = [];
+        let connection = BufferConnection::new(&ENCODED, &mut write_buf);
+
+        let mut buf = [0; 1024];
+        let mut client = PacketClient::new(connection, &mut buf);
+
+        let packet: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
+
+        assert_eq!(packet, PacketGeneric::Pingreq(Pingreq::default()));
+    }
+
+    #[tokio::test]
+    async fn encode() {
+        let read_buf = [];
+        let mut write_buf = [0; 1024];
+        let connection = BufferConnection::new(&read_buf, &mut write_buf);
+
+        let mut buf = [0; 1024];
+        let mut client = PacketClient::new(connection, &mut buf);
+
+        client.send(Pingreq::default()).await.unwrap();
+
+        assert_eq!(write_buf[0..ENCODED.len()], ENCODED);
+    }
+
+    // TODO: tests for failing on invalid packet type (first byte) and invalid length (doesn't terminate in 4 bytes)
 }
