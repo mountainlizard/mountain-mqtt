@@ -13,7 +13,7 @@
   - `data` for all raw data (i.e. everything but packets - include packet_identifier etc. since we might want to support read/write of this)
   - `codec` for reader, writer, read/write - should only operate on stuff from `data`
   - `packets` just the packets themselves (including packet and generic packet in future?)
-- [ ] Review errors - check we're not over-using MalformedPacket, work out what error we want to expose at raw client level, should reader/writer just use this directly?
+- [x] Review errors - check we're not over-using MalformedPacket, work out what error we want to expose at raw client level, should reader/writer just use this directly? - Done, there is now no more MalformedPacket error, only the ReasonCode, all errors have their own more specific variants. We now use `PacketReadError` and `PacketWriteError` in the reader/writer and packet client layers, we can add new error types as needed for higher levels.
 - [ ] Simple tokio network adapter, see if we can connect and disconnect from mosquitto server
 - [ ] Embedded network adapter, connect and disconnect from a pico w
 - [ ] Do we need a "Raw" client? Should be pretty simple, just send a packet, poll for a packet.

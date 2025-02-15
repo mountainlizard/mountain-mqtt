@@ -84,7 +84,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Puback<'a, PROPERTIES_N> 
         } else {
             let reason_code = reader.get()?;
             let mut properties = Vec::new();
-            reader.get_variable_u32_delimited_vec(&mut properties)?;
+            reader.get_property_list(&mut properties)?;
             Ok(Puback::new(packet_identifier, reason_code, properties))
         }
     }

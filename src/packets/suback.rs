@@ -1,11 +1,14 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
-    mqtt_writer::{self, MqttWriter},
-};
 use crate::data::{
     packet_identifier::PacketIdentifier, packet_type::PacketType, property::SubackProperty,
     reason_code::SubscriptionReasonCode,
+};
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttWriter},
+    },
+    error::PacketReadError,
 };
 use heapless::Vec;
 
@@ -77,7 +80,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         // Variable header:
         let packet_identifier = PacketIdentifier(reader.get_u16()?);
         let mut properties = Vec::new();
-        reader.get_variable_u32_delimited_vec(&mut properties)?;
+        reader.get_property_list(&mut properties)?;
 
         // Payload:
         // Read subscription requests until we run out of data
@@ -86,7 +89,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
             let code = reader.get()?;
             reason_codes
                 .push(code)
-                .map_err(|_e| MqttReaderError::MalformedPacket)?;
+                .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
         let packet = Suback::new(packet_identifier, reason_codes, properties);

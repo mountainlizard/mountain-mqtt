@@ -76,7 +76,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Disconnect<'a, PROPERTIES
         } else {
             let reason_code = reader.get()?;
             let mut packet = Disconnect::new(reason_code);
-            reader.get_variable_u32_delimited_vec(&mut packet.properties)?;
+            reader.get_property_list(&mut packet.properties)?;
 
             Ok(packet)
         }

@@ -1,4 +1,4 @@
-use crate::{error::Error, packets::publish::is_valid_publish_first_header_byte};
+use crate::{error::PacketReadError, packets::publish::is_valid_publish_first_header_byte};
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]
@@ -92,7 +92,7 @@ impl From<PacketType> for u8 {
 /// Parse the [PacketType] from a [u8], using only the upper 4 bits
 /// and ignoring any additional flags set for [PacketType::Publish]
 impl TryFrom<u8> for PacketType {
-    type Error = Error;
+    type Error = PacketReadError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value & 0xF0 {
@@ -111,7 +111,7 @@ impl TryFrom<u8> for PacketType {
             0xD0 => Ok(PacketType::Pingresp),
             0xE0 => Ok(PacketType::Disconnect),
             0xF0 => Ok(PacketType::Auth),
-            _ => Err(Error::MalformedPacket),
+            _ => Err(PacketReadError::InvalidPacketType),
         }
     }
 }

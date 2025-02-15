@@ -1,4 +1,4 @@
-use crate::codec::mqtt_reader::MqttReaderError;
+use crate::error::PacketReadError;
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -9,14 +9,14 @@ pub enum QualityOfService {
 }
 
 impl TryFrom<u8> for QualityOfService {
-    type Error = MqttReaderError;
+    type Error = PacketReadError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(QualityOfService::QoS0),
             1 => Ok(QualityOfService::QoS1),
             2 => Ok(QualityOfService::QoS2),
-            _ => Err(MqttReaderError::InvalidQoSValue),
+            _ => Err(PacketReadError::InvalidQoSValue),
         }
     }
 }

@@ -1,15 +1,18 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
-    mqtt_writer::{self, MqttWriter},
-    read::Read,
-};
 use crate::data::{
     packet_identifier::PacketIdentifier,
     packet_type::PacketType,
     property::SubscribeProperty,
     quality_of_service::QualityOfService,
     subscription_options::{RetainHandling, SubscriptionOptions},
+};
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttWriter},
+        read::Read,
+    },
+    error::PacketReadError,
 };
 
 use heapless::Vec;
@@ -115,7 +118,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         // Variable header:
         let packet_identifier = PacketIdentifier(reader.get_u16()?);
         let mut properties = Vec::new();
-        reader.get_variable_u32_delimited_vec(&mut properties)?;
+        reader.get_property_list(&mut properties)?;
 
         // Payload:
         let primary_request = reader.get_subscription_request()?;
@@ -126,7 +129,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
             let additional_request = SubscriptionRequest::read(reader)?;
             additional_requests
                 .push(additional_request)
-                .map_err(|_e| MqttReaderError::MalformedPacket)?;
+                .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
         let packet = Subscribe::new(
@@ -245,6 +248,20 @@ mod tests {
             assert_eq!(0, r.remaining());
             assert_eq!(o, &o_read);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_buf_reader_errors_on_invalid_retain_handing_in_subscription_options(
+    ) -> mqtt_reader::Result<()> {
+        // Bits 4 and 5 set to 1, implies retain handling value 3, the only invalid option
+        let buf = [0b0011_0000];
+        let mut r = MqttBufReader::new(&buf);
+        assert_eq!(
+            r.get_subscription_options(),
+            Err(PacketReadError::InvalidRetainHandlingValue)
+        );
 
         Ok(())
     }

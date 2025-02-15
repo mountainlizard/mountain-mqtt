@@ -1,4 +1,4 @@
-use crate::codec::mqtt_reader::MqttReaderError;
+use crate::error::PacketReadError;
 
 use super::quality_of_service::QualityOfService;
 
@@ -25,7 +25,7 @@ const RETAIN_HANDLING_SHIFT: i32 = 4;
 const RETAIN_HANDLING_MASK: u8 = 0x3;
 
 impl TryFrom<u8> for SubscriptionOptions {
-    type Error = MqttReaderError;
+    type Error = PacketReadError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         let maximum_qos_value = value & QOS_MASK;
@@ -36,7 +36,7 @@ impl TryFrom<u8> for SubscriptionOptions {
             0 => Ok(RetainHandling::SendOnSubscribe),
             1 => Ok(RetainHandling::SendOnNewSubscribe),
             2 => Ok(RetainHandling::DoNotSend),
-            _ => Err(MqttReaderError::MalformedPacket),
+            _ => Err(PacketReadError::InvalidRetainHandlingValue),
         }?;
         Ok(SubscriptionOptions {
             maximum_qos,

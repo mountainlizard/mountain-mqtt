@@ -1,9 +1,7 @@
 use crate::{
-    codec::{
-        mqtt_reader::{self, MqttReaderError},
-        read::Read,
-    },
+    codec::{mqtt_reader, read::Read},
     data::packet_type::PacketType,
+    error::PacketReadError,
 };
 
 use super::{
@@ -56,8 +54,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Read<'a>
         let first_header_byte = reader.get_u8()?;
 
         // Check that packet type is valid
-        let packet_type = PacketType::try_from(first_header_byte)
-            .map_err(|_e| MqttReaderError::MalformedPacket)?;
+        let packet_type = PacketType::try_from(first_header_byte)?;
 
         let len = reader.get_variable_u32()? as usize;
         let packet_end_position = reader.position() + len;
@@ -144,7 +141,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Read<'a>
         if reader.position() == packet_end_position {
             Ok(packet_generic)
         } else {
-            Err(MqttReaderError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         }
     }
 }

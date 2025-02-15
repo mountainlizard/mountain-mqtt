@@ -1,9 +1,12 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
-    mqtt_writer::{self, MqttWriter},
-};
 use crate::data::packet_type::PacketType;
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttWriter},
+    },
+    error::PacketReadError,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct Pingresp {}
@@ -49,7 +52,7 @@ impl<'a> PacketRead<'a> for Pingresp {
         if len == 0 {
             Ok(Pingresp::default())
         } else {
-            Err(MqttReaderError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         }
     }
 }
@@ -90,16 +93,16 @@ mod tests {
         let mut r = MqttBufReader::new(&ENCODED_NONZERO_LENGTH);
         assert_eq!(
             Pingresp::read(&mut r),
-            Err(MqttReaderError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         );
     }
 
     #[test]
-    fn decode_fails_on_incorrect_packet_type() {
+    fn decode_fails_on_invalid_packet_type() {
         let mut r = MqttBufReader::new(&ENCODED_INCORRECT_PACKET_TYPE);
         assert_eq!(
             Pingresp::read(&mut r),
-            Err(MqttReaderError::MalformedPacket)
+            Err(PacketReadError::InvalidPacketType)
         );
     }
 }

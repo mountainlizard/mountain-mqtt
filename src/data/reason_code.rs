@@ -1,4 +1,5 @@
-use crate::codec::{mqtt_reader::MqttReaderError, read::Read, write::Write};
+use crate::codec::{read::Read, write::Write};
+use crate::error::PacketReadError;
 
 #[macro_export]
 macro_rules! packet_reason_codes {
@@ -22,7 +23,7 @@ macro_rules! packet_reason_codes {
         }
 
         impl TryFrom<u8> for $n {
-            type Error = MqttReaderError;
+            type Error = PacketReadError;
 
             fn try_from(value: u8) -> Result<Self, Self::Error> {
                 $(
@@ -31,13 +32,13 @@ macro_rules! packet_reason_codes {
                     } else
                 )*
                 {
-                    Err(MqttReaderError::UnknownReasonCode)
+                    Err(PacketReadError::UnknownReasonCode)
                 }
             }
         }
 
         impl TryFrom<ReasonCode> for $n {
-            type Error = MqttReaderError;
+            type Error = PacketReadError;
 
             fn try_from(value: ReasonCode) -> Result<Self, Self::Error> {
                 match value {
@@ -45,7 +46,7 @@ macro_rules! packet_reason_codes {
                         ReasonCode::$c => Ok(Self::$c),
                     )*
 
-                    _ => Err(MqttReaderError::UnknownReasonCode),
+                    _ => Err(PacketReadError::UnknownReasonCode),
                 }
             }
         }
@@ -320,7 +321,7 @@ mod tests {
         );
         assert_eq!(
             ExampleReasonCode::try_from(ReasonCode::AdministrativeAction),
-            Err(MqttReaderError::UnknownReasonCode)
+            Err(PacketReadError::UnknownReasonCode)
         );
     }
 
@@ -336,7 +337,7 @@ mod tests {
         );
         assert_eq!(
             ExampleReasonCode::try_from(ReasonCode::AdministrativeAction as u8),
-            Err(MqttReaderError::UnknownReasonCode)
+            Err(PacketReadError::UnknownReasonCode)
         );
     }
 

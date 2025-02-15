@@ -290,7 +290,7 @@ macro_rules! packet_properties {
                             Ok(Self::$p(v))
                         }
                     )*
-                    _ => Err($crate::data::property::mqtt_reader::MqttReaderError::MalformedPacket),
+                    _ => Err($crate::error::PacketReadError::UnexpectedPropertyIdentifier),
                 }
             }
         }
@@ -424,9 +424,9 @@ packet_properties!(
 mod tests {
     use heapless::Vec;
 
-    use crate::codec::{
-        mqtt_reader::{MqttBufReader, MqttReaderError},
-        mqtt_writer::MqttBufWriter,
+    use crate::{
+        codec::{mqtt_reader::MqttBufReader, mqtt_writer::MqttBufWriter},
+        error::PacketReadError,
     };
 
     use super::*;
@@ -565,7 +565,7 @@ mod tests {
         // that getting properties respects encoded length
         let mut r = MqttBufReader::new(&buf[0..encoded_length]);
         let mut read_vec: Vec<PacketAnyProperty<'_>, 16> = Vec::new();
-        r.get_variable_u32_delimited_vec(&mut read_vec).unwrap();
+        r.get_property_list(&mut read_vec).unwrap();
 
         assert_eq!(0, r.remaining());
         assert_eq!(read_vec, vec);
@@ -574,8 +574,8 @@ mod tests {
         let mut r = MqttBufReader::new(&buf[0..encoded_length]);
         let mut read_vec: Vec<PacketAnyProperty<'_>, 3> = Vec::new();
         assert_eq!(
-            r.get_variable_u32_delimited_vec(&mut read_vec),
-            Err(MqttReaderError::TooManyProperties)
+            r.get_property_list(&mut read_vec),
+            Err(PacketReadError::TooManyProperties)
         );
     }
 
@@ -616,7 +616,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_with_malformed_packet_on_reading_unexpected_properties_outside_subset_for_packet() {
+    fn fail_with_unexpected_property_identifier_on_reading_property_outside_subset_for_packet() {
         // These properties are in PacketAnyProperty but not in PacketFirstThreeProperty,
         // so reading any of them should fail
         let data: &[u8] = &[1u8, 2, 3, 4, 5, 6];
@@ -639,7 +639,7 @@ mod tests {
             let mut r = MqttBufReader::new(&buf[0..position]);
             assert_eq!(
                 PacketFirstThreeProperty::read(&mut r),
-                Err(mqtt_reader::MqttReaderError::MalformedPacket)
+                Err(PacketReadError::UnexpectedPropertyIdentifier)
             );
         }
     }

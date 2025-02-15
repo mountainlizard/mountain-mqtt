@@ -1,10 +1,13 @@
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
-    mqtt_writer::{self, MqttLenWriter, MqttWriter},
-    read::Read,
-    write::Write,
-};
 use crate::data::packet_type::PacketType;
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttLenWriter, MqttWriter},
+        read::Read,
+        write::Write,
+    },
+    error::PacketReadError,
+};
 
 pub const KEEP_ALIVE_DEFAULT: u16 = 60;
 pub const PROTOCOL_NAME: &str = "MQTT";
@@ -83,17 +86,16 @@ impl<'a, P: PacketRead<'a>> Read<'a> for P {
 
         // Check that packet type is as expected, so `PacketRead` implementation
         // doesn't have to
-        let packet_type = PacketType::try_from(first_header_byte)
-            .map_err(|_e| MqttReaderError::MalformedPacket)?;
+        let packet_type = PacketType::try_from(first_header_byte)?;
         if packet_type != packet.packet_type() {
-            return Err(MqttReaderError::IncorrectPacketType);
+            return Err(PacketReadError::IncorrectPacketType);
         }
 
         // Check remaining length was correct
         if reader.position() == packet_end_position {
             Ok(packet)
         } else {
-            Err(MqttReaderError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         }
     }
 }
