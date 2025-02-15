@@ -71,7 +71,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N>
         let mut packet: Connack<'a, PROPERTIES_N> = Connack::new(session_present, reason_code);
 
         // Add properties into packet
-        reader.get_variable_u32_delimited_vec(&mut packet.properties)?;
+        reader.get_property_list(&mut packet.properties)?;
 
         Ok(packet)
     }

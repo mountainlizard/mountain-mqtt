@@ -161,7 +161,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
 
         // Read the properties vec (3.1.2.11)
         let mut properties = Vec::new();
-        reader.get_variable_u32_delimited_vec(&mut properties)?;
+        reader.get_property_list(&mut properties)?;
 
         // Payload:
         // 3.1.3.1 Client Identifier (ClientID)
@@ -175,7 +175,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
             let will_retain = connect_flags & (WILL_RETAIN_BIT) != 0;
 
             let mut will_properties = Vec::new();
-            reader.get_variable_u32_delimited_vec(&mut will_properties)?; // 3.1.3.2 Will Properties
+            reader.get_property_list(&mut will_properties)?; // 3.1.3.2 Will Properties
             let will_topic_name = reader.get_str()?; // 3.1.3.3 Will Topic
             let will_payload = reader.get_binary_data()?; // 3.1.3.4 Will Payload
 

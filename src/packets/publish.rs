@@ -123,7 +123,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
         };
 
         let mut properties = Vec::new();
-        reader.get_variable_u32_delimited_vec(&mut properties)?;
+        reader.get_property_list(&mut properties)?;
 
         // We expect there to be 0 or more bytes left in data,
         // if so this is all the payload, if not we have a malformed packet

@@ -565,7 +565,7 @@ mod tests {
         // that getting properties respects encoded length
         let mut r = MqttBufReader::new(&buf[0..encoded_length]);
         let mut read_vec: Vec<PacketAnyProperty<'_>, 16> = Vec::new();
-        r.get_variable_u32_delimited_vec(&mut read_vec).unwrap();
+        r.get_property_list(&mut read_vec).unwrap();
 
         assert_eq!(0, r.remaining());
         assert_eq!(read_vec, vec);
@@ -574,7 +574,7 @@ mod tests {
         let mut r = MqttBufReader::new(&buf[0..encoded_length]);
         let mut read_vec: Vec<PacketAnyProperty<'_>, 3> = Vec::new();
         assert_eq!(
-            r.get_variable_u32_delimited_vec(&mut read_vec),
+            r.get_property_list(&mut read_vec),
             Err(MqttReaderError::TooManyProperties)
         );
     }

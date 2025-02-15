@@ -27,6 +27,7 @@ pub enum MqttReaderError {
     // This can be returned to clients, but it is also acceptable to simply close the network connection,
     // see spec 3.1.2.1 and 3.1.2.2
     UnsupportedProtocolVersion,
+    TooManyRequests,
 }
 
 impl From<Utf8Error> for MqttReaderError {
@@ -250,7 +251,7 @@ pub trait MqttReader<'a>: Sized {
         }
     }
 
-    fn get_variable_u32_delimited_vec<T: Read<'a>, const N: usize>(
+    fn get_property_list<T: Read<'a>, const N: usize>(
         &mut self,
         vec: &mut Vec<T, N>,
     ) -> Result<()> {
