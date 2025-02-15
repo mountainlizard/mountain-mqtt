@@ -248,6 +248,11 @@ packet_reason_codes!(
     ]
 );
 
+packet_reason_codes!(
+    AuthReasonCode,
+    [Success, ContinueAuthentication, ReAuthenticate]
+);
+
 #[cfg(test)]
 mod tests {
     use crate::codec::{
