@@ -66,6 +66,11 @@ pub enum PacketReadError {
 
     /// Packet was too large to place in provided buffer
     PacketTooLargeForBuffer,
+
+    /// When decoding a property for a packet, encountered a value of the property identifier byte
+    /// that was not expected in the given context. This may be an id that is completely unknown, or
+    /// just one that is not expected for the type of packet being decoded.
+    UnexpectedPropertyIdentifier,
 }
 
 impl From<Utf8Error> for PacketReadError {

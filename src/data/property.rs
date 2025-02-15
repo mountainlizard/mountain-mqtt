@@ -290,7 +290,7 @@ macro_rules! packet_properties {
                             Ok(Self::$p(v))
                         }
                     )*
-                    _ => Err($crate::error::PacketReadError::MalformedPacket),
+                    _ => Err($crate::error::PacketReadError::UnexpectedPropertyIdentifier),
                 }
             }
         }
@@ -616,7 +616,7 @@ mod tests {
     }
 
     #[test]
-    fn fail_with_malformed_packet_on_reading_unexpected_properties_outside_subset_for_packet() {
+    fn fail_with_unexpected_property_identifier_on_reading_property_outside_subset_for_packet() {
         // These properties are in PacketAnyProperty but not in PacketFirstThreeProperty,
         // so reading any of them should fail
         let data: &[u8] = &[1u8, 2, 3, 4, 5, 6];
@@ -639,7 +639,7 @@ mod tests {
             let mut r = MqttBufReader::new(&buf[0..position]);
             assert_eq!(
                 PacketFirstThreeProperty::read(&mut r),
-                Err(PacketReadError::MalformedPacket)
+                Err(PacketReadError::UnexpectedPropertyIdentifier)
             );
         }
     }
