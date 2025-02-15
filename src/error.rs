@@ -1,15 +1,5 @@
 use core::str::Utf8Error;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Error {
-    MalformedPacket,
-    ConnectionReceive,
-    ConnectionSend,
-    ConnectionReceiveInvalidData,
-    ConnectionReceiveInvalidPacketLength,
-    ConnectionReceivePacketBufferOverflow,
-}
-
 /// An error occurring while attempting to read/receive/decode an MQTT packet
 /// Can occur at multiple levels:
 /// 1. Reading data from a [Connection] - e.g. an IO error occurs in underlying data stream
@@ -70,6 +60,12 @@ pub enum PacketReadError {
     /// Data meant to encode a packet type had an invalid value. E.g. first header byte could not be
     /// decoded to a [PacketType], or contained invalid values for the "reserved" bits.
     InvalidPacketType,
+
+    /// Failure to receive via connection
+    ConnectionReceive,
+
+    /// Packet was too large to place in provided buffer
+    PacketTooLargeForBuffer,
 }
 
 impl From<Utf8Error> for PacketReadError {
@@ -94,4 +90,7 @@ pub enum PacketWriteError {
 
     /// On attempt to put a string where the encoded form is too many bytes to encode
     StringTooLarge,
+
+    /// Failure to send via connection
+    ConnectionSend,
 }

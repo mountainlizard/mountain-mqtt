@@ -8,39 +8,41 @@ use crate::{
         write,
     },
     data::packet_type::PacketType,
-    error::Error,
+    error::{PacketReadError, PacketWriteError},
     packets::{packet::Packet, packet_generic::PacketGeneric},
 };
 
 #[allow(async_fn_in_trait)]
 pub trait Connection {
     // Send and flush all data in `buf`
-    async fn send(&mut self, buf: &[u8]) -> Result<(), Error>;
+    async fn send(&mut self, buf: &[u8]) -> Result<(), PacketWriteError>;
 
     // Receive into buffer, waiting to fill it
-    async fn receive(&mut self, buf: &mut [u8]) -> Result<(), Error>;
+    async fn receive(&mut self, buf: &mut [u8]) -> Result<(), PacketReadError>;
 }
 
 pub trait ConnectionReady: Connection {
     /// Check whether the TCP connection is ready to provide any data
-    fn receive_ready(&mut self) -> Result<bool, Error>;
+    fn receive_ready(&mut self) -> Result<bool, PacketReadError>;
 }
 
 impl<T> Connection for T
 where
     T: Read + Write,
 {
-    async fn send(&mut self, buf: &[u8]) -> Result<(), Error> {
+    async fn send(&mut self, buf: &[u8]) -> Result<(), PacketWriteError> {
         self.write_all(buf)
             .await
-            .map_err(|_| Error::ConnectionSend)?;
-        self.flush().await.map_err(|_| Error::ConnectionSend)
+            .map_err(|_| PacketWriteError::ConnectionSend)?;
+        self.flush()
+            .await
+            .map_err(|_| PacketWriteError::ConnectionSend)
     }
 
-    async fn receive(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+    async fn receive(&mut self, buf: &mut [u8]) -> Result<(), PacketReadError> {
         self.read_exact(buf)
             .await
-            .map_err(|_| Error::ConnectionReceive)
+            .map_err(|_| PacketReadError::ConnectionReceive)
     }
 }
 
@@ -48,8 +50,9 @@ impl<T> ConnectionReady for T
 where
     T: Read + Write + ReadReady,
 {
-    fn receive_ready(&mut self) -> Result<bool, Error> {
-        self.read_ready().map_err(|_| Error::ConnectionReceive)
+    fn receive_ready(&mut self) -> Result<bool, PacketReadError> {
+        self.read_ready()
+            .map_err(|_| PacketReadError::ConnectionReceive)
     }
 }
 
@@ -68,14 +71,13 @@ where
         Self { connection, buf }
     }
 
-    pub async fn send<P>(&mut self, packet: P) -> Result<(), Error>
+    pub async fn send<P>(&mut self, packet: P) -> Result<(), PacketWriteError>
     where
         P: Packet + write::Write,
     {
         let len = {
             let mut r = MqttBufWriter::new(self.buf);
-            // TODO: make error more specific - it's more likely to be buffer overrun
-            r.put(&packet).map_err(|_| Error::MalformedPacket)?;
+            r.put(&packet)?;
             r.position()
         };
         self.connection.send(&self.buf[0..len]).await
@@ -83,7 +85,7 @@ where
 
     pub async fn receive<const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
-    ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, Error> {
+    ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
         let mut position: usize = 0;
 
         // First byte must always be a valid packet type
@@ -95,7 +97,7 @@ where
         // Check first header byte is valid, if not we can error early without
         // trying to read the rest of a packet
         if !PacketType::is_valid_first_header_byte(self.buf[0]) {
-            return Err(Error::ConnectionReceiveInvalidData);
+            return Err(PacketReadError::InvalidPacketType);
         }
 
         // Read up to 4 bytes into buffer as variable u32
@@ -119,19 +121,18 @@ where
 
         // Error if we didn't see the end of the length
         if self.buf[position - 1] & 128 != 0 {
-            return Err(Error::ConnectionReceiveInvalidPacketLength);
+            return Err(PacketReadError::InvalidVariableByteIntegerEncoding);
         }
 
         // We have a valid length, decode it
         let remaining_length = {
             let mut r = MqttBufReader::new(&self.buf[1..position]);
-            r.get_variable_u32()
-                .map_err(|_| Error::ConnectionReceiveInvalidData)?
+            r.get_variable_u32()?
         } as usize;
 
         // If packet will not fit in buffer, error
         if position + remaining_length > self.buf.len() {
-            return Err(Error::ConnectionReceivePacketBufferOverflow);
+            return Err(PacketReadError::PacketTooLargeForBuffer);
         }
 
         // Read the rest of the packet
@@ -143,7 +144,7 @@ where
         // We can now decode the packet from the buffer
         let packet_buf = &mut self.buf[0..position];
         let mut packet_reader = MqttBufReader::new(packet_buf);
-        let packet_generic = packet_reader.get().map_err(|_| Error::MalformedPacket)?;
+        let packet_generic = packet_reader.get()?;
 
         Ok(packet_generic)
     }
@@ -155,7 +156,7 @@ where
 {
     pub async fn receive_if_ready<const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
-    ) -> Result<Option<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>>, Error> {
+    ) -> Result<Option<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>>, PacketReadError> {
         if !self.connection.receive_ready()? {
             Ok(None)
         } else {
@@ -227,17 +228,12 @@ mod tests {
     }
 
     impl Connection for BufferConnection<'_> {
-        async fn send(&mut self, buf: &[u8]) -> Result<(), Error> {
-            self.writer
-                .put_slice(buf)
-                .map_err(|_| Error::ConnectionSend)
+        async fn send(&mut self, buf: &[u8]) -> Result<(), PacketWriteError> {
+            self.writer.put_slice(buf)
         }
 
-        async fn receive(&mut self, buf: &mut [u8]) -> Result<(), Error> {
-            let slice = self
-                .reader
-                .get_slice(buf.len())
-                .map_err(|_| Error::ConnectionReceive)?;
+        async fn receive(&mut self, buf: &mut [u8]) -> Result<(), PacketReadError> {
+            let slice = self.reader.get_slice(buf.len())?;
             buf.copy_from_slice(slice);
             Ok(())
         }
@@ -304,7 +300,7 @@ mod tests {
 
         assert_eq!(
             client.receive::<16, 16>().await,
-            Err(Error::ConnectionReceiveInvalidData)
+            Err(PacketReadError::InvalidPacketType)
         );
     }
 
@@ -318,7 +314,7 @@ mod tests {
 
         assert_eq!(
             client.receive::<16, 16>().await,
-            Err(Error::ConnectionReceiveInvalidPacketLength)
+            Err(PacketReadError::InvalidVariableByteIntegerEncoding)
         );
     }
 
@@ -332,7 +328,7 @@ mod tests {
 
         assert_eq!(
             client.receive::<16, 16>().await,
-            Err(Error::ConnectionReceivePacketBufferOverflow)
+            Err(PacketReadError::PacketTooLargeForBuffer)
         );
     }
 }
