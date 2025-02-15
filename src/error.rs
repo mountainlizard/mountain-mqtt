@@ -84,6 +84,9 @@ pub enum PacketReadError {
     /// When decoding the "retain handling" subscription option, an invalid value not matching the
     /// specification was encountered
     InvalidRetainHandlingValue,
+
+    /// When decoding connect flags of Connect packet, an invalid value was encountered
+    InvalidConnectFlags,
 }
 
 impl From<Utf8Error> for PacketReadError {

@@ -151,7 +151,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
 
         // Check MQTT-3.1.2-2 (connect flags bit 0 must be 0)
         if connect_flags & 0x01 != 0 {
-            return Err(PacketReadError::MalformedPacket);
+            return Err(PacketReadError::InvalidConnectFlags);
         }
         let clean_start = connect_flags & (CLEAN_START_BIT) != 0;
 
@@ -241,6 +241,15 @@ mod tests {
         0x14, 0x00, 0x00,
     ];
 
+    // Copy of valid EXAMPLE_DATA above, except that connect flags byte has bit 0 set, which
+    // is prohibited by [MQTT-3.1.2-1]
+    const EXAMPLE_DATA_INVALID_CONNECT_FLAGS_BIT0_SET: [u8; 18] = [
+        0x10, 0x10, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
+        // connect flags - valid except that bit 0 is set
+        0x03, // remaining data
+        0x00, 0x3c, 0x03, 0x21, 0x00, 0x14, 0x00, 0x00,
+    ];
+
     fn example_packet_will<'a>() -> Connect<'a, 1> {
         let mut will_properties = Vec::new();
         will_properties
@@ -272,6 +281,36 @@ mod tests {
         // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will QoS (2),
         // bit 5 will retain, bit 6 password, bit 7 username
         0b0011_0110,
+        // Keep alive
+        0x00, 0x3c,
+        // length of encoded properties
+        0x03,
+        // Receive maximum id 0x21, contents
+        0x21, 0x00, 0x14,
+        // Client id (length 0, no data)
+        0x00, 0x00,
+        // Will properties
+        // length of encoded properties
+        0x05,
+        // Property: Message expiry interval id 0x02, u32 value
+        0x02, 0x00, 0x00, 0x30, 0x39,
+        // Will topic
+        0x00, 0x02, 0x77, 0x74,
+        // Will payload
+        0x00, 0x03, 0x01, 0x02, 0x03,
+    ];
+
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_WILL_INVALID_QOS: [u8; 33] = [
+        // header byte
+        0x10,
+        // packet length
+        0x1F,
+        // protocol name and version
+        0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will QoS (3 - invalid value),
+        // bit 5 will retain, bit 6 password, bit 7 username
+        0b0011_1110,
         // Keep alive
         0x00, 0x3c,
         // length of encoded properties
@@ -442,6 +481,24 @@ mod tests {
         assert_eq!(&read_packet, packet);
         assert_eq!(r.position(), encoded.len());
         assert_eq!(r.remaining(), 0);
+    }
+
+    #[test]
+    fn error_on_decoding_invalid_connect_flags_with_bit0_set() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_INVALID_CONNECT_FLAGS_BIT0_SET);
+        assert_eq!(
+            r.get::<Connect<'_, 16>>(),
+            Err(PacketReadError::InvalidConnectFlags)
+        );
+    }
+
+    #[test]
+    fn error_on_decoding_invalid_connect_flags_with_invalid_will_qos() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_INVALID_QOS);
+        assert_eq!(
+            r.get::<Connect<'_, 16>>(),
+            Err(PacketReadError::InvalidQoSValue)
+        );
     }
 
     #[test]
