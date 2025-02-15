@@ -11,6 +11,15 @@ use core::str::Utf8Error;
 /// This does NOT include any errors found to be encoded in the packet itself - as long as these
 /// errors are correctly decoded this doesn't represent a read error. Errors in the packet will
 /// be handled at higher layers.
+///
+/// Note that these errors mostly map to [ReasonCode::MalformedPacket] when they result in an error
+/// encoded in an MQTT packet, they are intended to provide a more granular description of the error
+/// to assist in debugging and error handling. Other errors would not ever be represented in a packet,
+/// since they represent errors like a failure to read from the network, etc.
+/// Note that some errors map to a [ReasonCode] other than [ReasonCode::MalformedPacket], for example
+/// [PacketReadError::UnexpectedPropertyIdentifier] may map to [ReasonCode::ProtocolError] in the case
+/// where a reason string property is sent in a packet type that should not have such a property, see
+/// [MQTT-3.1.2-29] in the specification.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PacketReadError {
     /// No more data was available at a point where the MQTT specification states more data
