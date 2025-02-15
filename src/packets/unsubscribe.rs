@@ -1,6 +1,6 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
 use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
+    mqtt_reader::{self, MqttReader, PacketReadError},
     mqtt_writer::{self, MqttWriter},
 };
 use crate::data::{
@@ -93,7 +93,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
             let additional_request = reader.get_str()?;
             additional_requests
                 .push(additional_request)
-                .map_err(|_e| MqttReaderError::TooManyRequests)?;
+                .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
         let packet = Unsubscribe::new(

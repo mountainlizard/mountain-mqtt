@@ -1,6 +1,6 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
 use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
+    mqtt_reader::{self, MqttReader, PacketReadError},
     mqtt_writer::{self, MqttWriter},
 };
 use crate::data::{
@@ -119,7 +119,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
             0 => PublishPacketIdentifier::None, // QoS0, no packet identifier
             1 => PublishPacketIdentifier::Qos1(PacketIdentifier(reader.get_u16()?)),
             2 => PublishPacketIdentifier::Qos1(PacketIdentifier(reader.get_u16()?)),
-            _ => return Err(mqtt_reader::MqttReaderError::InvalidQoSValue),
+            _ => return Err(mqtt_reader::PacketReadError::InvalidQoSValue),
         };
 
         let mut properties = Vec::new();
@@ -129,7 +129,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
         // if so this is all the payload, if not we have a malformed packet
         let position = reader.position();
         if position > payload_end_position {
-            Err(MqttReaderError::InsufficientData)
+            Err(PacketReadError::InsufficientData)
         } else {
             let payload_len = payload_end_position - position;
             let payload = reader.get_slice(payload_len)?;

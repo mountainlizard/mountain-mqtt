@@ -23,7 +23,7 @@ use super::read::Read;
 /// errors are correctly decoded this doesn't represent a read error. Errors in the packet will
 /// be handled at higher layers.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum MqttReaderError {
+pub enum PacketReadError {
     /// No more data was available at a point where the MQTT specification states more data
     /// must be present in the packet
     InsufficientData,
@@ -67,15 +67,19 @@ pub enum MqttReaderError {
     /// Data contained a list of subscription requests longer than the `REQUEST_N` parameter of a packet,
     /// and so overflowed a [heapless::Vec]
     TooManyRequests,
+
+    /// Data meant to encode a packet type had an invalid value. E.g. first header byte could not be
+    /// decoded to a [PacketType], or contained invalid values for the "reserved" bits.
+    InvalidPacketType,
 }
 
-impl From<Utf8Error> for MqttReaderError {
+impl From<Utf8Error> for PacketReadError {
     fn from(_e: Utf8Error) -> Self {
         Self::InvalidUtf8
     }
 }
 
-pub type Result<A> = core::result::Result<A, MqttReaderError>;
+pub type Result<A> = core::result::Result<A, PacketReadError>;
 
 /// A reader providing access to an underlying buffer in the form of
 /// MQTT v5 encoded data. Each `get` method retrieves data from the buffer,
@@ -92,12 +96,12 @@ pub trait MqttReader<'a>: Sized {
 
     /// Get a slice with given length, as a view of this reader's buffer
     /// Advances the position by given length
-    /// Can fail with [MqttReaderError::InsufficientData]
+    /// Can fail with [PacketReadError::InsufficientData]
     fn get_slice(&mut self, len: usize) -> Result<&'a [u8]>;
 
     // /// Make a view of this reader that is limited to returning at most
     // /// `remaining` bytes of data. If more than this is requested from the,
-    // /// new reader, this will result in [MqttReaderError::InsufficientData], even
+    // /// new reader, this will result in [PacketReadError::InsufficientData], even
     // /// if this reader itself still has more data.
     // /// This can be used to ensure that we respected the length of an embedded
     // /// piece of data, for example in an encoded properties list, where we
@@ -135,28 +139,28 @@ pub trait MqttReader<'a>: Sized {
 
     /// Get the next byte of data as a bool, where
     /// false is encoded as 0, true as 1, and any other
-    /// value gives [MqttReaderError::InvalidBooleanValue]
+    /// value gives [PacketReadError::InvalidBooleanValue]
     /// Advances the position by 1
-    /// Can fail with [MqttReaderError::InsufficientData]
+    /// Can fail with [PacketReadError::InsufficientData]
     fn get_bool_zero_one(&mut self) -> Result<bool> {
         let value = self.get_u8()?;
         match value {
             0 => Ok(false),
             1 => Ok(true),
-            _ => Err(MqttReaderError::InvalidBooleanValue),
+            _ => Err(PacketReadError::InvalidBooleanValue),
         }
     }
 
     /// Get the next byte of data as a u8
     /// Advances the position by 1
-    /// Can fail with [MqttReaderError::InsufficientData]
+    /// Can fail with [PacketReadError::InsufficientData]
     fn get_u8(&mut self) -> Result<u8> {
         self.get_slice(1).map(|s| s[0])
     }
 
     /// Get the next two bytes of data as a u16, using big-endian conversion
     /// Advances the position by 2
-    /// Can fail with [MqttReaderError::InsufficientData]
+    /// Can fail with [PacketReadError::InsufficientData]
     fn get_u16(&mut self) -> Result<u16> {
         let slice = self.get_slice(core::mem::size_of::<u16>())?;
         Ok(u16::from_be_bytes(slice.try_into().unwrap()))
@@ -164,7 +168,7 @@ pub trait MqttReader<'a>: Sized {
 
     /// Get the next four bytes of data as a u32, using big-endian conversion
     /// Advances the position by 4
-    /// Can fail with [MqttReaderError::InsufficientData]
+    /// Can fail with [PacketReadError::InsufficientData]
     fn get_u32(&mut self) -> Result<u32> {
         let slice = self.get_slice(core::mem::size_of::<u32>())?;
         Ok(u32::from_be_bytes(slice.try_into().unwrap()))
@@ -173,7 +177,7 @@ pub trait MqttReader<'a>: Sized {
     /// Get the next 1-4 bytes of data as a u32, using "variable byte integer"
     /// conversion as specified by MQTT v5
     /// Advances the position by 1 to 4 bytes
-    /// Can fail with [MqttReaderError::InsufficientData] or [MqttReaderError::InvalidVariableByteIntegerEncoding]
+    /// Can fail with [PacketReadError::InsufficientData] or [PacketReadError::InvalidVariableByteIntegerEncoding]
     fn get_variable_u32(&mut self) -> Result<u32> {
         let mut multiplier: u32 = 1;
         let mut value: u32 = 0;
@@ -189,7 +193,7 @@ pub trait MqttReader<'a>: Sized {
             if encoded & 128 == 0 {
                 break;
             } else if encoded_len > 3 {
-                return Err(MqttReaderError::InvalidVariableByteIntegerEncoding);
+                return Err(PacketReadError::InvalidVariableByteIntegerEncoding);
             }
         }
 
@@ -201,16 +205,16 @@ pub trait MqttReader<'a>: Sized {
     /// as specified by MQTT v5
     /// Advances the position by 2 or more bytes on success.
     /// If the decoded string contains any null characters, will fail with
-    /// [MqttReaderError::NullCharacterInString].
+    /// [PacketReadError::NullCharacterInString].
     /// If the buffer data contains invalid utf8 data, will fail with
-    /// [MqttReaderError::InvalidUtf8].
-    /// Can fail with [MqttReaderError::InsufficientData],
+    /// [PacketReadError::InvalidUtf8].
+    /// Can fail with [PacketReadError::InsufficientData],
     fn get_str(&mut self) -> Result<&'a str> {
         let len = self.get_u16()?;
         let slice = self.get_slice(len as usize)?;
         let s = core::str::from_utf8(slice)?;
         if s.contains("\0") {
-            Err(MqttReaderError::NullCharacterInString)
+            Err(PacketReadError::NullCharacterInString)
         } else {
             Ok(s)
         }
@@ -220,10 +224,10 @@ pub trait MqttReader<'a>: Sized {
     /// a name as a string, then a value as a string, as specified by MQTT v5
     /// Advances the position by 4 or more bytes on success.
     /// If either decoded string contains any null characters, will fail with
-    /// [MqttReaderError::NullCharacterInString].
+    /// [PacketReadError::NullCharacterInString].
     /// If the buffer data contains invalid utf8 data for either strnig, will fail with
-    /// [MqttReaderError::InvalidUtf8].
-    /// Can fail with [MqttReaderError::InsufficientData],
+    /// [PacketReadError::InvalidUtf8].
+    /// Can fail with [PacketReadError::InsufficientData],
     fn get_string_pair(&mut self) -> Result<StringPair<'a>> {
         let name = self.get_str()?;
         let value = self.get_str()?;
@@ -234,7 +238,7 @@ pub trait MqttReader<'a>: Sized {
     /// using the next two bytes as a data length, then the following
     /// bytes as the data itself, as specified by MQTT v5.
     /// Advances the position by 2 or more bytes on success.
-    /// Can fail with [MqttReaderError::InsufficientData],
+    /// Can fail with [PacketReadError::InsufficientData],
     fn get_binary_data(&mut self) -> Result<&'a [u8]> {
         let len = self.get_u16()?;
         self.get_slice(len as usize)
@@ -286,7 +290,7 @@ pub trait MqttReader<'a>: Sized {
             160 => Ok(ReasonCode::MaximumConnectTime),
             161 => Ok(ReasonCode::SubscriptionIdentifiersNotSupported),
             162 => Ok(ReasonCode::WildcardSubscriptionsNotSupported),
-            _ => Err(MqttReaderError::UnknownReasonCode),
+            _ => Err(PacketReadError::UnknownReasonCode),
         }
     }
 
@@ -300,7 +304,7 @@ pub trait MqttReader<'a>: Sized {
         while self.position() < properties_end {
             let item = T::read(self)?;
             vec.push(item)
-                .map_err(|_e| MqttReaderError::TooManyProperties)?;
+                .map_err(|_e| PacketReadError::TooManyProperties)?;
         }
 
         Ok(())
@@ -348,7 +352,7 @@ impl<'a> MqttReader<'a> for MqttBufReader<'a> {
     fn get_slice(&mut self, len: usize) -> Result<&'a [u8]> {
         let end = self.position + len;
         if end > self.buf.len() {
-            Err(MqttReaderError::InsufficientData)
+            Err(PacketReadError::InsufficientData)
         } else {
             let slice = &self.buf[self.position..end];
             self.position = end;
@@ -384,7 +388,7 @@ impl<'a> MqttReader<'a> for MqttBufReader<'a> {
 // {
 //     fn get_slice(&mut self, len: usize) -> Result<&'a [u8]> {
 //         if len > self.remaining {
-//             Err(MqttReaderError::InsufficientData)
+//             Err(PacketReadError::InsufficientData)
 //         } else {
 //             self.remaining -= len;
 //             self.reader.get_slice(len)
@@ -430,8 +434,8 @@ mod tests {
 
         assert_eq!(0, r.remaining());
 
-        assert_eq!(r.get_slice(1), Err(MqttReaderError::InsufficientData));
-        assert_eq!(r.get_slice(2), Err(MqttReaderError::InsufficientData));
+        assert_eq!(r.get_slice(1), Err(PacketReadError::InsufficientData));
+        assert_eq!(r.get_slice(2), Err(PacketReadError::InsufficientData));
 
         // Can still get an empty slice
         let slice_empty = r.get_slice(0)?;
@@ -452,7 +456,7 @@ mod tests {
 
         // We've consumed all data
         assert_eq!(0, r.remaining());
-        assert_eq!(r.get_slice(1), Err(MqttReaderError::InsufficientData));
+        assert_eq!(r.get_slice(1), Err(PacketReadError::InsufficientData));
 
         Ok(())
     }
@@ -466,7 +470,7 @@ mod tests {
             assert!(!r.get_bool_zero_one()?);
             assert!(r.get_bool_zero_one()?);
             assert_eq!(
-                Err(MqttReaderError::InvalidBooleanValue),
+                Err(PacketReadError::InvalidBooleanValue),
                 r.get_bool_zero_one()
             );
         }
@@ -484,7 +488,7 @@ mod tests {
 
         // We've consumed all data
         assert_eq!(0, r.remaining());
-        assert_eq!(r.get_slice(1), Err(MqttReaderError::InsufficientData));
+        assert_eq!(r.get_slice(1), Err(PacketReadError::InsufficientData));
 
         Ok(())
     }
@@ -500,7 +504,7 @@ mod tests {
 
         // Single remaining byte can't be read as a u16
         assert_eq!(1, r.remaining());
-        assert_eq!(r.get_u16(), Err(MqttReaderError::InsufficientData));
+        assert_eq!(r.get_u16(), Err(PacketReadError::InsufficientData));
 
         Ok(())
     }
@@ -515,7 +519,7 @@ mod tests {
 
         // Three remaining bytes can't be read as a u32
         assert_eq!(3, r.remaining());
-        assert_eq!(r.get_u32(), Err(MqttReaderError::InsufficientData));
+        assert_eq!(r.get_u32(), Err(PacketReadError::InsufficientData));
 
         Ok(())
     }
@@ -563,7 +567,7 @@ mod tests {
 
         assert_eq!(
             r.get_variable_u32(),
-            Err(MqttReaderError::InvalidVariableByteIntegerEncoding)
+            Err(PacketReadError::InvalidVariableByteIntegerEncoding)
         );
 
         Ok(())
@@ -602,25 +606,25 @@ mod tests {
 
     #[test]
     fn mqtt_buf_reader_errors_on_invalid_str() -> Result<()> {
-        let test_cases: &[(&[u8], MqttReaderError)] = &[
+        let test_cases: &[(&[u8], PacketReadError)] = &[
             // Character data MUST NOT include encodings of code points between U+D800 and U+DFFF
             // U+D800
             (
                 &[0x00, 0x03, 0xED, 0xA0, 0x80],
-                MqttReaderError::InvalidUtf8,
+                PacketReadError::InvalidUtf8,
             ),
             // U+D900
             (
                 &[0x00, 0x03, 0xED, 0xA4, 0x80],
-                MqttReaderError::InvalidUtf8,
+                PacketReadError::InvalidUtf8,
             ),
             // U+DFFF
             (
                 &[0x00, 0x03, 0xED, 0xBF, 0xBF],
-                MqttReaderError::InvalidUtf8,
+                PacketReadError::InvalidUtf8,
             ),
             // A UTF-8 Encoded String MUST NOT include an encoding of the null character U+0000.
-            (&[0x00, 0x01, 0x00], MqttReaderError::NullCharacterInString),
+            (&[0x00, 0x01, 0x00], PacketReadError::NullCharacterInString),
         ];
 
         for (data, err) in test_cases.iter() {
@@ -637,7 +641,7 @@ mod tests {
         let buf = [0x00, 0x03, 0x80, 0x80];
         let mut r = MqttBufReader::new(&buf);
 
-        assert_eq!(r.get_str(), Err(MqttReaderError::InsufficientData));
+        assert_eq!(r.get_str(), Err(PacketReadError::InsufficientData));
 
         Ok(())
     }
@@ -681,7 +685,7 @@ mod tests {
         let buf = [0x00, 0x03, 0x80, 0x80];
         let mut r = MqttBufReader::new(&buf);
 
-        assert_eq!(r.get_binary_data(), Err(MqttReaderError::InsufficientData));
+        assert_eq!(r.get_binary_data(), Err(PacketReadError::InsufficientData));
 
         Ok(())
     }

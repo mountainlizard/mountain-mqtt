@@ -1,6 +1,6 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
 use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
+    mqtt_reader::{self, MqttReader, PacketReadError},
     mqtt_writer::{self, MqttWriter},
 };
 use crate::data::packet_type::PacketType;
@@ -49,7 +49,7 @@ impl<'a> PacketRead<'a> for Pingreq {
         if len == 0 {
             Ok(Pingreq::default())
         } else {
-            Err(MqttReaderError::MalformedPacket)
+            Err(PacketReadError::MalformedPacket)
         }
     }
 }
@@ -88,12 +88,15 @@ mod tests {
     #[test]
     fn decode_fails_on_nonzero_length() {
         let mut r = MqttBufReader::new(&ENCODED_NONZERO_LENGTH);
-        assert_eq!(Pingreq::read(&mut r), Err(MqttReaderError::MalformedPacket));
+        assert_eq!(Pingreq::read(&mut r), Err(PacketReadError::MalformedPacket));
     }
 
     #[test]
-    fn decode_fails_on_incorrect_packet_type() {
+    fn decode_fails_on_invalid_packet_type() {
         let mut r = MqttBufReader::new(&ENCODED_INCORRECT_PACKET_TYPE);
-        assert_eq!(Pingreq::read(&mut r), Err(MqttReaderError::MalformedPacket));
+        assert_eq!(
+            Pingreq::read(&mut r),
+            Err(PacketReadError::InvalidPacketType)
+        );
     }
 }

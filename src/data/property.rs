@@ -290,7 +290,7 @@ macro_rules! packet_properties {
                             Ok(Self::$p(v))
                         }
                     )*
-                    _ => Err($crate::data::property::mqtt_reader::MqttReaderError::MalformedPacket),
+                    _ => Err($crate::data::property::mqtt_reader::PacketReadError::MalformedPacket),
                 }
             }
         }
@@ -425,7 +425,7 @@ mod tests {
     use heapless::Vec;
 
     use crate::codec::{
-        mqtt_reader::{MqttBufReader, MqttReaderError},
+        mqtt_reader::{MqttBufReader, PacketReadError},
         mqtt_writer::MqttBufWriter,
     };
 
@@ -575,7 +575,7 @@ mod tests {
         let mut read_vec: Vec<PacketAnyProperty<'_>, 3> = Vec::new();
         assert_eq!(
             r.get_property_list(&mut read_vec),
-            Err(MqttReaderError::TooManyProperties)
+            Err(PacketReadError::TooManyProperties)
         );
     }
 
@@ -639,7 +639,7 @@ mod tests {
             let mut r = MqttBufReader::new(&buf[0..position]);
             assert_eq!(
                 PacketFirstThreeProperty::read(&mut r),
-                Err(mqtt_reader::MqttReaderError::MalformedPacket)
+                Err(mqtt_reader::PacketReadError::MalformedPacket)
             );
         }
     }

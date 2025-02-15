@@ -1,5 +1,5 @@
 use crate::codec::{
-    mqtt_reader::{self, MqttReader, MqttReaderError},
+    mqtt_reader::{self, MqttReader, PacketReadError},
     mqtt_writer::{self, MqttLenWriter, MqttWriter},
     read::Read,
     write::Write,
@@ -83,17 +83,16 @@ impl<'a, P: PacketRead<'a>> Read<'a> for P {
 
         // Check that packet type is as expected, so `PacketRead` implementation
         // doesn't have to
-        let packet_type = PacketType::try_from(first_header_byte)
-            .map_err(|_e| MqttReaderError::MalformedPacket)?;
+        let packet_type = PacketType::try_from(first_header_byte)?;
         if packet_type != packet.packet_type() {
-            return Err(MqttReaderError::IncorrectPacketType);
+            return Err(PacketReadError::IncorrectPacketType);
         }
 
         // Check remaining length was correct
         if reader.position() == packet_end_position {
             Ok(packet)
         } else {
-            Err(MqttReaderError::MalformedPacket)
+            Err(PacketReadError::MalformedPacket)
         }
     }
 }

@@ -1,6 +1,6 @@
 use super::packet::{Packet, PacketRead, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5};
 use crate::codec::{
-    mqtt_reader::MqttReaderError,
+    mqtt_reader::PacketReadError,
     mqtt_writer::{self, MqttWriter},
 };
 use crate::data::{
@@ -146,14 +146,14 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
 
         // See 3.1.2.1 and 3.1.2.2
         if protocol_name != PROTOCOL_NAME || protocol_version != PROTOCOL_VERSION_5 {
-            return Err(MqttReaderError::UnsupportedProtocolVersion);
+            return Err(PacketReadError::UnsupportedProtocolVersion);
         }
 
         let connect_flags = reader.get_u8()?; // 3.1.2.3 Connect Flags
 
         // Check MQTT-3.1.2-2 (connect flags bit 0 must be 0)
         if connect_flags & 0x01 != 0 {
-            return Err(MqttReaderError::MalformedPacket);
+            return Err(PacketReadError::MalformedPacket);
         }
         let clean_start = connect_flags & (CLEAN_START_BIT) != 0;
 

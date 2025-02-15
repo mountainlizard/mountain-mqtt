@@ -11,7 +11,7 @@ use crate::{
 use super::write::Write;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum MqttWriterError {
+pub enum PacketWriteError {
     /// On attempt to put data that will not fit in buffer
     Overflow,
 
@@ -28,7 +28,7 @@ pub enum MqttWriterError {
     StringTooLarge,
 }
 
-pub type Result<A> = core::result::Result<A, MqttWriterError>;
+pub type Result<A> = core::result::Result<A, PacketWriteError>;
 
 /// A writer putting data to an underlying buffer in MQTT v5 encodings.
 /// Each `put` method puts encoded data to the buffer, advancing its position.
@@ -42,13 +42,13 @@ pub trait MqttWriter<'a>: Sized {
     /// used by the other put methods, which handle checking
     /// and encoding different input data types as raw slices.
     /// Advances the position by length of slice
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     fn put_slice(&mut self, slice: &[u8]) -> Result<()>;
 
     /// Put the next byte of data as a bool,
     /// encoded with 0 for false, 1 for true
     /// Advances the position by 1
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     fn put_bool_zero_one(&mut self, b: bool) -> Result<()> {
         let value = if b { 1 } else { 0 };
         self.put_u8(value)
@@ -56,21 +56,21 @@ pub trait MqttWriter<'a>: Sized {
 
     /// Put the next byte of data as a reason code
     /// Advances the position by 1
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     fn put_reason_code(&mut self, c: &ReasonCode) -> Result<()> {
         self.put_u8(*c as u8)
     }
 
     /// Put the next byte of data as a u8
     /// Advances the position by 1
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     fn put_u8(&mut self, n: u8) -> Result<()> {
         self.put_slice(&[n])
     }
 
     /// Put the next two bytes of data as a u16, using big-endian conversion
     /// Advances the position by 2
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     fn put_u16(&mut self, n: u16) -> Result<()> {
         let data = n.to_be_bytes();
         self.put_slice(&data)
@@ -78,7 +78,7 @@ pub trait MqttWriter<'a>: Sized {
 
     /// Put the next four bytes of data as a u32, using big-endian conversion
     /// Advances the position by 4
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     fn put_u32(&mut self, n: u32) -> Result<()> {
         let data = n.to_be_bytes();
         self.put_slice(&data)
@@ -88,15 +88,15 @@ pub trait MqttWriter<'a>: Sized {
     /// conversion as specified by MQTT v5
     /// Advances the position by 1 to 4 bytes depending on the
     /// size of the value
-    /// Fails with [MqttWriterError::VariableByteIntegerTooLarge] if value is
+    /// Fails with [PacketWriteError::VariableByteIntegerTooLarge] if value is
     /// larger than [VARIABLE_BYTE_INTEGER_MAX_VALUE]
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     /// In case of a failure, the position will be advanced by however many bytes
     /// were written in an attempt to encode.
     /// Returns the number of bytes written
     fn put_variable_u32(&mut self, mut n: u32) -> Result<()> {
         if n > VARIABLE_BYTE_INTEGER_MAX_VALUE {
-            Err(MqttWriterError::VariableByteIntegerTooLarge)
+            Err(PacketWriteError::VariableByteIntegerTooLarge)
         } else {
             loop {
                 let mut encoded_byte = (n % 128) as u8;
@@ -118,18 +118,18 @@ pub trait MqttWriter<'a>: Sized {
     /// a string length, then the following bytes as utf8 string data,
     /// as specified by MQTT v5
     /// To comply with MQTT v5, the string will be checked for null characters,
-    /// and if any are found this will fail with [MqttWriterError::NullCharacterInString]. If the
-    /// string is longer than [DATA_MAX_LEN] this will fail with [MqttWriterError::DataTooLarge]
+    /// and if any are found this will fail with [PacketWriteError::NullCharacterInString]. If the
+    /// string is longer than [DATA_MAX_LEN] this will fail with [PacketWriteError::DataTooLarge]
     /// Advances the position by 2 or more bytes on success.
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     /// In case of a failure, the position will be advanced by however many bytes
     /// were written in an attempt to encode.
     fn put_str(&mut self, s: &str) -> Result<()> {
         let len = s.len();
         if len > DATA_MAX_LEN {
-            Err(MqttWriterError::StringTooLarge)
+            Err(PacketWriteError::StringTooLarge)
         } else if s.contains("\0") {
-            Err(MqttWriterError::NullCharacterInString)
+            Err(PacketWriteError::NullCharacterInString)
         } else {
             self.put_u16(len as u16)?;
             self.put_slice(s.as_bytes())?;
@@ -151,15 +151,15 @@ pub trait MqttWriter<'a>: Sized {
     /// Put the next bytes of data as a delimited binary data item,
     /// using the next two bytes as a data length, then the following
     /// bytes as the data itself, as specified by MQTT v5
-    /// If the data is longer than [DATA_MAX_LEN] this will fail with [MqttWriterError::DataTooLarge]
+    /// If the data is longer than [DATA_MAX_LEN] this will fail with [PacketWriteError::DataTooLarge]
     /// Advances the position by 2 or more bytes on success.
-    /// Can fail with [MqttWriterError::Overflow]
+    /// Can fail with [PacketWriteError::Overflow]
     /// In case of a failure, the position will be advanced by however many bytes
     /// were written in an attempt to encode.
     fn put_binary_data(&mut self, data: &[u8]) -> Result<()> {
         let len = data.len();
         if len > DATA_MAX_LEN {
-            Err(MqttWriterError::DataTooLarge)
+            Err(PacketWriteError::DataTooLarge)
         } else {
             self.put_u16(len as u16)?;
             self.put_slice(data)?;
@@ -226,7 +226,7 @@ impl<'a> MqttWriter<'a> for MqttBufWriter<'a> {
     fn put_slice(&mut self, slice: &[u8]) -> Result<()> {
         let end = self.position + slice.len();
         if end > self.buf.len() {
-            Err(MqttWriterError::Overflow)
+            Err(PacketWriteError::Overflow)
         } else {
             self.buf[self.position..end].copy_from_slice(slice);
             self.position = end;
@@ -282,7 +282,7 @@ impl MqttWriter<'_> for MqttLenWriter {
 
     fn put_variable_u32(&mut self, mut n: u32) -> Result<()> {
         if n > VARIABLE_BYTE_INTEGER_MAX_VALUE {
-            Err(MqttWriterError::VariableByteIntegerTooLarge)
+            Err(PacketWriteError::VariableByteIntegerTooLarge)
         } else {
             loop {
                 n /= 128;
@@ -298,7 +298,7 @@ impl MqttWriter<'_> for MqttLenWriter {
     fn put_str(&mut self, s: &str) -> Result<()> {
         let len = s.len();
         if len > DATA_MAX_LEN {
-            Err(MqttWriterError::StringTooLarge)
+            Err(PacketWriteError::StringTooLarge)
         } else {
             self.advance(2 + len)
         }
@@ -307,7 +307,7 @@ impl MqttWriter<'_> for MqttLenWriter {
     fn put_binary_data(&mut self, data: &[u8]) -> Result<()> {
         let len = data.len();
         if len > DATA_MAX_LEN {
-            Err(MqttWriterError::DataTooLarge)
+            Err(PacketWriteError::DataTooLarge)
         } else {
             self.advance(2 + len)
         }
@@ -381,8 +381,8 @@ mod tests {
 
         assert_eq!(0, r.remaining());
 
-        assert_eq!(r.put_slice(&[0u8]), Err(MqttWriterError::Overflow));
-        assert_eq!(r.put_slice(&[0u8, 1]), Err(MqttWriterError::Overflow));
+        assert_eq!(r.put_slice(&[0u8]), Err(PacketWriteError::Overflow));
+        assert_eq!(r.put_slice(&[0u8, 1]), Err(PacketWriteError::Overflow));
 
         // Can still put an empty slice
         assert_eq!(r.put_slice(&[]), Ok(()));
@@ -556,22 +556,22 @@ mod tests {
         assert_eq!(r.position(), 4);
         assert_eq!(
             r.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE + 1),
-            Err(MqttWriterError::VariableByteIntegerTooLarge)
+            Err(PacketWriteError::VariableByteIntegerTooLarge)
         );
         assert_eq!(
             r.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE + 2),
-            Err(MqttWriterError::VariableByteIntegerTooLarge)
+            Err(PacketWriteError::VariableByteIntegerTooLarge)
         );
 
         assert_eq!(rl.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE), Ok(()));
         assert_eq!(rl.position(), 4);
         assert_eq!(
             rl.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE + 1),
-            Err(MqttWriterError::VariableByteIntegerTooLarge)
+            Err(PacketWriteError::VariableByteIntegerTooLarge)
         );
         assert_eq!(
             rl.put_variable_u32(VARIABLE_BYTE_INTEGER_MAX_VALUE + 2),
-            Err(MqttWriterError::VariableByteIntegerTooLarge)
+            Err(PacketWriteError::VariableByteIntegerTooLarge)
         );
 
         Ok(())
@@ -621,13 +621,13 @@ mod tests {
         // Note we don't test MqttLenWriter here since it doesn't check for null characters
         let mut buf = [0u8; 10];
 
-        let test_cases: &[(&str, MqttWriterError)] = &[
+        let test_cases: &[(&str, PacketWriteError)] = &[
             // A UTF-8 Encoded String MUST NOT include an encoding of the null character U+0000.
-            ("\0", MqttWriterError::NullCharacterInString),
-            ("A\0", MqttWriterError::NullCharacterInString),
-            ("\0A", MqttWriterError::NullCharacterInString),
-            ("A\0A", MqttWriterError::NullCharacterInString),
-            ("\0\0", MqttWriterError::NullCharacterInString),
+            ("\0", PacketWriteError::NullCharacterInString),
+            ("A\0", PacketWriteError::NullCharacterInString),
+            ("\0A", PacketWriteError::NullCharacterInString),
+            ("A\0A", PacketWriteError::NullCharacterInString),
+            ("\0\0", PacketWriteError::NullCharacterInString),
             // Note - no tests for badly-formed utf8, e.g. containing code points between
             // U+D800 and U+DFFF, since Rust strings are guaranteed to be valid. We only need
             // to test this on the reader side where we're accepting arbitrary binary data
@@ -654,12 +654,12 @@ mod tests {
         // Now check this fails with one byte less buffer
         let mut buf = [0u8; 4];
         let mut r = MqttBufWriter::new(&mut buf);
-        assert_eq!(r.put_str("AAA"), Err(MqttWriterError::Overflow));
+        assert_eq!(r.put_str("AAA"), Err(PacketWriteError::Overflow));
 
         // Check another case
         let mut buf = [0u8; 6];
         let mut r = MqttBufWriter::new(&mut buf);
-        assert_eq!(r.put_str("AAAAA"), Err(MqttWriterError::Overflow));
+        assert_eq!(r.put_str("AAAAA"), Err(PacketWriteError::Overflow));
 
         Ok(())
     }
@@ -685,8 +685,8 @@ mod tests {
         let s = core::str::from_utf8(&data).unwrap();
         let mut r = MqttBufWriter::new(&mut buf);
         let mut rl = MqttLenWriter::default();
-        assert_eq!(r.put_str(s), Err(MqttWriterError::StringTooLarge));
-        assert_eq!(rl.put_str(s), Err(MqttWriterError::StringTooLarge));
+        assert_eq!(r.put_str(s), Err(PacketWriteError::StringTooLarge));
+        assert_eq!(rl.put_str(s), Err(PacketWriteError::StringTooLarge));
 
         Ok(())
     }
@@ -747,7 +747,7 @@ mod tests {
         let mut r = MqttBufWriter::new(&mut buf);
         assert_eq!(
             r.put_binary_data(&[1, 2, 3]),
-            Err(MqttWriterError::Overflow)
+            Err(PacketWriteError::Overflow)
         );
 
         // Check another case
@@ -755,7 +755,7 @@ mod tests {
         let mut r = MqttBufWriter::new(&mut buf);
         assert_eq!(
             r.put_binary_data(&[1, 2, 3, 4, 5]),
-            Err(MqttWriterError::Overflow)
+            Err(PacketWriteError::Overflow)
         );
 
         Ok(())
@@ -779,10 +779,13 @@ mod tests {
         let data = [0xFF; DATA_MAX_LEN + 1];
         let mut r = MqttBufWriter::new(&mut buf);
         let mut rl = MqttLenWriter::default();
-        assert_eq!(r.put_binary_data(&data), Err(MqttWriterError::DataTooLarge));
+        assert_eq!(
+            r.put_binary_data(&data),
+            Err(PacketWriteError::DataTooLarge)
+        );
         assert_eq!(
             rl.put_binary_data(&data),
-            Err(MqttWriterError::DataTooLarge)
+            Err(PacketWriteError::DataTooLarge)
         );
 
         Ok(())
