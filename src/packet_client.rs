@@ -166,15 +166,52 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{codec::mqtt_reader::MqttBufReader, packets::pingreq::Pingreq};
+    use heapless::Vec;
+
+    use crate::{
+        codec::mqtt_reader::MqttBufReader,
+        data::{
+            packet_identifier::PacketIdentifier, property::SubscribeProperty,
+            quality_of_service::QualityOfService,
+        },
+        packets::{
+            pingreq::Pingreq,
+            subscribe::{Subscribe, SubscriptionRequest},
+        },
+    };
 
     use super::*;
 
-    const ENCODED: [u8; 2] = [0xC0, 0x00];
+    const ENCODED_PINGRESP: [u8; 2] = [0xC0, 0x00];
     const INVALID_PACKET_TYPE: [u8; 2] = [0xC1, 0x00];
     const INVALID_LENGTH: [u8; 5] = [0xC0, 0x80, 0x80, 0x80, 0x80];
     // Packet has first header byte then a length of 16, implying total packet length of 18 (after the first header byte and the single byte length)
     const ENCODED_IMPLIES_PACKET_LENGTH_18: [u8; 2] = [0xC0, 0x10];
+
+    const ENCODED_SUBSCRIBE: [u8; 30] = [
+        0x82, 0x1C, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13, 0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f,
+        0x74, 0x6f, 0x70, 0x69, 0x63, 0x00, 0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23, 0x01,
+    ];
+
+    fn example_subscribe_packet<'a>() -> Subscribe<'a, 16, 16> {
+        let primary_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
+        let mut additional_requests = Vec::new();
+        additional_requests
+            .push(SubscriptionRequest::new("hehe/#", QualityOfService::QoS1))
+            .unwrap();
+        let mut properties = Vec::new();
+        properties
+            .push(SubscribeProperty::SubscriptionIdentifier(2432.into()))
+            .unwrap();
+        let packet = Subscribe::new(
+            PacketIdentifier(5432),
+            primary_request,
+            additional_requests,
+            properties,
+        );
+
+        packet
+    }
 
     struct BufferConnection<'a> {
         reader: MqttBufReader<'a>,
@@ -206,21 +243,19 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn decode() {
+    async fn decode(data: &[u8], packet_generic: PacketGeneric<'_, 16, 16>) {
         let mut write_buf = [];
-        let connection = BufferConnection::new(&ENCODED, &mut write_buf);
+        let connection = BufferConnection::new(data, &mut write_buf);
 
         let mut buf = [0; 1024];
         let mut client = PacketClient::new(connection, &mut buf);
 
         let packet: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
 
-        assert_eq!(packet, PacketGeneric::Pingreq(Pingreq::default()));
+        assert_eq!(packet, packet_generic);
     }
 
-    #[tokio::test]
-    async fn encode() {
+    async fn encode<P: Packet + write::Write>(packet: P, encoded: &[u8]) {
         let read_buf = [];
         let mut write_buf = [0; 1024];
         let connection = BufferConnection::new(&read_buf, &mut write_buf);
@@ -228,9 +263,35 @@ mod tests {
         let mut buf = [0; 1024];
         let mut client = PacketClient::new(connection, &mut buf);
 
-        client.send(Pingreq::default()).await.unwrap();
+        client.send(packet).await.unwrap();
 
-        assert_eq!(write_buf[0..ENCODED.len()], ENCODED);
+        assert_eq!(&write_buf[0..encoded.len()], encoded);
+    }
+
+    #[tokio::test]
+    async fn decode_pingresp() {
+        decode(
+            &ENCODED_PINGRESP,
+            PacketGeneric::Pingreq(Pingreq::default()),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn encode_pingresp() {
+        encode(Pingreq::default(), &ENCODED_PINGRESP).await;
+    }
+
+    #[tokio::test]
+    async fn decode_subscribe() {
+        let packet = example_subscribe_packet();
+        let packet_generic = PacketGeneric::Subscribe(packet);
+        decode(&ENCODED_SUBSCRIBE, packet_generic).await;
+    }
+
+    #[tokio::test]
+    async fn encode_subscribe() {
+        encode(example_subscribe_packet(), &ENCODED_SUBSCRIBE).await;
     }
 
     #[tokio::test]
