@@ -14,12 +14,18 @@ use super::write::Write;
 pub enum MqttWriterError {
     /// On attempt to put data that will not fit in buffer
     Overflow,
+
     /// On attempt to put a string containing a null character (which is not valid in an MQTT message)
     NullCharacterInString,
+
     /// On attempt to put a u32 value as a variable byte integer, where the value is too large to encode
     VariableByteIntegerTooLarge,
-    /// On attempt to put a string or binary data where the encoded form is too many bytes to encode
+
+    /// On attempt to put binary data with too many bytes to encode
     DataTooLarge,
+
+    /// On attempt to put a string where the encoded form is too many bytes to encode
+    StringTooLarge,
 }
 
 pub type Result<A> = core::result::Result<A, MqttWriterError>;
@@ -121,7 +127,7 @@ pub trait MqttWriter<'a>: Sized {
     fn put_str(&mut self, s: &str) -> Result<()> {
         let len = s.len();
         if len > DATA_MAX_LEN {
-            Err(MqttWriterError::DataTooLarge)
+            Err(MqttWriterError::StringTooLarge)
         } else if s.contains("\0") {
             Err(MqttWriterError::NullCharacterInString)
         } else {
@@ -292,7 +298,7 @@ impl MqttWriter<'_> for MqttLenWriter {
     fn put_str(&mut self, s: &str) -> Result<()> {
         let len = s.len();
         if len > DATA_MAX_LEN {
-            Err(MqttWriterError::DataTooLarge)
+            Err(MqttWriterError::StringTooLarge)
         } else {
             self.advance(2 + len)
         }
@@ -679,8 +685,8 @@ mod tests {
         let s = core::str::from_utf8(&data).unwrap();
         let mut r = MqttBufWriter::new(&mut buf);
         let mut rl = MqttLenWriter::default();
-        assert_eq!(r.put_str(s), Err(MqttWriterError::DataTooLarge));
-        assert_eq!(rl.put_str(s), Err(MqttWriterError::DataTooLarge));
+        assert_eq!(r.put_str(s), Err(MqttWriterError::StringTooLarge));
+        assert_eq!(rl.put_str(s), Err(MqttWriterError::StringTooLarge));
 
         Ok(())
     }
