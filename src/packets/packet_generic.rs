@@ -141,7 +141,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Read<'a>
         if reader.position() == packet_end_position {
             Ok(packet_generic)
         } else {
-            Err(PacketReadError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         }
     }
 }

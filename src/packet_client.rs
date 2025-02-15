@@ -172,10 +172,12 @@ mod tests {
     use crate::{
         codec::mqtt_reader::MqttBufReader,
         data::{
-            packet_identifier::PacketIdentifier, property::SubscribeProperty,
+            packet_identifier::PacketIdentifier,
+            property::{ConnectProperty, SubscribeProperty},
             quality_of_service::QualityOfService,
         },
         packets::{
+            connect::Connect,
             pingreq::Pingreq,
             subscribe::{Subscribe, SubscriptionRequest},
         },
@@ -192,6 +194,20 @@ mod tests {
     const ENCODED_SUBSCRIBE: [u8; 30] = [
         0x82, 0x1C, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13, 0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f,
         0x74, 0x6f, 0x70, 0x69, 0x63, 0x00, 0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23, 0x01,
+    ];
+
+    const ENCODED_CONNECT: [u8; 18] = [
+        0x10, 0x10, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0x02, 0x00, 0x3c, 0x03, 0x21, 0x00,
+        0x14, 0x00, 0x00,
+    ];
+
+    // Copy of valid ENCODED_CONNECT above, except that it has a "remaining length" in the
+    // header byte that is 1 byte too long, and so should produce an incorrect packet length error. Note that we need
+    // to also add a padding byte to the data so that the client can attempt to read the whole expected packet buffer and get
+    // as far as trying to then decode it and encounter a mismatch in the packet_generic Read implementation
+    const ENCODED_CONNECT_INCORRECT_PACKET_LENGTH: [u8; 19] = [
+        0x10, 0x11, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0x02, 0x00, 0x3c, 0x03, 0x21, 0x00,
+        0x14, 0x00, 0x00, 0x00,
     ];
 
     fn example_subscribe_packet<'a>() -> Subscribe<'a, 16, 16> {
@@ -211,6 +227,15 @@ mod tests {
             properties,
         );
 
+        packet
+    }
+
+    fn example_connect_packet<'a>() -> Connect<'a, 16> {
+        let mut packet = Connect::new(60, None, None, "", true, None, Vec::new());
+        packet
+            .properties
+            .push(ConnectProperty::ReceiveMaximum(20.into()))
+            .unwrap();
         packet
     }
 
@@ -265,6 +290,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn error_on_decode_connect_with_incorrect_length() {
+        let mut write_buf = [];
+        let connection =
+            BufferConnection::new(&ENCODED_CONNECT_INCORRECT_PACKET_LENGTH, &mut write_buf);
+
+        let mut buf = [0; 1024];
+        let mut client = PacketClient::new(connection, &mut buf);
+
+        let packet: Result<PacketGeneric<'_, 16, 16>, PacketReadError> = client.receive().await;
+        assert_eq!(packet, Err(PacketReadError::IncorrectPacketLength));
+    }
+
+    #[tokio::test]
     async fn decode_pingresp() {
         decode(
             &ENCODED_PINGRESP,
@@ -288,6 +326,20 @@ mod tests {
     #[tokio::test]
     async fn encode_subscribe() {
         encode(example_subscribe_packet(), &ENCODED_SUBSCRIBE).await;
+    }
+
+    #[tokio::test]
+    async fn decode_connect() {
+        decode(
+            &ENCODED_CONNECT,
+            PacketGeneric::Connect(example_connect_packet()),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn encode_connect() {
+        encode(example_connect_packet(), &ENCODED_CONNECT).await;
     }
 
     #[tokio::test]

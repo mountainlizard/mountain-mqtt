@@ -52,7 +52,7 @@ impl<'a> PacketRead<'a> for Pingresp {
         if len == 0 {
             Ok(Pingresp::default())
         } else {
-            Err(PacketReadError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         }
     }
 }
@@ -93,7 +93,7 @@ mod tests {
         let mut r = MqttBufReader::new(&ENCODED_NONZERO_LENGTH);
         assert_eq!(
             Pingresp::read(&mut r),
-            Err(PacketReadError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         );
     }
 

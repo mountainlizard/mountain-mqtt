@@ -95,7 +95,7 @@ impl<'a, P: PacketRead<'a>> Read<'a> for P {
         if reader.position() == packet_end_position {
             Ok(packet)
         } else {
-            Err(PacketReadError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         }
     }
 }

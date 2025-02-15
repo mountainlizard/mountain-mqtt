@@ -87,6 +87,10 @@ pub enum PacketReadError {
 
     /// When decoding connect flags of Connect packet, an invalid value was encountered
     InvalidConnectFlags,
+
+    /// When decoding a packet, the "remaining length" in the packet header was incorrect -
+    /// the actual packet format indicates the packet is longer or shorter than header indicates
+    IncorrectPacketLength,
 }
 
 impl From<Utf8Error> for PacketReadError {

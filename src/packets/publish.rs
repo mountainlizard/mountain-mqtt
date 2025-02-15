@@ -128,9 +128,10 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
 
         // We expect there to be 0 or more bytes left in data,
         // if so this is all the payload, if not we have a malformed packet
+        // with an incorrect packet length
         let position = reader.position();
         if position > payload_end_position {
-            Err(PacketReadError::InsufficientData)
+            Err(PacketReadError::IncorrectPacketLength)
         } else {
             let payload_len = payload_end_position - position;
             let payload = reader.get_slice(payload_len)?;
@@ -165,6 +166,13 @@ mod tests {
 
     const EXAMPLE_DATA: [u8; EXAMPLE_LEN] = [
         0x32, 0x1B, 0x00, 0x04, 0x74, 0x65, 0x73, 0x74, 0x5B, 0x88, 0x07, 0x01, 0x01, 0x02, 0x00,
+        0x00, 0xB2, 0x6E, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f, 0x72, 0x6c, 0x64,
+    ];
+
+    // The same as EXAMPLE_DATA, but the "remaining length" in header is short enough that it ends
+    // before the payload - this should produce an incorrect length error
+    const EXAMPLE_DATA_INCORRECT_PACKET_LENGTH: [u8; EXAMPLE_LEN] = [
+        0x32, 0x03, 0x00, 0x04, 0x74, 0x65, 0x73, 0x74, 0x5B, 0x88, 0x07, 0x01, 0x01, 0x02, 0x00,
         0x00, 0xB2, 0x6E, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f, 0x72, 0x6c, 0x64,
     ];
 
@@ -236,5 +244,12 @@ mod tests {
 
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_RETAIN_DUPLICATE);
         assert_eq!(Publish::read(&mut r).unwrap(), example_packet(true, true));
+    }
+
+    #[test]
+    fn decode_errors_on_data_with_invalid_length_that_excludes_payload() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_INCORRECT_PACKET_LENGTH);
+        let packet: Result<Publish<'_, 16>, PacketReadError> = Publish::read(&mut r);
+        assert_eq!(packet, Err(PacketReadError::IncorrectPacketLength));
     }
 }

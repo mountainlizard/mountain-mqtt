@@ -52,7 +52,7 @@ impl<'a> PacketRead<'a> for Pingreq {
         if len == 0 {
             Ok(Pingreq::default())
         } else {
-            Err(PacketReadError::MalformedPacket)
+            Err(PacketReadError::IncorrectPacketLength)
         }
     }
 }
@@ -91,7 +91,10 @@ mod tests {
     #[test]
     fn decode_fails_on_nonzero_length() {
         let mut r = MqttBufReader::new(&ENCODED_NONZERO_LENGTH);
-        assert_eq!(Pingreq::read(&mut r), Err(PacketReadError::MalformedPacket));
+        assert_eq!(
+            Pingreq::read(&mut r),
+            Err(PacketReadError::IncorrectPacketLength)
+        );
     }
 
     #[test]

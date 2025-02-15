@@ -33,7 +33,7 @@ pub struct Connect<'a, const PROPERTIES_N: usize> {
     client_id: &'a str,
     clean_start: bool,
     will: Option<Will<'a, PROPERTIES_N>>,
-    properties: Vec<ConnectProperty<'a>, PROPERTIES_N>,
+    pub properties: Vec<ConnectProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
@@ -238,6 +238,13 @@ mod tests {
 
     const EXAMPLE_DATA: [u8; 18] = [
         0x10, 0x10, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0x02, 0x00, 0x3c, 0x03, 0x21, 0x00,
+        0x14, 0x00, 0x00,
+    ];
+
+    // Copy of valid EXAMPLE_DATA above, except that it has too short a "remaining length" in the
+    // header byte, and so should produce an incorrect packet length error
+    const EXAMPLE_DATA_INCORRECT_PACKET_LENGTH: [u8; 18] = [
+        0x10, 0x0F, 0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05, 0x02, 0x00, 0x3c, 0x03, 0x21, 0x00,
         0x14, 0x00, 0x00,
     ];
 
@@ -481,6 +488,15 @@ mod tests {
         assert_eq!(&read_packet, packet);
         assert_eq!(r.position(), encoded.len());
         assert_eq!(r.remaining(), 0);
+    }
+
+    #[test]
+    fn error_on_decoding_data_with_incorrect_packet_length() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_INCORRECT_PACKET_LENGTH);
+        assert_eq!(
+            r.get::<Connect<'_, 16>>(),
+            Err(PacketReadError::IncorrectPacketLength)
+        );
     }
 
     #[test]
