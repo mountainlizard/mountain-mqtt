@@ -16,6 +16,7 @@ use core::str::Utf8Error;
 /// encoded in an MQTT packet, they are intended to provide a more granular description of the error
 /// to assist in debugging and error handling. Other errors would not ever be represented in a packet,
 /// since they represent errors like a failure to read from the network, etc.
+///
 /// Note that some errors map to a [ReasonCode] other than [ReasonCode::MalformedPacket], for example
 /// [PacketReadError::UnexpectedPropertyIdentifier] may map to [ReasonCode::ProtocolError] in the case
 /// where a reason string property is sent in a packet type that should not have such a property, see
@@ -37,9 +38,6 @@ pub enum PacketReadError {
     /// (e.g. it contained more than 3 bytes with continuation bit set, indicating a total encoded
     /// length greater than 4 bytes)
     InvalidVariableByteIntegerEncoding,
-
-    /// Data did not match the MQTT specification, and no more specific error was available
-    MalformedPacket,
 
     /// Data was expected to be of a known packet type, but the first header byte did not match this
     IncorrectPacketType,
