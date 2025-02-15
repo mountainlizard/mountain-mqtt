@@ -1,6 +1,6 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
 use crate::codec::{
-    mqtt_reader::{self, MqttReader, PacketReadError},
+    mqtt_reader::{self, MqttReader},
     mqtt_writer::{self, MqttWriter},
 };
 use crate::data::{
@@ -8,6 +8,7 @@ use crate::data::{
     packet_type::PacketType,
     property::PublishProperty,
 };
+use crate::error::PacketReadError;
 use heapless::Vec;
 
 const RETAIN_SHIFT: i32 = 0;
@@ -119,7 +120,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
             0 => PublishPacketIdentifier::None, // QoS0, no packet identifier
             1 => PublishPacketIdentifier::Qos1(PacketIdentifier(reader.get_u16()?)),
             2 => PublishPacketIdentifier::Qos1(PacketIdentifier(reader.get_u16()?)),
-            _ => return Err(mqtt_reader::PacketReadError::InvalidQoSValue),
+            _ => return Err(PacketReadError::InvalidQoSValue),
         };
 
         let mut properties = Vec::new();

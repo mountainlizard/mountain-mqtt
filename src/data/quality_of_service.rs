@@ -1,4 +1,4 @@
-use crate::codec::mqtt_reader::PacketReadError;
+use crate::error::PacketReadError;
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Debug)]

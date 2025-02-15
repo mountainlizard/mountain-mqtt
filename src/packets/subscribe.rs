@@ -1,15 +1,18 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, PacketReadError},
-    mqtt_writer::{self, MqttWriter},
-    read::Read,
-};
 use crate::data::{
     packet_identifier::PacketIdentifier,
     packet_type::PacketType,
     property::SubscribeProperty,
     quality_of_service::QualityOfService,
     subscription_options::{RetainHandling, SubscriptionOptions},
+};
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttWriter},
+        read::Read,
+    },
+    error::PacketReadError,
 };
 
 use heapless::Vec;

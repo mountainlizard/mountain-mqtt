@@ -1,4 +1,4 @@
-use crate::codec::mqtt_reader::PacketReadError;
+use crate::error::PacketReadError;
 
 use super::quality_of_service::QualityOfService;
 

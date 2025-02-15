@@ -1,13 +1,11 @@
 use super::packet::{Packet, PacketRead, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5};
-use crate::codec::{
-    mqtt_reader::PacketReadError,
-    mqtt_writer::{self, MqttWriter},
-};
+use crate::codec::mqtt_writer::{self, MqttWriter};
 use crate::data::{
     packet_type::PacketType,
     property::{ConnectProperty, WillProperty},
     quality_of_service::QualityOfService,
 };
+use crate::error::PacketReadError;
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]

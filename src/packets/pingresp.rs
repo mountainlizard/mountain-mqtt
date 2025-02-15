@@ -1,9 +1,12 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, PacketReadError},
-    mqtt_writer::{self, MqttWriter},
-};
 use crate::data::packet_type::PacketType;
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttWriter},
+    },
+    error::PacketReadError,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct Pingresp {}

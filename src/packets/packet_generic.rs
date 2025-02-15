@@ -1,9 +1,7 @@
 use crate::{
-    codec::{
-        mqtt_reader::{self, PacketReadError},
-        read::Read,
-    },
+    codec::{mqtt_reader, read::Read},
     data::packet_type::PacketType,
+    error::PacketReadError,
 };
 
 use super::{

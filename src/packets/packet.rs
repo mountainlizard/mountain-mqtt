@@ -1,10 +1,13 @@
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, PacketReadError},
-    mqtt_writer::{self, MqttLenWriter, MqttWriter},
-    read::Read,
-    write::Write,
-};
 use crate::data::packet_type::PacketType;
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttLenWriter, MqttWriter},
+        read::Read,
+        write::Write,
+    },
+    error::PacketReadError,
+};
 
 pub const KEEP_ALIVE_DEFAULT: u16 = 60;
 pub const PROTOCOL_NAME: &str = "MQTT";

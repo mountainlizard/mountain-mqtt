@@ -5,28 +5,11 @@ use crate::{
         reason_code::ReasonCode, string_pair::StringPair,
         subscription_options::SubscriptionOptions, DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE,
     },
+    error::PacketWriteError,
     packets::subscribe::SubscriptionRequest,
 };
 
 use super::write::Write;
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum PacketWriteError {
-    /// On attempt to put data that will not fit in buffer
-    Overflow,
-
-    /// On attempt to put a string containing a null character (which is not valid in an MQTT message)
-    NullCharacterInString,
-
-    /// On attempt to put a u32 value as a variable byte integer, where the value is too large to encode
-    VariableByteIntegerTooLarge,
-
-    /// On attempt to put binary data with too many bytes to encode
-    DataTooLarge,
-
-    /// On attempt to put a string where the encoded form is too many bytes to encode
-    StringTooLarge,
-}
 
 pub type Result<A> = core::result::Result<A, PacketWriteError>;
 

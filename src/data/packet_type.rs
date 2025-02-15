@@ -1,6 +1,4 @@
-use crate::{
-    codec::mqtt_reader::PacketReadError, packets::publish::is_valid_publish_first_header_byte,
-};
+use crate::{error::PacketReadError, packets::publish::is_valid_publish_first_header_byte};
 
 #[derive(Debug, PartialEq)]
 #[repr(u8)]

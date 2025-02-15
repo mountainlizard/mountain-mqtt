@@ -1,4 +1,5 @@
-use crate::codec::{mqtt_reader::PacketReadError, read::Read, write::Write};
+use crate::codec::{read::Read, write::Write};
+use crate::error::PacketReadError;
 
 #[macro_export]
 macro_rules! packet_reason_codes {

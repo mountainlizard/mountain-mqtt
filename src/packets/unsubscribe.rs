@@ -1,10 +1,13 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
-use crate::codec::{
-    mqtt_reader::{self, MqttReader, PacketReadError},
-    mqtt_writer::{self, MqttWriter},
-};
 use crate::data::{
     packet_identifier::PacketIdentifier, packet_type::PacketType, property::UnsubscribeProperty,
+};
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttWriter},
+    },
+    error::PacketReadError,
 };
 use heapless::Vec;
 
