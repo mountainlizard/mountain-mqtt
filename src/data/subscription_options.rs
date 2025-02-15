@@ -36,7 +36,7 @@ impl TryFrom<u8> for SubscriptionOptions {
             0 => Ok(RetainHandling::SendOnSubscribe),
             1 => Ok(RetainHandling::SendOnNewSubscribe),
             2 => Ok(RetainHandling::DoNotSend),
-            _ => Err(PacketReadError::MalformedPacket),
+            _ => Err(PacketReadError::InvalidRetainHandlingValue),
         }?;
         Ok(SubscriptionOptions {
             maximum_qos,

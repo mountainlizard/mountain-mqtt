@@ -252,6 +252,20 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn mqtt_buf_reader_errors_on_invalid_retain_handing_in_subscription_options(
+    ) -> mqtt_reader::Result<()> {
+        // Bits 4 and 5 set to 1, implies retain handling value 3, the only invalid option
+        let buf = [0b0011_0000];
+        let mut r = MqttBufReader::new(&buf);
+        assert_eq!(
+            r.get_subscription_options(),
+            Err(PacketReadError::InvalidRetainHandlingValue)
+        );
+
+        Ok(())
+    }
+
     fn example_packet<'a>() -> Subscribe<'a, 1, 2> {
         let primary_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
         let mut additional_requests = Vec::new();

@@ -80,6 +80,10 @@ pub enum PacketReadError {
     /// that was not expected in the given context. This may be an id that is completely unknown, or
     /// just one that is not expected for the type of packet being decoded.
     UnexpectedPropertyIdentifier,
+
+    /// When decoding the "retain handling" subscription option, an invalid value not matching the
+    /// specification was encountered
+    InvalidRetainHandlingValue,
 }
 
 impl From<Utf8Error> for PacketReadError {
