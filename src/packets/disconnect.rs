@@ -23,7 +23,7 @@ impl<const PROPERTIES_N: usize> Disconnect<'_, PROPERTIES_N> {
     }
 }
 
-impl<const PROPERTIES_N: usize> Default for Disconnect<'_, PROPERTIES_N> {
+impl Default for Disconnect<'_, 0> {
     fn default() -> Self {
         Self::new(DisconnectReasonCode::Success)
     }
