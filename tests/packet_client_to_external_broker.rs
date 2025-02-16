@@ -7,7 +7,7 @@ use mountain_mqtt::{
     data::{
         packet_identifier::{PacketIdentifier, PublishPacketIdentifier},
         quality_of_service::QualityOfService,
-        reason_code::SubscriptionReasonCode,
+        reason_code::{ConnectReasonCode, SubscriptionReasonCode, UnsubscriptionReasonCode},
     },
     packet_client::PacketClient,
     packets::{
@@ -15,7 +15,9 @@ use mountain_mqtt::{
         disconnect::Disconnect,
         packet_generic::PacketGeneric,
         publish::Publish,
+        suback::Suback,
         subscribe::{Subscribe, SubscriptionRequest},
+        unsuback::Unsuback,
         unsubscribe::Unsubscribe,
     },
 };
@@ -51,8 +53,13 @@ async fn tokio_localhost_client_connected<'a>(
 
     {
         let maybe_connack: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
-        // TODO: Change to assert_eq! to an expected packet
-        assert!(matches!(maybe_connack, PacketGeneric::Connack(_)));
+
+        if let PacketGeneric::Connack(connack) = maybe_connack {
+            assert!(!connack.session_present());
+            assert_eq!(connack.reason_code(), &ConnectReasonCode::Success);
+        } else {
+            panic!("Expected Connack, got {:?}", maybe_connack);
+        }
     }
 
     client
@@ -100,16 +107,15 @@ async fn connect_subscribe_and_publish() {
     client.send(subscribe).await.unwrap();
     {
         let maybe_suback: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
-        // TODO: change to comparing an expected packet to reduce to a single assert_eq!
-        match maybe_suback {
-            PacketGeneric::Suback(suback) => {
-                assert_eq!(suback.packet_identifier(), &PACKET_IDENTIFIER);
-                assert_eq!(suback.other_reason_codes().len(), 0);
-                assert_eq!(suback.first_reason_code(), &SubscriptionReasonCode::Success);
-                assert!(suback.properties().is_empty());
-            }
-            _ => panic!("Expected Suback, got {:?}", maybe_suback),
-        }
+        assert_eq!(
+            maybe_suback,
+            PacketGeneric::Suback(Suback::new(
+                PACKET_IDENTIFIER,
+                SubscriptionReasonCode::Success,
+                Vec::new(),
+                Vec::new()
+            ))
+        );
     }
 
     let publish: Publish<'_, 0> = Publish::new(
@@ -124,21 +130,18 @@ async fn connect_subscribe_and_publish() {
 
     {
         let maybe_publish: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
-        // TODO: change to comparing an expected packet to reduce to a single assert_eq!
-        match maybe_publish {
-            PacketGeneric::Publish(publish) => {
-                assert!(!publish.duplicate());
-                assert!(!publish.retain());
-                assert_eq!(publish.topic_name(), TOPIC_NAME);
-                assert_eq!(
-                    publish.publish_packet_identifier(),
-                    &PublishPacketIdentifier::None
-                );
-                assert_eq!(publish.payload(), PAYLOAD);
-                assert!(publish.properties().is_empty());
-            }
-            _ => panic!("Expected Publish, got {:?}", maybe_publish),
-        }
+
+        assert_eq!(
+            maybe_publish,
+            PacketGeneric::Publish(Publish::new(
+                false,
+                false,
+                TOPIC_NAME,
+                PublishPacketIdentifier::None,
+                PAYLOAD,
+                Vec::new()
+            ))
+        );
     }
 
     let unsubscribe: Unsubscribe<'_, 0, 0> =
@@ -146,8 +149,16 @@ async fn connect_subscribe_and_publish() {
     client.send(unsubscribe).await.unwrap();
     {
         let maybe_unsuback: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
-        // TODO: assert_eq! to expected example packet
-        assert!(matches!(maybe_unsuback, PacketGeneric::Unsuback(_)));
+
+        assert_eq!(
+            maybe_unsuback,
+            PacketGeneric::Unsuback(Unsuback::new(
+                PACKET_IDENTIFIER,
+                UnsubscriptionReasonCode::Success,
+                Vec::new(),
+                Vec::new()
+            ))
+        );
     }
 
     client.send(Disconnect::default()).await.unwrap();

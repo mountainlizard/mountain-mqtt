@@ -27,6 +27,16 @@ impl<'a, const PROPERTIES_N: usize> Connack<'a, PROPERTIES_N> {
             properties,
         }
     }
+
+    pub fn session_present(&self) -> bool {
+        self.session_present
+    }
+    pub fn reason_code(&self) -> &ConnectReasonCode {
+        &self.reason_code
+    }
+    pub fn properties(&self) -> &Vec<ConnackProperty<'a>, PROPERTIES_N> {
+        &self.properties
+    }
 }
 
 impl<const PROPERTIES_N: usize> Packet for Connack<'_, PROPERTIES_N> {
