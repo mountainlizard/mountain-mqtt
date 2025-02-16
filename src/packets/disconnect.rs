@@ -43,13 +43,21 @@ impl<const PROPERTIES_N: usize> PacketWrite for Disconnect<'_, PROPERTIES_N> {
         &self,
         writer: &mut W,
     ) -> mqtt_writer::Result<()> {
-        // Special case - if we have reason code success and no properties,
-        // output no data
+        // Variable header:
+
+        // Can encode with 0 length
         if self.reason_code == DisconnectReasonCode::Success && self.properties.is_empty() {
             Ok(())
-        } else {
-            // Variable header:
 
+        // Can encode just reason with 1 length
+        } else if self.properties.is_empty() {
+            // 3.14.2.1 Disconnect Reason Code
+            writer.put(&self.reason_code)?;
+            // Skip properties completely
+            Ok(())
+
+        // Normal encoding
+        } else {
             // 3.14.2.1 Disconnect Reason Code
             writer.put(&self.reason_code)?;
 
@@ -72,17 +80,25 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Disconnect<'a, PROPERTIES
     where
         Self: Sized,
     {
-        // Special case - if length of variable header and payload is 0, treat as
-        // reason code success, with no properties
-        if len == 0 {
-            Ok(Disconnect::new(DisconnectReasonCode::Success, Vec::new()))
-        } else {
-            let reason_code = reader.get()?;
-            let mut properties = Vec::new();
-            reader.get_property_list(&mut properties)?;
-            let packet = Disconnect::new(reason_code, properties);
+        match len {
+            // 0 length, success with no properties
+            0 => Ok(Disconnect::new(DisconnectReasonCode::Success, Vec::new())),
 
-            Ok(packet)
+            // 1 length, reason code and no properties
+            1 => {
+                let reason_code = reader.get()?;
+                Ok(Disconnect::new(reason_code, Vec::new()))
+            }
+            // Normal packet
+            _ => {
+                let reason_code = reader.get()?;
+
+                let mut properties = Vec::new();
+                reader.get_property_list(&mut properties)?;
+
+                let packet = Disconnect::new(reason_code, properties);
+                Ok(packet)
+            }
         }
     }
 }
@@ -111,6 +127,11 @@ mod tests {
         Disconnect::new(DisconnectReasonCode::Success, Vec::new())
     }
     const EXAMPLE_DATA_ZERO_LENGTH: [u8; 2] = [0xE0, 0x00];
+
+    fn example_packet_one_length<'a>() -> Disconnect<'a, 0> {
+        Disconnect::new(DisconnectReasonCode::SessionTakenOver, Vec::new())
+    }
+    const EXAMPLE_DATA_ONE_LENGTH: [u8; 3] = [0xE0, 0x01, 0x8E];
 
     #[test]
     fn encode_example() {
@@ -150,6 +171,28 @@ mod tests {
         assert_eq!(
             Disconnect::read(&mut r).unwrap(),
             example_packet_zero_length()
+        );
+    }
+
+    #[test]
+    fn encode_example_one_length() {
+        let packet = example_packet_one_length();
+
+        let mut buf = [0; 3];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            packet.write(&mut r).unwrap();
+            r.position()
+        };
+        assert_eq!(buf[0..len], EXAMPLE_DATA_ONE_LENGTH);
+    }
+
+    #[test]
+    fn decode_example_one_length() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_ONE_LENGTH);
+        assert_eq!(
+            Disconnect::read(&mut r).unwrap(),
+            example_packet_one_length()
         );
     }
 }

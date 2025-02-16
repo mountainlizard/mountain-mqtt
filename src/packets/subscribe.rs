@@ -121,10 +121,14 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         reader.get_property_list(&mut properties)?;
 
         // Payload:
-        let primary_request = reader.get_subscription_request()?;
-        let mut additional_requests = Vec::new();
+        // We must have at least one subscription request, otherwise this is a protocol
+        // error [MQTT-3.8.3-2]
+        let primary_request = reader
+            .get_subscription_request()
+            .map_err(|_| PacketReadError::SubscribeWithoutValidSubscriptionRequest)?;
 
-        // Read subscription requests until we run out of data
+        // Read additional subscription requests until we run out of data
+        let mut additional_requests = Vec::new();
         while reader.position() < payload_end_position {
             let additional_request = SubscriptionRequest::read(reader)?;
             additional_requests

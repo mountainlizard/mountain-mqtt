@@ -50,6 +50,25 @@ impl<'a, const PROPERTIES_N: usize> Publish<'a, PROPERTIES_N> {
             properties,
         }
     }
+
+    pub fn duplicate(&self) -> bool {
+        self.duplicate
+    }
+    pub fn retain(&self) -> bool {
+        self.retain
+    }
+    pub fn topic_name(&self) -> &'a str {
+        self.topic_name
+    }
+    pub fn publish_packet_identifier(&self) -> &PublishPacketIdentifier {
+        &self.publish_packet_identifier
+    }
+    pub fn payload(&self) -> &'a [u8] {
+        self.payload
+    }
+    pub fn properties(&self) -> &Vec<PublishProperty<'a>, PROPERTIES_N> {
+        &self.properties
+    }
 }
 
 impl<const PROPERTIES_N: usize> Packet for Publish<'_, PROPERTIES_N> {

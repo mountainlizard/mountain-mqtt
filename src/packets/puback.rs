@@ -44,16 +44,22 @@ impl<const PROPERTIES_N: usize> PacketWrite for Puback<'_, PROPERTIES_N> {
         // Always write the packet identifier
         writer.put_u16(self.packet_identifier.0)?;
 
-        // Special case - if the reason code is success and there are no
-        // properties, we can just skip the reason code and properties,
-        // this will be detected by having only two bytes of length for
-        // the packet identifier
-        if self.reason_code != PublishReasonCode::Success || !self.properties.is_empty() {
-            writer.put(&self.reason_code)?;
+        if self.properties.is_empty() {
+            // Special cases:
+            // 1. If there are no properties and reason code is not success, we encode
+            //    just the reason code, length will be 3, see "3.4.2.2.1 Property Length"
+            // 2. If there are no properties and reason code is success, we don't encode
+            //    either. Length will be 2. See end of section "3.4.2.1 PUBACK Reason Code"
+            if self.reason_code != PublishReasonCode::Success {
+                writer.put(&self.reason_code)?;
+            }
 
-            // Write the properties vec (3.4.2.2)
-            writer.put_variable_u32_delimited_vec(&self.properties)?;
+        // Normal case, encode everything
+        } else {
+            writer.put(&self.reason_code)?;
+            writer.put_variable_u32_delimited_vec(&self.properties)?; // 3.4.2.2
         }
+
         // Payload: empty
 
         Ok(())
@@ -72,20 +78,25 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Puback<'a, PROPERTIES_N> 
         // Always read packet identifier
         let packet_identifier = PacketIdentifier(reader.get_u16()?);
 
-        // If the length is 2, there is no more data and this is the special case
-        // where we assume reason code success and no properties, otherwise we
-        // read the rest of the fields
-        if len == 2 {
-            Ok(Puback::new(
+        // Special cases for omitted properties, and possbly omitted reason code
+        match len {
+            // See end of section "3.4.2.1 PUBACK Reason Code"
+            2 => Ok(Puback::new(
                 packet_identifier,
                 PublishReasonCode::Success,
                 Vec::new(),
-            ))
-        } else {
-            let reason_code = reader.get()?;
-            let mut properties = Vec::new();
-            reader.get_property_list(&mut properties)?;
-            Ok(Puback::new(packet_identifier, reason_code, properties))
+            )),
+            // See "3.4.2.2.1 Property Length"
+            3 => {
+                let reason_code = reader.get()?;
+                Ok(Puback::new(packet_identifier, reason_code, Vec::new()))
+            }
+            _ => {
+                let reason_code = reader.get()?;
+                let mut properties = Vec::new();
+                reader.get_property_list(&mut properties)?;
+                Ok(Puback::new(packet_identifier, reason_code, properties))
+            }
         }
     }
 }
@@ -117,6 +128,16 @@ mod tests {
     fn example_packet_length2<'a>() -> Puback<'a, 0> {
         let packet_identifier = PacketIdentifier(35420);
         let reason_code = PublishReasonCode::Success;
+
+        let packet: Puback<'_, 0> = Puback::new(packet_identifier, reason_code, Vec::new());
+        packet
+    }
+
+    const EXAMPLE_DATA_LENGTH3: [u8; 5] = [0x40, 0x03, 0x8A, 0x5C, 0x87];
+
+    fn example_packet_length3<'a>() -> Puback<'a, 0> {
+        let packet_identifier = PacketIdentifier(35420);
+        let reason_code = PublishReasonCode::NotAuthorized;
 
         let packet: Puback<'_, 0> = Puback::new(packet_identifier, reason_code, Vec::new());
         packet
@@ -162,5 +183,10 @@ mod tests {
     #[test]
     fn encode_and_decode_example_length2() {
         encode_decode_and_check(&example_packet_length2(), &EXAMPLE_DATA_LENGTH2);
+    }
+
+    #[test]
+    fn encode_and_decode_example_length3() {
+        encode_decode_and_check(&example_packet_length3(), &EXAMPLE_DATA_LENGTH3);
     }
 }

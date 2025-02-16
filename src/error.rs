@@ -89,6 +89,9 @@ pub enum PacketReadError {
     /// When decoding a packet, the "remaining length" in the packet header was incorrect -
     /// the actual packet format indicates the packet is longer or shorter than header indicates
     IncorrectPacketLength,
+
+    /// All Subscribe packets must have at least one subscription request [MQTT-3.8.3-2]
+    SubscribeWithoutValidSubscriptionRequest,
 }
 
 impl From<Utf8Error> for PacketReadError {

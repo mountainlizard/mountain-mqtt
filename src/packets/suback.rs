@@ -31,6 +31,16 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIE
             properties,
         }
     }
+
+    pub fn packet_identifier(&self) -> &PacketIdentifier {
+        &self.packet_identifier
+    }
+    pub fn reason_codes(&self) -> &Vec<SubscriptionReasonCode, REQUEST_N> {
+        &self.reason_codes
+    }
+    pub fn properties(&self) -> &Vec<SubackProperty<'a>, PROPERTIES_N> {
+        &self.properties
+    }
 }
 
 impl<const PROPERTIES_N: usize, const REQUEST_N: usize> Packet
