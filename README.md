@@ -2,7 +2,7 @@
 
 ## TODO
 
-- [ ] Simple tokio network adapter, see if we can connect and disconnect from mosquitto server
+- [x] Simple tokio network adapter, see if we can connect and disconnect from mosquitto server
 - [ ] Embedded network adapter, connect and disconnect from a pico w
 - [ ] Port across mqtt core in lightbox as new MqttClient, test.
 - [ ] Add integration tests?
