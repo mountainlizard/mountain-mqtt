@@ -49,22 +49,22 @@ impl<'a> Read<'a> for SubscriptionRequest<'a> {
 #[derive(Debug, PartialEq)]
 pub struct Subscribe<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    primary_request: SubscriptionRequest<'a>,
-    additional_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
+    first_request: SubscriptionRequest<'a>,
+    other_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
     properties: Vec<SubscribeProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Subscribe<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        primary_request: SubscriptionRequest<'a>,
-        additional_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
+        first_request: SubscriptionRequest<'a>,
+        other_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
         properties: Vec<SubscribeProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         }
     }
@@ -90,9 +90,9 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
         writer.put_variable_u32_delimited_vec(&self.properties)?; //3.8.2.1 SUBSCRIBE Properties
 
         // Payload:
-        writer.put_subscription_request(&self.primary_request)?;
+        writer.put_subscription_request(&self.first_request)?;
         // Note we just put the requests in without a delimiter, they end at the end of the packet
-        for r in self.additional_requests.iter() {
+        for r in self.other_requests.iter() {
             writer.put_subscription_request(r)?;
         }
 
@@ -121,23 +121,22 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         reader.get_property_list(&mut properties)?;
 
         // Payload:
-        let primary_request = reader.get_subscription_request()?;
-        let mut additional_requests = Vec::new();
+        // We must have at least one subscription request, otherwise this is a protocol
+        // error [MQTT-3.8.3-2]
+        let first_request = reader
+            .get_subscription_request()
+            .map_err(|_| PacketReadError::SubscribeWithoutValidSubscriptionRequest)?;
 
-        // Read subscription requests until we run out of data
+        // Read other subscription requests until we run out of data
+        let mut other_requests = Vec::new();
         while reader.position() < payload_end_position {
-            let additional_request = SubscriptionRequest::read(reader)?;
-            additional_requests
-                .push(additional_request)
+            let other_request = SubscriptionRequest::read(reader)?;
+            other_requests
+                .push(other_request)
                 .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
-        let packet = Subscribe::new(
-            packet_identifier,
-            primary_request,
-            additional_requests,
-            properties,
-        );
+        let packet = Subscribe::new(packet_identifier, first_request, other_requests, properties);
         Ok(packet)
     }
 }
@@ -267,9 +266,9 @@ mod tests {
     }
 
     fn example_packet<'a>() -> Subscribe<'a, 1, 2> {
-        let primary_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
-        let mut additional_requests = Vec::new();
-        additional_requests
+        let first_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
+        let mut other_requests = Vec::new();
+        other_requests
             .push(SubscriptionRequest::new("hehe/#", QualityOfService::QoS1))
             .unwrap();
         let mut properties = Vec::new();
@@ -278,16 +277,40 @@ mod tests {
             .unwrap();
         let packet = Subscribe::new(
             PacketIdentifier(5432),
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         );
         packet
     }
 
     const EXAMPLE_DATA: [u8; 30] = [
-        0x82, 0x1C, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13, 0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f,
-        0x74, 0x6f, 0x70, 0x69, 0x63, 0x00, 0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23, 0x01,
+        0x82, 0x1C, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13,
+        // subscription requests
+        // first request - len + test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f, 0x74, 0x6f, 0x70, 0x69, 0x63,
+        // subscription options byte
+        0x00, // second request - len + hehe/#
+        0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23, // subscription options byte
+        0x01,
+    ];
+
+    // As for EXAMPLE_DATA, but we have only one request, and we miss out the last byte
+    // so we can't read it fully - we want to check this produces a more specific
+    // SubscribeWithoutValidSubscriptionRequest error, rather than just InsufficientData
+    const EXAMPLE_DATA_TRUNCATED_REQUEST: [u8; 20] = [
+        0x82, 0x12, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13,
+        // subscription requests
+        // first request - len + test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f, 0x74, 0x6f, 0x70, 0x69,
+        0x63,
+        // subscription options byte missing
+    ];
+
+    // As for EXAMPLE_DATA, but we have no request at all
+    const EXAMPLE_DATA_NO_REQUEST: [u8; 8] = [
+        0x82, 0x06, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13,
+        // subscription requests missing
     ];
 
     #[test]
@@ -307,5 +330,25 @@ mod tests {
     fn decode_example() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA);
         assert_eq!(Subscribe::read(&mut r).unwrap(), example_packet());
+    }
+
+    #[test]
+    fn decode_should_fail_on_truncated_request() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_TRUNCATED_REQUEST);
+        let result: Result<Subscribe<'_, 16, 16>, PacketReadError> = Subscribe::read(&mut r);
+        assert_eq!(
+            result,
+            Err(PacketReadError::SubscribeWithoutValidSubscriptionRequest)
+        );
+    }
+
+    #[test]
+    fn decode_should_fail_on_no_request() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_NO_REQUEST);
+        let result: Result<Subscribe<'_, 16, 16>, PacketReadError> = Subscribe::read(&mut r);
+        assert_eq!(
+            result,
+            Err(PacketReadError::SubscribeWithoutValidSubscriptionRequest)
+        );
     }
 }

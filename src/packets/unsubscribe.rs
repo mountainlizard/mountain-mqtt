@@ -14,8 +14,8 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Unsubscribe<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    primary_request: &'a str,
-    additional_requests: Vec<&'a str, REQUEST_N>,
+    first_request: &'a str,
+    other_requests: Vec<&'a str, REQUEST_N>,
     properties: Vec<UnsubscribeProperty<'a>, PROPERTIES_N>,
 }
 
@@ -24,14 +24,14 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>
 {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        primary_request: &'a str,
-        additional_requests: Vec<&'a str, REQUEST_N>,
+        first_request: &'a str,
+        other_requests: Vec<&'a str, REQUEST_N>,
         properties: Vec<UnsubscribeProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         }
     }
@@ -57,9 +57,9 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
         writer.put_variable_u32_delimited_vec(&self.properties)?; // 3.10.2.1 UNSUBSCRIBE Properties
 
         // Payload:
-        writer.put_str(self.primary_request)?;
+        writer.put_str(self.first_request)?;
         // Note we just put the requests in without a delimiter, they end at the end of the packet
-        for r in self.additional_requests.iter() {
+        for r in self.other_requests.iter() {
             writer.put_str(r)?;
         }
 
@@ -88,23 +88,23 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         reader.get_property_list(&mut properties)?;
 
         // Payload:
-        let primary_request = reader.get_str()?;
-        let mut additional_requests = Vec::new();
+
+        // We must have at least one subscription request, otherwise this is a protocol
+        // error  [MQTT-3.10.3-2]
+        let first_request = reader
+            .get_str()
+            .map_err(|_| PacketReadError::UnsubscribeWithoutValidSubscriptionRequest)?;
 
         // Read subscription requests until we run out of data
+        let mut other_requests = Vec::new();
         while reader.position() < payload_end_position {
-            let additional_request = reader.get_str()?;
-            additional_requests
-                .push(additional_request)
+            let other_request = reader.get_str()?;
+            other_requests
+                .push(other_request)
                 .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
-        let packet = Unsubscribe::new(
-            packet_identifier,
-            primary_request,
-            additional_requests,
-            properties,
-        );
+        let packet = Unsubscribe::new(packet_identifier, first_request, other_requests, properties);
         Ok(packet)
     }
 }
@@ -119,9 +119,9 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Unsubscribe<'a, 1, 2> {
-        let primary_request = "test/topic";
-        let mut additional_requests = Vec::new();
-        additional_requests.push("hehe/#").unwrap();
+        let first_request = "test/topic";
+        let mut other_requests = Vec::new();
+        other_requests.push("hehe/#").unwrap();
 
         let mut properties = Vec::new();
         let pair = StringPair::new("haha", "hehe89");
@@ -131,17 +131,39 @@ mod tests {
 
         let packet = Unsubscribe::new(
             PacketIdentifier(5432),
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         );
         packet
     }
 
+    #[rustfmt::skip]
     const EXAMPLE_DATA: [u8; 40] = [
         0xA2, 0x26, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
-        0x65, 0x68, 0x65, 0x38, 0x39, 0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70,
-        0x69, 0x63, 0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23,
+        0x65, 0x68, 0x65, 0x38, 0x39, 
+        // test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70, 0x69, 0x63, 
+        // hehe/#
+        0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23,
+    ];
+
+    // As for EXAMPLE_DATA but we only have one request to unsubscribe, and we miss out the last byte
+    // to trigger UnsubscribeWithoutValidSubscriptionRequest, check we get this not just InsufficientData
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_TRUNCATED_REQUEST: [u8; 31] = [
+        0xA2, 0x1D, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
+        0x65, 0x68, 0x65, 0x38, 0x39, 
+        // test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70, 0x69,
+    ];
+
+    // As for EXAMPLE_DATA but no requests at all
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_NO_REQUEST: [u8; 20] = [
+        0xA2, 0x12, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
+        0x65, 0x68, 0x65, 0x38, 0x39, 
+        // no requests
     ];
 
     #[test]
@@ -161,5 +183,25 @@ mod tests {
     fn decode_example() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA);
         assert_eq!(Unsubscribe::read(&mut r).unwrap(), example_packet());
+    }
+
+    #[test]
+    fn decode_should_fail_on_truncated_request() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_TRUNCATED_REQUEST);
+        let result: Result<Unsubscribe<'_, 16, 16>, PacketReadError> = Unsubscribe::read(&mut r);
+        assert_eq!(
+            result,
+            Err(PacketReadError::UnsubscribeWithoutValidSubscriptionRequest)
+        );
+    }
+
+    #[test]
+    fn decode_should_fail_on_no_request() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_NO_REQUEST);
+        let result: Result<Unsubscribe<'_, 16, 16>, PacketReadError> = Unsubscribe::read(&mut r);
+        assert_eq!(
+            result,
+            Err(PacketReadError::UnsubscribeWithoutValidSubscriptionRequest)
+        );
     }
 }
