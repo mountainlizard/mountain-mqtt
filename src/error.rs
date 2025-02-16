@@ -60,8 +60,8 @@ pub enum PacketReadError {
     /// see spec 3.1.2.1 and 3.1.2.2
     UnsupportedProtocolVersion,
 
-    /// Data contained a list of subscription requests longer than the `REQUEST_N` parameter of a packet,
-    /// and so overflowed a [heapless::Vec]
+    /// Data contained a list of subscription requests (or suback reason codes) longer than the `REQUEST_N`
+    /// parameter of a packet, and so overflowed a [heapless::Vec]
     TooManyRequests,
 
     /// Data meant to encode a packet type had an invalid value. E.g. first header byte could not be
@@ -92,6 +92,10 @@ pub enum PacketReadError {
 
     /// All Subscribe packets must have at least one subscription request [MQTT-3.8.3-2]
     SubscribeWithoutValidSubscriptionRequest,
+
+    /// All Suback packets must have at least one reason code, since they are responding
+    /// to a [Subscription] with at least one subscription request [MQTT-3.8.3-2]
+    SubackWithoutValidReasonCode,
 }
 
 impl From<Utf8Error> for PacketReadError {

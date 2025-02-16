@@ -104,11 +104,8 @@ async fn connect_subscribe_and_publish() {
         match maybe_suback {
             PacketGeneric::Suback(suback) => {
                 assert_eq!(suback.packet_identifier(), &PACKET_IDENTIFIER);
-                assert_eq!(suback.reason_codes().len(), 1);
-                assert_eq!(
-                    suback.reason_codes().first(),
-                    Some(&SubscriptionReasonCode::Success)
-                );
+                assert_eq!(suback.other_reason_codes().len(), 0);
+                assert_eq!(suback.first_reason_code(), &SubscriptionReasonCode::Success);
                 assert!(suback.properties().is_empty());
             }
             _ => panic!("Expected Suback, got {:?}", maybe_suback),

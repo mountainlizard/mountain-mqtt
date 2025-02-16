@@ -15,19 +15,22 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Suback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
+    first_reason_code: SubscriptionReasonCode,
+    other_reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
     properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
+        first_reason_code: SubscriptionReasonCode,
+        other_reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
         properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            reason_codes,
+            first_reason_code,
+            other_reason_codes,
             properties,
         }
     }
@@ -35,8 +38,11 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIE
     pub fn packet_identifier(&self) -> &PacketIdentifier {
         &self.packet_identifier
     }
-    pub fn reason_codes(&self) -> &Vec<SubscriptionReasonCode, REQUEST_N> {
-        &self.reason_codes
+    pub fn first_reason_code(&self) -> &SubscriptionReasonCode {
+        &self.first_reason_code
+    }
+    pub fn other_reason_codes(&self) -> &Vec<SubscriptionReasonCode, REQUEST_N> {
+        &self.other_reason_codes
     }
     pub fn properties(&self) -> &Vec<SubackProperty<'a>, PROPERTIES_N> {
         &self.properties
@@ -64,7 +70,8 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
 
         // Payload:
         // Note we just put the reason codes in without a delimiter, they end at the end of the packet
-        for r in self.reason_codes.iter() {
+        writer.put(&self.first_reason_code)?;
+        for r in self.other_reason_codes.iter() {
             writer.put(r)?;
         }
 
@@ -93,16 +100,28 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         reader.get_property_list(&mut properties)?;
 
         // Payload:
+
+        // We must have at least one reason code, since any valid subscription packet we
+        // are replying to must have had at least one subscription request [MQTT-3.8.3-2]
+        let first_reason_code = reader
+            .get()
+            .map_err(|_| PacketReadError::SubackWithoutValidReasonCode)?;
+
         // Read subscription requests until we run out of data
-        let mut reason_codes = Vec::new();
+        let mut other_reason_codes = Vec::new();
         while reader.position() < payload_end_position {
             let code = reader.get()?;
-            reason_codes
+            other_reason_codes
                 .push(code)
                 .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
-        let packet = Suback::new(packet_identifier, reason_codes, properties);
+        let packet = Suback::new(
+            packet_identifier,
+            first_reason_code,
+            other_reason_codes,
+            properties,
+        );
         Ok(packet)
     }
 }
@@ -115,22 +134,28 @@ mod tests {
 
     use super::*;
 
-    fn example_packet<'a>() -> Suback<'a, 1, 3> {
-        let mut reason_codes = Vec::new();
-        reason_codes
-            .push(SubscriptionReasonCode::UnspecifiedError)
-            .unwrap();
-        reason_codes
+    fn example_packet<'a>() -> Suback<'a, 1, 2> {
+        let first_reason_code = SubscriptionReasonCode::UnspecifiedError;
+
+        let mut other_reason_codes = Vec::new();
+        other_reason_codes
             .push(SubscriptionReasonCode::ImplementationSpecificError)
             .unwrap();
-        reason_codes
+        other_reason_codes
             .push(SubscriptionReasonCode::NotAuthorized)
             .unwrap();
+
         let mut properties = Vec::new();
         properties
             .push(SubackProperty::ReasonString("reasonString".into()))
             .unwrap();
-        let packet = Suback::new(PacketIdentifier(52232), reason_codes, properties);
+
+        let packet = Suback::new(
+            PacketIdentifier(52232),
+            first_reason_code,
+            other_reason_codes,
+            properties,
+        );
         packet
     }
 
