@@ -49,22 +49,22 @@ impl<'a> Read<'a> for SubscriptionRequest<'a> {
 #[derive(Debug, PartialEq)]
 pub struct Subscribe<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    primary_request: SubscriptionRequest<'a>,
-    additional_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
+    first_request: SubscriptionRequest<'a>,
+    other_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
     properties: Vec<SubscribeProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Subscribe<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        primary_request: SubscriptionRequest<'a>,
-        additional_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
+        first_request: SubscriptionRequest<'a>,
+        other_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
         properties: Vec<SubscribeProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         }
     }
@@ -90,9 +90,9 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
         writer.put_variable_u32_delimited_vec(&self.properties)?; //3.8.2.1 SUBSCRIBE Properties
 
         // Payload:
-        writer.put_subscription_request(&self.primary_request)?;
+        writer.put_subscription_request(&self.first_request)?;
         // Note we just put the requests in without a delimiter, they end at the end of the packet
-        for r in self.additional_requests.iter() {
+        for r in self.other_requests.iter() {
             writer.put_subscription_request(r)?;
         }
 
@@ -123,25 +123,20 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         // Payload:
         // We must have at least one subscription request, otherwise this is a protocol
         // error [MQTT-3.8.3-2]
-        let primary_request = reader
+        let first_request = reader
             .get_subscription_request()
             .map_err(|_| PacketReadError::SubscribeWithoutValidSubscriptionRequest)?;
 
-        // Read additional subscription requests until we run out of data
-        let mut additional_requests = Vec::new();
+        // Read other subscription requests until we run out of data
+        let mut other_requests = Vec::new();
         while reader.position() < payload_end_position {
-            let additional_request = SubscriptionRequest::read(reader)?;
-            additional_requests
-                .push(additional_request)
+            let other_request = SubscriptionRequest::read(reader)?;
+            other_requests
+                .push(other_request)
                 .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
-        let packet = Subscribe::new(
-            packet_identifier,
-            primary_request,
-            additional_requests,
-            properties,
-        );
+        let packet = Subscribe::new(packet_identifier, first_request, other_requests, properties);
         Ok(packet)
     }
 }
@@ -271,9 +266,9 @@ mod tests {
     }
 
     fn example_packet<'a>() -> Subscribe<'a, 1, 2> {
-        let primary_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
-        let mut additional_requests = Vec::new();
-        additional_requests
+        let first_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
+        let mut other_requests = Vec::new();
+        other_requests
             .push(SubscriptionRequest::new("hehe/#", QualityOfService::QoS1))
             .unwrap();
         let mut properties = Vec::new();
@@ -282,8 +277,8 @@ mod tests {
             .unwrap();
         let packet = Subscribe::new(
             PacketIdentifier(5432),
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         );
         packet
