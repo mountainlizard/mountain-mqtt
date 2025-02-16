@@ -290,8 +290,26 @@ mod tests {
     }
 
     const EXAMPLE_DATA: [u8; 30] = [
-        0x82, 0x1C, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13, 0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f,
-        0x74, 0x6f, 0x70, 0x69, 0x63, 0x00, 0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23, 0x01,
+        0x82, 0x1C, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13,
+        // subscription requests
+        // first request - len + test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f, 0x74, 0x6f, 0x70, 0x69, 0x63,
+        // subscription options byte
+        0x00, // second request - len + hehe/#
+        0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23, // subscription options byte
+        0x01,
+    ];
+
+    // As for EXAMPLE_DATA, but we have only one request, and we miss out the last byte
+    // so we can't read it fully - we want to check this produces a more specific
+    // SubscribeWithoutValidSubscriptionRequest error, rather than just InsufficientData
+    const EXAMPLE_DATA_TRUNCATED_REQUEST: [u8; 20] = [
+        0x82, 0x12, 0x15, 0x38, 0x03, 0x0B, 0x80, 0x13,
+        // subscription requests
+        // first request - len + test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2f, 0x74, 0x6f, 0x70, 0x69,
+        0x63,
+        // subscription options byte missing
     ];
 
     #[test]
@@ -311,5 +329,15 @@ mod tests {
     fn decode_example() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA);
         assert_eq!(Subscribe::read(&mut r).unwrap(), example_packet());
+    }
+
+    #[test]
+    fn decode_should_fail_on_truncated_request() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_TRUNCATED_REQUEST);
+        let result: Result<Subscribe<'_, 16, 16>, PacketReadError> = Subscribe::read(&mut r);
+        assert_eq!(
+            result,
+            Err(PacketReadError::SubscribeWithoutValidSubscriptionRequest)
+        );
     }
 }
