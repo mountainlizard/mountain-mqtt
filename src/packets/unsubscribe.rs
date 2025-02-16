@@ -88,10 +88,15 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         reader.get_property_list(&mut properties)?;
 
         // Payload:
-        let first_request = reader.get_str()?;
-        let mut other_requests = Vec::new();
+
+        // We must have at least one subscription request, otherwise this is a protocol
+        // error  [MQTT-3.10.3-2]
+        let first_request = reader
+            .get_str()
+            .map_err(|_| PacketReadError::UnsubscribeWithoutValidSubscriptionRequest)?;
 
         // Read subscription requests until we run out of data
+        let mut other_requests = Vec::new();
         while reader.position() < payload_end_position {
             let other_request = reader.get_str()?;
             other_requests
@@ -133,10 +138,32 @@ mod tests {
         packet
     }
 
+    #[rustfmt::skip]
     const EXAMPLE_DATA: [u8; 40] = [
         0xA2, 0x26, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
-        0x65, 0x68, 0x65, 0x38, 0x39, 0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70,
-        0x69, 0x63, 0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23,
+        0x65, 0x68, 0x65, 0x38, 0x39, 
+        // test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70, 0x69, 0x63, 
+        // hehe/#
+        0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23,
+    ];
+
+    // As for EXAMPLE_DATA but we only have one request to unsubscribe, and we miss out the last byte
+    // to trigger UnsubscribeWithoutValidSubscriptionRequest, check we get this not just InsufficientData
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_TRUNCATED_REQUEST: [u8; 31] = [
+        0xA2, 0x1D, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
+        0x65, 0x68, 0x65, 0x38, 0x39, 
+        // test/topic
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70, 0x69,
+    ];
+
+    // As for EXAMPLE_DATA but no requests at all
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_NO_REQUEST: [u8; 20] = [
+        0xA2, 0x12, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
+        0x65, 0x68, 0x65, 0x38, 0x39, 
+        // no requests
     ];
 
     #[test]
@@ -156,5 +183,25 @@ mod tests {
     fn decode_example() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA);
         assert_eq!(Unsubscribe::read(&mut r).unwrap(), example_packet());
+    }
+
+    #[test]
+    fn decode_should_fail_on_truncated_request() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_TRUNCATED_REQUEST);
+        let result: Result<Unsubscribe<'_, 16, 16>, PacketReadError> = Unsubscribe::read(&mut r);
+        assert_eq!(
+            result,
+            Err(PacketReadError::UnsubscribeWithoutValidSubscriptionRequest)
+        );
+    }
+
+    #[test]
+    fn decode_should_fail_on_no_request() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_NO_REQUEST);
+        let result: Result<Unsubscribe<'_, 16, 16>, PacketReadError> = Unsubscribe::read(&mut r);
+        assert_eq!(
+            result,
+            Err(PacketReadError::UnsubscribeWithoutValidSubscriptionRequest)
+        );
     }
 }

@@ -4,8 +4,8 @@
 
 - [x] Simple tokio network adapter, see if we can connect and disconnect from mosquitto server
 - [x] Make suback and unsuback packets share same "first and additional" structure for reason codes, matching up to subscribe/unsubscribe packets
-- [ ] Rename unsubscribe from primary/additional to first/other
-- [ ] Check for at least one subscription request on decoding Unsubscribe, use specific error
+- [x] Rename unsubscribe from primary/additional to first/other
+- [x] Check for at least one subscription request on decoding Unsubscribe, use specific error
 - [ ] Move to expected packets in integration test
 - [ ] Can we make packet reads neater, by monitoring current remaining length for special case handling?
 - [ ] Embedded network adapter, connect and disconnect from a pico w
