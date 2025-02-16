@@ -101,7 +101,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
 
         // Payload:
 
-        // We must have at least one reason code, since any valid subscription packet we
+        // We must have at least one reason code, since any valid subscribe packet we
         // are replying to must have had at least one subscription request [MQTT-3.8.3-2]
         let first_reason_code = reader
             .get()
@@ -160,8 +160,19 @@ mod tests {
     }
 
     const EXAMPLE_DATA: [u8; 23] = [
-        0x90, 0x15, 0xCC, 0x08, 0x0F, 0x1F, 0x00, 0x0C, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x53,
-        0x74, 0x72, 0x69, 0x6e, 0x67, 0x80, 0x83, 0x87,
+        0x90, 0x15, 0xCC, 0x08, // packet id
+        0x0F, // properties length
+        0x1F, 0x00, 0x0C, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x53, 0x74, 0x72, 0x69, 0x6e,
+        0x67, // properties
+        0x80, 0x83, 0x87, // reason codes
+    ];
+
+    // EXAMPLE_DATA but with no reason codes at all, to check we get SubackWithoutValidReasonCode
+    const EXAMPLE_DATA_NO_REASON_CODES: [u8; 20] = [
+        0x90, 0x12, 0xCC, 0x08, // packet id
+        0x0F, // properties length
+        0x1F, 0x00, 0x0C, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x53, 0x74, 0x72, 0x69, 0x6e,
+        0x67, // properties
     ];
 
     #[test]
@@ -181,5 +192,12 @@ mod tests {
     fn decode_example() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA);
         assert_eq!(Suback::read(&mut r).unwrap(), example_packet());
+    }
+
+    #[test]
+    fn decode_should_error_on_no_reason_codes() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_NO_REASON_CODES);
+        let result: Result<Suback<'_, 16, 16>, PacketReadError> = Suback::read(&mut r);
+        assert_eq!(result, Err(PacketReadError::SubackWithoutValidReasonCode));
     }
 }

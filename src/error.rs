@@ -96,6 +96,13 @@ pub enum PacketReadError {
     /// All Suback packets must have at least one reason code, since they are responding
     /// to a [Subscription] with at least one subscription request [MQTT-3.8.3-2]
     SubackWithoutValidReasonCode,
+
+    /// All Unsubscribe packets must have at least one subscription request [MQTT-3.10.3-2]
+    UnsubscribeWithoutValidSubscriptionRequest,
+
+    /// All Unsuback packets must have at least one reason code, since they are responding
+    /// to a [Unsubscribe] with at least one subscription request [MQTT-3.10.3-2]
+    UnsubackWithoutValidReasonCode,
 }
 
 impl From<Utf8Error> for PacketReadError {
