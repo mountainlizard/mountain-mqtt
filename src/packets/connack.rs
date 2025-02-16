@@ -15,12 +15,16 @@ pub struct Connack<'a, const PROPERTIES_N: usize> {
     properties: Vec<ConnackProperty<'a>, PROPERTIES_N>,
 }
 
-impl<const PROPERTIES_N: usize> Connack<'_, PROPERTIES_N> {
-    pub fn new(session_present: bool, reason_code: ConnectReasonCode) -> Self {
+impl<'a, const PROPERTIES_N: usize> Connack<'a, PROPERTIES_N> {
+    pub fn new(
+        session_present: bool,
+        reason_code: ConnectReasonCode,
+        properties: Vec<ConnackProperty<'a>, PROPERTIES_N>,
+    ) -> Self {
         Self {
             session_present,
             reason_code,
-            properties: Vec::new(),
+            properties,
         }
     }
 }
@@ -68,7 +72,8 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N>
 
         let reason_code = reader.get()?;
 
-        let mut packet: Connack<'a, PROPERTIES_N> = Connack::new(session_present, reason_code);
+        let mut packet: Connack<'a, PROPERTIES_N> =
+            Connack::new(session_present, reason_code, Vec::new());
 
         // Add properties into packet
         reader.get_property_list(&mut packet.properties)?;
@@ -86,11 +91,12 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Connack<'a, 2> {
-        let mut packet: Connack<'_, 2> = Connack::new(true, ConnectReasonCode::ServerMoved);
-        packet
-            .properties
+        let mut properties = Vec::new();
+        properties
             .push(ConnackProperty::ReceiveMaximum(21.into()))
             .unwrap();
+
+        let packet: Connack<'_, 2> = Connack::new(true, ConnectReasonCode::ServerMoved, properties);
         packet
     }
 
