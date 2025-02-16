@@ -15,19 +15,22 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Unsuback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
+    first_reason_code: UnsubscriptionReasonCode,
+    other_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
     properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Unsuback<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
+        first_reason_code: UnsubscriptionReasonCode,
+        other_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
         properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            reason_codes,
+            first_reason_code,
+            other_reason_codes,
             properties,
         }
     }
@@ -54,7 +57,8 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
 
         // Payload:
         // Note we just put the reason codes in without a delimiter, they end at the end of the packet
-        for r in self.reason_codes.iter() {
+        writer.put(&self.first_reason_code)?;
+        for r in self.other_reason_codes.iter() {
             writer.put(r)?;
         }
 
@@ -83,16 +87,28 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         reader.get_property_list(&mut properties)?;
 
         // Payload:
+
+        // We must have at least one reason code, since any valid unsubscribe packet we
+        // are replying to must have had at least one unsubscription request [MQTT-3.10.3-2]
+        let first_reason_code = reader
+            .get()
+            .map_err(|_| PacketReadError::UnsubackWithoutValidReasonCode)?;
+
         // Read subscription requests until we run out of data
-        let mut reason_codes = Vec::new();
+        let mut other_reason_codes = Vec::new();
         while reader.position() < payload_end_position {
             let code = reader.get()?;
-            reason_codes
+            other_reason_codes
                 .push(code)
                 .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
-        let packet = Unsuback::new(packet_identifier, reason_codes, properties);
+        let packet = Unsuback::new(
+            packet_identifier,
+            first_reason_code,
+            other_reason_codes,
+            properties,
+        );
         Ok(packet)
     }
 }
@@ -106,27 +122,37 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Unsuback<'a, 1, 3> {
-        let mut reason_codes = Vec::new();
-        reason_codes
-            .push(UnsubscriptionReasonCode::UnspecifiedError)
-            .unwrap();
-        reason_codes
+        let first_reason_code = UnsubscriptionReasonCode::UnspecifiedError;
+
+        let mut other_reason_codes = Vec::new();
+        other_reason_codes
             .push(UnsubscriptionReasonCode::ImplementationSpecificError)
             .unwrap();
-        reason_codes
+        other_reason_codes
             .push(UnsubscriptionReasonCode::NotAuthorized)
             .unwrap();
         let mut properties = Vec::new();
         properties
             .push(UnsubackProperty::ReasonString("reasonString".into()))
             .unwrap();
-        let packet = Unsuback::new(PacketIdentifier(52232), reason_codes, properties);
+        let packet = Unsuback::new(
+            PacketIdentifier(52232),
+            first_reason_code,
+            other_reason_codes,
+            properties,
+        );
         packet
     }
 
     const EXAMPLE_DATA: [u8; 23] = [
         0xB0, 0x15, 0xCC, 0x08, 0x0F, 0x1F, 0x00, 0x0C, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x53,
         0x74, 0x72, 0x69, 0x6e, 0x67, 0x80, 0x83, 0x87,
+    ];
+
+    // EXAMPLE_DATA but with no reason codes at all, to check we get SubackWithoutValidReasonCode
+    const EXAMPLE_DATA_NO_REASON_CODES: [u8; 20] = [
+        0xB0, 0x12, 0xCC, 0x08, 0x0F, 0x1F, 0x00, 0x0C, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x53,
+        0x74, 0x72, 0x69, 0x6e, 0x67,
     ];
 
     #[test]
@@ -146,5 +172,12 @@ mod tests {
     fn decode_example() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA);
         assert_eq!(Unsuback::read(&mut r).unwrap(), example_packet());
+    }
+
+    #[test]
+    fn decode_should_error_on_no_reason_codes() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_NO_REASON_CODES);
+        let result: Result<Unsuback<'_, 16, 16>, PacketReadError> = Unsuback::read(&mut r);
+        assert_eq!(result, Err(PacketReadError::UnsubackWithoutValidReasonCode));
     }
 }
