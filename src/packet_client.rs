@@ -167,8 +167,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use heapless::Vec;
-
+    use super::*;
     use crate::{
         codec::mqtt_reader::MqttBufReader,
         data::{
@@ -182,8 +181,7 @@ mod tests {
             subscribe::{Subscribe, SubscriptionRequest},
         },
     };
-
-    use super::*;
+    use heapless::Vec;
 
     const ENCODED_PINGRESP: [u8; 2] = [0xC0, 0x00];
     const INVALID_PACKET_TYPE: [u8; 2] = [0xC1, 0x00];
