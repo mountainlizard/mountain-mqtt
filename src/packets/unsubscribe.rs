@@ -14,8 +14,8 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Unsubscribe<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    primary_request: &'a str,
-    additional_requests: Vec<&'a str, REQUEST_N>,
+    first_request: &'a str,
+    other_requests: Vec<&'a str, REQUEST_N>,
     properties: Vec<UnsubscribeProperty<'a>, PROPERTIES_N>,
 }
 
@@ -24,14 +24,14 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>
 {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        primary_request: &'a str,
-        additional_requests: Vec<&'a str, REQUEST_N>,
+        first_request: &'a str,
+        other_requests: Vec<&'a str, REQUEST_N>,
         properties: Vec<UnsubscribeProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
             packet_identifier,
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         }
     }
@@ -57,9 +57,9 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
         writer.put_variable_u32_delimited_vec(&self.properties)?; // 3.10.2.1 UNSUBSCRIBE Properties
 
         // Payload:
-        writer.put_str(self.primary_request)?;
+        writer.put_str(self.first_request)?;
         // Note we just put the requests in without a delimiter, they end at the end of the packet
-        for r in self.additional_requests.iter() {
+        for r in self.other_requests.iter() {
             writer.put_str(r)?;
         }
 
@@ -88,23 +88,18 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
         reader.get_property_list(&mut properties)?;
 
         // Payload:
-        let primary_request = reader.get_str()?;
-        let mut additional_requests = Vec::new();
+        let first_request = reader.get_str()?;
+        let mut other_requests = Vec::new();
 
         // Read subscription requests until we run out of data
         while reader.position() < payload_end_position {
-            let additional_request = reader.get_str()?;
-            additional_requests
-                .push(additional_request)
+            let other_request = reader.get_str()?;
+            other_requests
+                .push(other_request)
                 .map_err(|_e| PacketReadError::TooManyRequests)?;
         }
 
-        let packet = Unsubscribe::new(
-            packet_identifier,
-            primary_request,
-            additional_requests,
-            properties,
-        );
+        let packet = Unsubscribe::new(packet_identifier, first_request, other_requests, properties);
         Ok(packet)
     }
 }
@@ -119,9 +114,9 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Unsubscribe<'a, 1, 2> {
-        let primary_request = "test/topic";
-        let mut additional_requests = Vec::new();
-        additional_requests.push("hehe/#").unwrap();
+        let first_request = "test/topic";
+        let mut other_requests = Vec::new();
+        other_requests.push("hehe/#").unwrap();
 
         let mut properties = Vec::new();
         let pair = StringPair::new("haha", "hehe89");
@@ -131,8 +126,8 @@ mod tests {
 
         let packet = Unsubscribe::new(
             PacketIdentifier(5432),
-            primary_request,
-            additional_requests,
+            first_request,
+            other_requests,
             properties,
         );
         packet
