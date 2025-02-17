@@ -1,4 +1,7 @@
-use heapless::Vec;
+use core::fmt;
+use core::fmt::Write;
+
+use heapless::{String, Vec};
 
 use crate::{
     data::{
@@ -24,8 +27,8 @@ use crate::{
 /// [Client] error
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
-    SendError(PacketWriteError),
-    ReceiveError(PacketReadError),
+    Send(PacketWriteError),
+    Receive(PacketReadError),
     TimeoutOnResponsePacket,
     NotIdle,
     Idle,
@@ -43,6 +46,7 @@ pub enum ClientError {
     UnexpectedPingresp,
     Disconnect,
     ServerOnlyMessageReceived,
+    Format(core::fmt::Error),
     Connect(ConnectReasonCode),
     Subscribe(SubscribeReasonCode),
     Publish(PublishReasonCode),
@@ -51,13 +55,19 @@ pub enum ClientError {
 
 impl From<PacketWriteError> for ClientError {
     fn from(value: PacketWriteError) -> Self {
-        ClientError::SendError(value)
+        ClientError::Send(value)
     }
 }
 
 impl From<PacketReadError> for ClientError {
     fn from(value: PacketReadError) -> Self {
-        ClientError::ReceiveError(value)
+        ClientError::Receive(value)
+    }
+}
+
+impl From<core::fmt::Error> for ClientError {
+    fn from(value: core::fmt::Error) -> Self {
+        Self::Format(value)
     }
 }
 
@@ -92,11 +102,11 @@ pub trait Client {
     /// Subscribe to a topic by name
     async fn subscribe_to_topic<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError>;
 
-    // /// Subscribe to a topic, providing the topic name as format arguments
-    // async fn subscribe_to_topic_fmt<'b, const L: usize>(
-    //     &'b mut self,
-    //     topic_name: fmt::Arguments<'b>,
-    // ) -> Result<(), ClientError>;
+    /// Subscribe to a topic, providing the topic name as format arguments
+    async fn subscribe_to_topic_fmt<'b, const L: usize>(
+        &'b mut self,
+        topic_name: fmt::Arguments<'b>,
+    ) -> Result<(), ClientError>;
 
     /// Unsubscribe from a topic by name.
     async fn unsubscribe_from_topic<'b>(
@@ -305,14 +315,14 @@ where
         }
     }
 
-    // async fn subscribe_to_topic_fmt<'b, const L: usize>(
-    //     &'b mut self,
-    //     topic_name: fmt::Arguments<'b>,
-    // ) -> Result<(), ClientError> {
-    //     let mut topic_string = String::<L>::new();
-    //     topic_string.write_fmt(topic_name)?;
-    //     self.subscribe_to_topic(topic_string.as_str()).await
-    // }
+    async fn subscribe_to_topic_fmt<'b, const L: usize>(
+        &'b mut self,
+        topic_name: fmt::Arguments<'b>,
+    ) -> Result<(), ClientError> {
+        let mut topic_string = String::<L>::new();
+        topic_string.write_fmt(topic_name)?;
+        self.subscribe_to_topic(topic_string.as_str()).await
+    }
 
     async fn unsubscribe_from_topic<'b>(
         &'b mut self,
