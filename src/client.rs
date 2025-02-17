@@ -42,6 +42,7 @@ pub enum ClientError {
     UnexpectedPingresp,
     Disconnect,
     ServerOnlyMessageReceived,
+    Connect(ConnectReasonCode),
     Subscribe(SubscribeReasonCode),
     Publish(PublishReasonCode),
     Unsubscribe(UnsubscribeReasonCode),
@@ -376,18 +377,13 @@ where
                     (self.message_handler)(publish.topic_name(), publish.payload())?;
                     Ok(true)
                 }
-                PacketGeneric::Connack(connack) => {
-                    match connack.reason_code() {
-                        ConnectReasonCode::Success => {
-                            self.connection_state = ConnectionState::Connected;
-                            Ok(true)
-                        }
-                        _e => {
-                            // TODO: more specific error
-                            Err(ClientError::ReceiveError)
-                        }
+                PacketGeneric::Connack(connack) => match connack.reason_code() {
+                    ConnectReasonCode::Success => {
+                        self.connection_state = ConnectionState::Connected;
+                        Ok(true)
                     }
-                }
+                    reason_code => Err(ClientError::Connect(*reason_code)),
+                },
                 PacketGeneric::Puback(puback) => {
                     let reason_code = puback.reason_code();
                     // TODO: Should we do anything about NoMatchingSubscribers?
