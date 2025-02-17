@@ -1,7 +1,7 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
 use crate::data::{
     packet_identifier::PacketIdentifier, packet_type::PacketType, property::UnsubackProperty,
-    reason_code::UnsubscriptionReasonCode,
+    reason_code::UnsubscribeReasonCode,
 };
 use crate::{
     codec::{
@@ -15,16 +15,16 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Unsuback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    first_reason_code: UnsubscriptionReasonCode,
-    other_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
+    first_reason_code: UnsubscribeReasonCode,
+    other_reason_codes: Vec<UnsubscribeReasonCode, REQUEST_N>,
     properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Unsuback<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        first_reason_code: UnsubscriptionReasonCode,
-        other_reason_codes: Vec<UnsubscriptionReasonCode, REQUEST_N>,
+        first_reason_code: UnsubscribeReasonCode,
+        other_reason_codes: Vec<UnsubscribeReasonCode, REQUEST_N>,
         properties: Vec<UnsubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
@@ -33,6 +33,19 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Unsuback<'a, PROPERT
             other_reason_codes,
             properties,
         }
+    }
+
+    pub fn packet_identifier(&self) -> &PacketIdentifier {
+        &self.packet_identifier
+    }
+    pub fn first_reason_code(&self) -> &UnsubscribeReasonCode {
+        &self.first_reason_code
+    }
+    pub fn other_reason_codes(&self) -> &Vec<UnsubscribeReasonCode, REQUEST_N> {
+        &self.other_reason_codes
+    }
+    pub fn properties(&self) -> &Vec<UnsubackProperty<'a>, PROPERTIES_N> {
+        &self.properties
     }
 }
 
@@ -122,14 +135,14 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Unsuback<'a, 1, 3> {
-        let first_reason_code = UnsubscriptionReasonCode::UnspecifiedError;
+        let first_reason_code = UnsubscribeReasonCode::UnspecifiedError;
 
         let mut other_reason_codes = Vec::new();
         other_reason_codes
-            .push(UnsubscriptionReasonCode::ImplementationSpecificError)
+            .push(UnsubscribeReasonCode::ImplementationSpecificError)
             .unwrap();
         other_reason_codes
-            .push(UnsubscriptionReasonCode::NotAuthorized)
+            .push(UnsubscribeReasonCode::NotAuthorized)
             .unwrap();
         let mut properties = Vec::new();
         properties

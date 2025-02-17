@@ -7,7 +7,7 @@ use mountain_mqtt::{
     data::{
         packet_identifier::{PacketIdentifier, PublishPacketIdentifier},
         quality_of_service::QualityOfService,
-        reason_code::{ConnectReasonCode, SubscriptionReasonCode, UnsubscriptionReasonCode},
+        reason_code::{ConnectReasonCode, SubscribeReasonCode, UnsubscribeReasonCode},
     },
     packet_client::PacketClient,
     packets::{
@@ -111,7 +111,7 @@ async fn connect_subscribe_and_publish() {
             maybe_suback,
             PacketGeneric::Suback(Suback::new(
                 PACKET_IDENTIFIER,
-                SubscriptionReasonCode::Success,
+                SubscribeReasonCode::Success,
                 Vec::new(),
                 Vec::new()
             ))
@@ -154,7 +154,7 @@ async fn connect_subscribe_and_publish() {
             maybe_unsuback,
             PacketGeneric::Unsuback(Unsuback::new(
                 PACKET_IDENTIFIER,
-                UnsubscriptionReasonCode::Success,
+                UnsubscribeReasonCode::Success,
                 Vec::new(),
                 Vec::new()
             ))
