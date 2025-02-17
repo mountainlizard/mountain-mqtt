@@ -28,6 +28,16 @@ impl<'a, const PROPERTIES_N: usize> Puback<'a, PROPERTIES_N> {
             properties,
         }
     }
+
+    pub fn packet_identifier(&self) -> &PacketIdentifier {
+        &self.packet_identifier
+    }
+    pub fn reason_code(&self) -> &PublishReasonCode {
+        &self.reason_code
+    }
+    pub fn properties(&self) -> &Vec<PubackProperty<'a>, PROPERTIES_N> {
+        &self.properties
+    }
 }
 
 impl<const PROPERTIES_N: usize> Packet for Puback<'_, PROPERTIES_N> {

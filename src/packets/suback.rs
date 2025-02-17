@@ -1,7 +1,7 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
 use crate::data::{
     packet_identifier::PacketIdentifier, packet_type::PacketType, property::SubackProperty,
-    reason_code::SubscriptionReasonCode,
+    reason_code::SubscribeReasonCode,
 };
 use crate::{
     codec::{
@@ -15,16 +15,16 @@ use heapless::Vec;
 #[derive(Debug, PartialEq)]
 pub struct Suback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
     packet_identifier: PacketIdentifier,
-    first_reason_code: SubscriptionReasonCode,
-    other_reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
+    first_reason_code: SubscribeReasonCode,
+    other_reason_codes: Vec<SubscribeReasonCode, REQUEST_N>,
     properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
 }
 
 impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIES_N, REQUEST_N> {
     pub fn new(
         packet_identifier: PacketIdentifier,
-        first_reason_code: SubscriptionReasonCode,
-        other_reason_codes: Vec<SubscriptionReasonCode, REQUEST_N>,
+        first_reason_code: SubscribeReasonCode,
+        other_reason_codes: Vec<SubscribeReasonCode, REQUEST_N>,
         properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
     ) -> Self {
         Self {
@@ -38,10 +38,10 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIE
     pub fn packet_identifier(&self) -> &PacketIdentifier {
         &self.packet_identifier
     }
-    pub fn first_reason_code(&self) -> &SubscriptionReasonCode {
+    pub fn first_reason_code(&self) -> &SubscribeReasonCode {
         &self.first_reason_code
     }
-    pub fn other_reason_codes(&self) -> &Vec<SubscriptionReasonCode, REQUEST_N> {
+    pub fn other_reason_codes(&self) -> &Vec<SubscribeReasonCode, REQUEST_N> {
         &self.other_reason_codes
     }
     pub fn properties(&self) -> &Vec<SubackProperty<'a>, PROPERTIES_N> {
@@ -135,14 +135,14 @@ mod tests {
     use super::*;
 
     fn example_packet<'a>() -> Suback<'a, 1, 2> {
-        let first_reason_code = SubscriptionReasonCode::UnspecifiedError;
+        let first_reason_code = SubscribeReasonCode::UnspecifiedError;
 
         let mut other_reason_codes = Vec::new();
         other_reason_codes
-            .push(SubscriptionReasonCode::ImplementationSpecificError)
+            .push(SubscribeReasonCode::ImplementationSpecificError)
             .unwrap();
         other_reason_codes
-            .push(SubscriptionReasonCode::NotAuthorized)
+            .push(SubscribeReasonCode::NotAuthorized)
             .unwrap();
 
         let mut properties = Vec::new();
