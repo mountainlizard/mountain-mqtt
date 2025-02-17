@@ -3,8 +3,8 @@
 ## TODO
 
 - [x] Port across mqtt core in lightbox as new `Client`.
+- [x] Refactor `Client` errors to wrap packet read/write errors where appropriate, add own state-based errors on top.
 - [ ] Integration test for `Client`
-- [ ] Refactor `Client` errors to wrap packet read/write errors where appropriate, add own state-based errors on top.
 - [ ] Embedded network adapter, connect and disconnect from a pico w
 - [ ] Add github actions for integration tests
 - [ ] More integration tests - try username and password, some properties?

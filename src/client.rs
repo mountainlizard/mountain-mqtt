@@ -8,6 +8,7 @@ use crate::{
             ConnectReasonCode, PublishReasonCode, SubscribeReasonCode, UnsubscribeReasonCode,
         },
     },
+    error::{PacketReadError, PacketWriteError},
     packet_client::{ConnectionReady, PacketClient},
     packets::{
         connect::Connect,
@@ -23,8 +24,9 @@ use crate::{
 /// [Client] error
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
+    SendError(PacketWriteError),
+    ReceiveError(PacketReadError),
     TimeoutOnResponsePacket,
-    SendError,
     NotIdle,
     Idle,
     UnsupportedFeature,
@@ -32,7 +34,6 @@ pub enum ClientError {
     NotConnected,
     SubscriptionPending,
     UnsubscriptionPending,
-    ReceiveError,
     UnexpectedPuback,
     UnexpectedPubackPacketIdentifier,
     UnexpectedSuback,
@@ -46,6 +47,18 @@ pub enum ClientError {
     Subscribe(SubscribeReasonCode),
     Publish(PublishReasonCode),
     Unsubscribe(UnsubscribeReasonCode),
+}
+
+impl From<PacketWriteError> for ClientError {
+    fn from(value: PacketWriteError) -> Self {
+        ClientError::SendError(value)
+    }
+}
+
+impl From<PacketReadError> for ClientError {
+    fn from(value: PacketReadError) -> Self {
+        ClientError::ReceiveError(value)
+    }
 }
 
 /// A simple client interface for connecting to an MQTT server
@@ -207,10 +220,7 @@ where
         connect: Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientError> {
         if self.connection_state == ConnectionState::Idle {
-            self.packet_client
-                .send(connect)
-                .await
-                .map_err(|_| ClientError::SendError)?;
+            self.packet_client.send(connect).await?;
             self.connection_state = ConnectionState::Connecting;
             self.wait_for_responses(self.timeout_millis).await?;
             Ok(())
@@ -221,10 +231,7 @@ where
 
     async fn disconnect(&mut self) -> Result<(), ClientError> {
         if self.connection_state != ConnectionState::Idle {
-            self.packet_client
-                .send(Disconnect::default())
-                .await
-                .map_err(|_| ClientError::SendError)?;
+            self.packet_client.send(Disconnect::default()).await?;
             self.connection_state = ConnectionState::Idle;
             Ok(())
         } else {
@@ -260,10 +267,7 @@ where
                 Vec::new(),
             );
 
-            self.packet_client
-                .send(publish)
-                .await
-                .map_err(|_| ClientError::SendError)?;
+            self.packet_client.send(publish).await?;
 
             if qos == QualityOfService::QoS1 {
                 self.pending_puback_identifier = Some(Self::PUBLISH_PACKET_IDENTIFIER);
@@ -289,10 +293,7 @@ where
                     Vec::new(),
                 );
 
-                self.packet_client
-                    .send(subscribe)
-                    .await
-                    .map_err(|_| ClientError::SendError)?;
+                self.packet_client.send(subscribe).await?;
 
                 self.pending_suback_identifier = Some(Self::SUBSCRIBE_PACKET_IDENTIFIER);
                 self.wait_for_responses(self.timeout_millis).await?;
@@ -328,10 +329,7 @@ where
                     Vec::new(),
                 );
 
-                self.packet_client
-                    .send(unsubscribe)
-                    .await
-                    .map_err(|_| ClientError::SendError)?;
+                self.packet_client.send(unsubscribe).await?;
 
                 self.pending_unsuback_identifier = Some(Self::UNSUBSCRIBE_PACKET_IDENTIFIER);
                 self.wait_for_responses(self.timeout_millis).await?;
@@ -344,10 +342,7 @@ where
 
     async fn send_ping(&mut self) -> Result<(), ClientError> {
         if self.connection_state == ConnectionState::Connected {
-            self.packet_client
-                .send(Pingreq::default())
-                .await
-                .map_err(|_| ClientError::SendError)?;
+            self.packet_client.send(Pingreq::default()).await?;
 
             self.pending_ping_count += 1;
             Ok(())
@@ -358,17 +353,9 @@ where
 
     async fn poll(&mut self, wait: bool) -> Result<bool, ClientError> {
         let event: Option<PacketGeneric<'_, 16, 16>> = if wait {
-            Some(
-                self.packet_client
-                    .receive()
-                    .await
-                    .map_err(|_| ClientError::ReceiveError)?,
-            )
+            Some(self.packet_client.receive().await?)
         } else {
-            self.packet_client
-                .receive_if_ready()
-                .await
-                .map_err(|_| ClientError::ReceiveError)?
+            self.packet_client.receive_if_ready().await?
         };
 
         if let Some(packet) = event {
