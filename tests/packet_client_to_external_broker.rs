@@ -1,7 +1,6 @@
 use std::net::Ipv4Addr;
 
 use core::net::SocketAddr;
-use embedded_io_adapters::tokio_1::FromTokio;
 use heapless::Vec;
 use mountain_mqtt::{
     data::{
@@ -25,13 +24,12 @@ use tokio::net::TcpStream;
 
 /// Create a client ready to connect to MQTT server on 127.0.0.1:1883,
 /// server must accept connections with no username or password
-async fn tokio_localhost_client(buf: &mut [u8]) -> PacketClient<'_, FromTokio<TcpStream>> {
+async fn tokio_localhost_client(buf: &mut [u8]) -> PacketClient<'_, TcpStream> {
     let ip = Ipv4Addr::new(127, 0, 0, 1);
     let port = 1883;
 
     let addr = SocketAddr::new(ip.into(), port);
     let connection = TcpStream::connect(addr).await.unwrap();
-    let connection = FromTokio::new(connection);
 
     PacketClient::new(connection, buf)
 }
@@ -45,7 +43,7 @@ async fn tokio_localhost_client(buf: &mut [u8]) -> PacketClient<'_, FromTokio<Tc
 async fn tokio_localhost_client_connected<'a>(
     client_id: &'a str,
     buf: &'a mut [u8],
-) -> PacketClient<'a, FromTokio<TcpStream>> {
+) -> PacketClient<'a, TcpStream> {
     let mut client = tokio_localhost_client(buf).await;
 
     let connect: Connect<'_, 0> = Connect::new(120, None, None, client_id, true, None, Vec::new());

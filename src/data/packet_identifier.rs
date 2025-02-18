@@ -1,6 +1,6 @@
 use crate::data::quality_of_service::QualityOfService;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct PacketIdentifier(pub u16);
 
 #[derive(Debug, PartialEq)]

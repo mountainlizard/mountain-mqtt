@@ -1,14 +1,17 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
-use crate::codec::{
-    mqtt_reader::{self, MqttReader},
-    mqtt_writer::{self, MqttWriter},
-};
 use crate::data::{
     packet_identifier::{PacketIdentifier, PublishPacketIdentifier},
     packet_type::PacketType,
     property::PublishProperty,
 };
 use crate::error::PacketReadError;
+use crate::{
+    codec::{
+        mqtt_reader::{self, MqttReader},
+        mqtt_writer::{self, MqttWriter},
+    },
+    data::quality_of_service::QualityOfService,
+};
 use heapless::Vec;
 
 const RETAIN_SHIFT: i32 = 0;
@@ -63,6 +66,15 @@ impl<'a, const PROPERTIES_N: usize> Publish<'a, PROPERTIES_N> {
     pub fn publish_packet_identifier(&self) -> &PublishPacketIdentifier {
         &self.publish_packet_identifier
     }
+
+    pub fn qos(&self) -> QualityOfService {
+        match &self.publish_packet_identifier {
+            PublishPacketIdentifier::None => QualityOfService::QoS0,
+            PublishPacketIdentifier::Qos1(_) => QualityOfService::QoS1,
+            PublishPacketIdentifier::Qos2(_) => QualityOfService::QoS2,
+        }
+    }
+
     pub fn payload(&self) -> &'a [u8] {
         self.payload
     }

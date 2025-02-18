@@ -14,22 +14,26 @@ use crate::{
         disconnect::Disconnect,
         packet_generic::PacketGeneric,
         pingreq::Pingreq,
+        puback::Puback,
         publish::Publish,
         subscribe::{Subscribe, SubscriptionRequest},
         unsubscribe::Unsubscribe,
     },
 };
 
-/// [Client] error
+/// [ClientState] error
 #[derive(Debug, PartialEq)]
 pub enum ClientStateError {
     PacketWrite(PacketWriteError),
     PacketRead(PacketReadError),
     NotIdle,
     Idle,
-    UnsupportedFeature,
+    AuthNotSupported,
+    QoS2NotSupported,
+    ReceivedQoS2PublishNotSupported,
     QoS1MessagePending,
     NotConnected,
+    ReceiveWhenNotConnectedOrConnecting,
     SubscriptionPending,
     UnsubscriptionPending,
     UnexpectedPuback,
@@ -45,6 +49,44 @@ pub enum ClientStateError {
     Subscribe(SubscribeReasonCode),
     Publish(PublishReasonCode),
     Unsubscribe(UnsubscribeReasonCode),
+}
+
+pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
+    /// Nothing happened on receive
+    None,
+
+    /// A published message was received
+    Publish { publish: Publish<'a, PROPERTIES_N> },
+
+    /// A published message was received, and it needs to be acknowledged by sending provided puback to the server
+    PublishAndPubAck {
+        publish: Publish<'a, PROPERTIES_N>,
+        puback: Puback<'b, PROPERTIES_N>,
+    },
+
+    /// A subscription was granted but was at lower qos than the maximum requested
+    /// This may or may not require action depending on client requirements -
+    /// it means that the given subscription will receive published messages at
+    /// only the granted qos - if the requested maximum qos was absolutely required
+    /// then the client could respond by showing an error to the user stating the
+    /// server is incompatible, or possibly trying to unsubscribe and resubscribe,
+    /// assuming this is expected to make any difference with the server(s) in use.
+    SubscriptionGrantedBelowMaximumQoS {
+        granted_qos: QualityOfService,
+        maximum_qos: QualityOfService,
+    },
+
+    /// A published message was received at the server, but had no matching subscribers and
+    /// so did not reach any receivers
+    /// This may or may not require action depending on client requirements / expectations
+    /// E.g. if it was expected there would be subscribers, the client could try resending
+    /// the message later
+    PublishedMessageHadNoMatchingSubscribers,
+
+    /// A [Disconnect] packet was received, it should contain a reason for our disconnection
+    Disconnect {
+        disconnect: Disconnect<'a, PROPERTIES_N>,
+    },
 }
 
 impl From<PacketWriteError> for ClientStateError {
@@ -78,45 +120,51 @@ pub trait ClientState {
     /// Call this after connect packet has been successfully sent.
     fn connect<const PROPERTIES_N: usize>(
         &mut self,
-        connect: Connect<'_, PROPERTIES_N>,
+        connect: &Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to disconnect from server, update state
-    fn disconnect(&mut self) -> Result<Disconnect<'_, 0>, ClientStateError>;
+    fn disconnect<'b>(&mut self) -> Result<Disconnect<'b, 0>, ClientStateError>;
 
     /// Produce a packet to ping the server, update state
     fn send_ping(&mut self) -> Result<Pingreq, ClientStateError>;
 
     /// Receive a packet
-    /// This updates the client state, and if the packet is a Publish message,
-    /// returns this for handling
+    /// This updates the client state, and if anything that might require
+    /// action by the caller occurs, a [ClientStateReceiveEvent] is returned.
     /// Errors indicate an invalid packet was received, message_target errored,
     /// or the received packet was unexpected based on our state
-    fn receive<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    fn receive<'a, 'b, const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
         packet: PacketGeneric<'a, PROPERTIES_N, REQUEST_N>,
-    ) -> Result<Option<Publish<'a, PROPERTIES_N>>, ClientStateError>;
+    ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError>;
 
     /// Produce a packet to subscribe to a topic by name, update state
     fn subscribe_to_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
+        maximum_qos: &QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError>;
 
     /// Produce a packet to unsubscribe from a topic by name, update state
     fn unsubscribe_from_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError>;
 
     /// Produce a packet to publish to a given topic, update state
     fn send_message<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
         message: &'b [u8],
         qos: QualityOfService,
         retain: bool,
     ) -> Result<Publish<'b, 0>, ClientStateError>;
+
+    /// Move to errored state, no further operations are possible
+    /// This must be called if the user of the client state cannot successfully send
+    /// a packet produced by this [ClientState]
+    fn error(&mut self);
 }
 
 #[derive(PartialEq)]
@@ -124,12 +172,14 @@ pub enum ConnectionState {
     Idle,
     Connecting,
     Connected,
+    Errored,
+    Disconnected,
 }
 
 pub struct ClientStateNoQueue {
     connection_state: ConnectionState,
     pending_puback_identifier: Option<PacketIdentifier>,
-    pending_suback_identifier: Option<PacketIdentifier>,
+    pending_suback_identifier_and_qos: Option<(PacketIdentifier, QualityOfService)>,
     pending_unsuback_identifier: Option<PacketIdentifier>,
     pending_ping_count: u32,
 }
@@ -143,7 +193,7 @@ impl ClientStateNoQueue {
         Self {
             connection_state: ConnectionState::Idle,
             pending_puback_identifier: None,
-            pending_suback_identifier: None,
+            pending_suback_identifier_and_qos: None,
             pending_unsuback_identifier: None,
             pending_ping_count: 0,
         }
@@ -151,7 +201,7 @@ impl ClientStateNoQueue {
 
     fn any_pending(&self) -> bool {
         self.pending_puback_identifier.is_some()
-            || self.pending_suback_identifier.is_some()
+            || self.pending_suback_identifier_and_qos.is_some()
             || self.pending_unsuback_identifier.is_some()
     }
 }
@@ -170,7 +220,7 @@ impl ClientState for ClientStateNoQueue {
 
     fn connect<const PROPERTIES_N: usize>(
         &mut self,
-        _connect: Connect<'_, PROPERTIES_N>,
+        _connect: &Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientStateError> {
         if self.connection_state == ConnectionState::Idle {
             self.connection_state = ConnectionState::Connecting;
@@ -180,17 +230,17 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn disconnect(&mut self) -> Result<Disconnect<'_, 0>, ClientStateError> {
-        if self.connection_state != ConnectionState::Idle {
-            self.connection_state = ConnectionState::Idle;
+    fn disconnect<'b>(&mut self) -> Result<Disconnect<'b, 0>, ClientStateError> {
+        if self.connection_state == ConnectionState::Connected {
+            self.connection_state = ConnectionState::Disconnected;
             Ok(Disconnect::default())
         } else {
-            Err(ClientStateError::Idle)
+            Err(ClientStateError::NotConnected)
         }
     }
 
     fn send_message<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
         message: &'b [u8],
         qos: QualityOfService,
@@ -205,7 +255,7 @@ impl ClientState for ClientStateNoQueue {
                 QualityOfService::QoS1 => Ok(PublishPacketIdentifier::Qos1(
                     Self::PUBLISH_PACKET_IDENTIFIER,
                 )),
-                QualityOfService::QoS2 => Err(ClientStateError::UnsupportedFeature),
+                QualityOfService::QoS2 => Err(ClientStateError::QoS2NotSupported),
             }?;
 
             let publish: Publish<'_, 0> = Publish::new(
@@ -228,14 +278,17 @@ impl ClientState for ClientStateNoQueue {
     }
 
     fn subscribe_to_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
+        maximum_qos: &QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
         if self.connection_state == ConnectionState::Connected {
-            if self.pending_suback_identifier.is_some() {
+            if self.pending_suback_identifier_and_qos.is_some() {
                 Err(ClientStateError::SubscriptionPending)
+            } else if maximum_qos == &QualityOfService::QoS2 {
+                Err(ClientStateError::QoS2NotSupported)
             } else {
-                let first_request = SubscriptionRequest::new(topic_name, QualityOfService::QoS0);
+                let first_request = SubscriptionRequest::new(topic_name, *maximum_qos);
                 let subscribe: Subscribe<'_, 0, 0> = Subscribe::new(
                     Self::SUBSCRIBE_PACKET_IDENTIFIER,
                     first_request,
@@ -243,7 +296,8 @@ impl ClientState for ClientStateNoQueue {
                     Vec::new(),
                 );
 
-                self.pending_suback_identifier = Some(Self::SUBSCRIBE_PACKET_IDENTIFIER);
+                self.pending_suback_identifier_and_qos =
+                    Some((Self::SUBSCRIBE_PACKET_IDENTIFIER, *maximum_qos));
 
                 Ok(subscribe)
             }
@@ -253,7 +307,7 @@ impl ClientState for ClientStateNoQueue {
     }
 
     fn unsubscribe_from_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {
         if self.connection_state == ConnectionState::Connected {
@@ -284,22 +338,37 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn receive<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    fn receive<'a, 'b, const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
         packet: PacketGeneric<'a, PROPERTIES_N, REQUEST_N>,
-    ) -> Result<Option<Publish<'a, PROPERTIES_N>>, ClientStateError> {
+    ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError> {
+        if self.connection_state != ConnectionState::Connected
+            && self.connection_state != ConnectionState::Connecting
+        {
+            return Err(ClientStateError::ReceiveWhenNotConnectedOrConnecting);
+        }
+
         match packet {
-            PacketGeneric::Publish(publish) => Ok(Some(publish)),
+            PacketGeneric::Publish(publish) => match publish.publish_packet_identifier() {
+                PublishPacketIdentifier::None => Ok(ClientStateReceiveEvent::Publish { publish }),
+                PublishPacketIdentifier::Qos1(packet_identifier) => {
+                    let puback =
+                        Puback::new(*packet_identifier, PublishReasonCode::Success, Vec::new());
+                    Ok(ClientStateReceiveEvent::PublishAndPubAck { publish, puback })
+                }
+                PublishPacketIdentifier::Qos2(_) => {
+                    Err(ClientStateError::ReceivedQoS2PublishNotSupported)
+                }
+            },
             PacketGeneric::Connack(connack) => match connack.reason_code() {
                 ConnectReasonCode::Success => {
                     self.connection_state = ConnectionState::Connected;
-                    Ok(None)
+                    Ok(ClientStateReceiveEvent::None)
                 }
                 reason_code => Err(ClientStateError::Connect(*reason_code)),
             },
             PacketGeneric::Puback(puback) => {
                 let reason_code = puback.reason_code();
-                // TODO: Should we do anything about NoMatchingSubscribers?
                 if reason_code.is_error() {
                     return Err(ClientStateError::Publish(*reason_code));
                 }
@@ -309,7 +378,12 @@ impl ClientState for ClientStateNoQueue {
                     Some(expected_packet_identifier) => {
                         if expected_packet_identifier == ack_packet_identifier {
                             self.pending_puback_identifier = None;
-                            Ok(None)
+
+                            if reason_code == &PublishReasonCode::NoMatchingSubscribers {
+                                Ok(ClientStateReceiveEvent::None)
+                            } else {
+                                Ok(ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers)
+                            }
                         } else {
                             Err(ClientStateError::UnexpectedPubackPacketIdentifier)
                         }
@@ -319,17 +393,31 @@ impl ClientState for ClientStateNoQueue {
             }
             PacketGeneric::Suback(suback) => {
                 let reason_code = suback.first_reason_code();
-                if reason_code.is_error() {
-                    return Err(ClientStateError::Subscribe(*reason_code));
-                }
+                let granted_qos = match reason_code {
+                    SubscribeReasonCode::Success => QualityOfService::QoS0,
+                    SubscribeReasonCode::GrantedQoS1 => QualityOfService::QoS1,
+                    SubscribeReasonCode::GrantedQoS2 => QualityOfService::QoS2,
+                    err => return Err(ClientStateError::Subscribe(*err)),
+                };
 
                 let ack_packet_identifier = suback.packet_identifier();
 
-                match &self.pending_suback_identifier {
-                    Some(expected_packet_identifier) => {
+                match &self.pending_suback_identifier_and_qos {
+                    Some((expected_packet_identifier, maximum_qos)) => {
                         if expected_packet_identifier == ack_packet_identifier {
-                            self.pending_suback_identifier = None;
-                            Ok(None)
+                            let maximum_qos = *maximum_qos;
+                            self.pending_suback_identifier_and_qos = None;
+
+                            if granted_qos != maximum_qos {
+                                Ok(
+                                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
+                                        granted_qos,
+                                        maximum_qos,
+                                    },
+                                )
+                            } else {
+                                Ok(ClientStateReceiveEvent::None)
+                            }
                         } else {
                             Err(ClientStateError::UnexpectedSubackPacketIdentifier)
                         }
@@ -348,7 +436,7 @@ impl ClientState for ClientStateNoQueue {
                     Some(expected_packet_identifier) => {
                         if expected_packet_identifier == ack_packet_identifier {
                             self.pending_unsuback_identifier = None;
-                            Ok(None)
+                            Ok(ClientStateReceiveEvent::None)
                         } else {
                             Err(ClientStateError::UnexpectedUnsubackPacketIdentifier)
                         }
@@ -359,24 +447,30 @@ impl ClientState for ClientStateNoQueue {
             PacketGeneric::Pingresp(_pingresp) => {
                 if self.pending_ping_count > 0 {
                     self.pending_ping_count -= 1;
-                    Ok(None)
+                    Ok(ClientStateReceiveEvent::None)
                 } else {
                     Err(ClientStateError::UnexpectedPingresp)
                 }
             }
-            PacketGeneric::Disconnect(_) => Err(ClientStateError::Disconnect),
-            PacketGeneric::Connect(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pubrec(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pubrel(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pubcomp(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Subscribe(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Unsubscribe(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Auth(_) => Err(ClientStateError::ServerOnlyMessageReceived),
+            PacketGeneric::Disconnect(disconnect) => {
+                Ok(ClientStateReceiveEvent::Disconnect { disconnect })
+            }
+            PacketGeneric::Auth(_auth) => Err(ClientStateError::AuthNotSupported),
+            PacketGeneric::Connect(_)
+            | PacketGeneric::Pubrec(_)
+            | PacketGeneric::Pubrel(_)
+            | PacketGeneric::Pubcomp(_)
+            | PacketGeneric::Subscribe(_)
+            | PacketGeneric::Unsubscribe(_)
+            | PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
         }
     }
 
     fn pending_ping_count(&self) -> u32 {
         self.pending_ping_count
+    }
+
+    fn error(&mut self) {
+        self.connection_state = ConnectionState::Errored;
     }
 }

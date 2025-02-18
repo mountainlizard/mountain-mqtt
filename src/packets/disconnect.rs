@@ -24,6 +24,13 @@ impl<'a, const PROPERTIES_N: usize> Disconnect<'a, PROPERTIES_N> {
             properties,
         }
     }
+
+    pub fn reason_code(&self) -> &DisconnectReasonCode {
+        &self.reason_code
+    }
+    pub fn properties(&self) -> &Vec<DisconnectProperty<'a>, PROPERTIES_N> {
+        &self.properties
+    }
 }
 
 impl Default for Disconnect<'_, 0> {

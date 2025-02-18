@@ -1,6 +1,3 @@
-use embedded_io::ReadReady;
-use embedded_io_async::{Read, Write};
-
 use crate::{
     codec::{
         mqtt_reader::{MqttBufReader, MqttReader},
@@ -17,44 +14,65 @@ pub trait Connection {
     // Send and flush all data in `buf`
     async fn send(&mut self, buf: &[u8]) -> Result<(), PacketWriteError>;
 
-    // Receive into buffer, waiting to fill it
+    // Receive into buffer, waiting to fill it. This may need to await more data.
     async fn receive(&mut self, buf: &mut [u8]) -> Result<(), PacketReadError>;
+
+    /// If no data at all is ready, then return immediately with `Ok(false)`,
+    /// leaving the underlying stream and `buf` unaltered.
+    /// If any data is ready  then receive into buffer, waiting to fill it,
+    /// then return `Ok(true)`.
+    /// Note that this method can still await data, because it is only required
+    /// to return `Ok(false)` in the case where no data at all is ready. If less
+    /// data is available than `buf.len()`, the method may still proceed, reading
+    /// the available data and then waiting for more to fill `buf`.
+    /// This is fairly well suited to MQTT packets - first call `receive_if_ready`
+    /// with a `buf` of length 1 - if this returns `Ok(false)` then sleep for
+    /// a reasonable interval and try again. If it returns `Ok(true)`, continue
+    /// reading a whole packet using `receive`, using larger buffers if possible.
+    /// While this may lead to an indefinite await for the rest of the packet, this
+    /// should only occur in the case of a malicious server or poor connection, not
+    /// in the most common case where there is a long gap between incoming packets,
+    /// but once the first byte of a packet is received the rest is received quickly
+    /// afterwards.
+    /// This approach is used to make it easier to use a variety of underlying streams,
+    /// since we only need something like embedded-async's `ReadReady` trait, or
+    /// tokio's `TCPStream.try_read`
+    /// More sophisticated approaches are definitely possible.
+    async fn receive_if_ready(&mut self, buf: &mut [u8]) -> Result<bool, PacketReadError>;
 }
 
-pub trait ConnectionReady: Connection {
-    /// Check whether the TCP connection is ready to provide any data
-    fn receive_ready(&mut self) -> Result<bool, PacketReadError>;
-}
+// TODO: reinstate for more specific trait/struct for embedded-net tcp stream
+// impl<T> Connection for T
+// where
+//     T: Read + Write + ReadReady,
+// {
+//     async fn send(&mut self, buf: &[u8]) -> Result<(), PacketWriteError> {
+//         self.write_all(buf)
+//             .await
+//             .map_err(|_| PacketWriteError::ConnectionSend)?;
+//         self.flush()
+//             .await
+//             .map_err(|_| PacketWriteError::ConnectionSend)
+//     }
 
-impl<T> Connection for T
-where
-    T: Read + Write,
-{
-    async fn send(&mut self, buf: &[u8]) -> Result<(), PacketWriteError> {
-        self.write_all(buf)
-            .await
-            .map_err(|_| PacketWriteError::ConnectionSend)?;
-        self.flush()
-            .await
-            .map_err(|_| PacketWriteError::ConnectionSend)
-    }
+//     async fn receive(&mut self, buf: &mut [u8]) -> Result<(), PacketReadError> {
+//         self.read_exact(buf)
+//             .await
+//             .map_err(|_| PacketReadError::ConnectionReceive)
+//     }
 
-    async fn receive(&mut self, buf: &mut [u8]) -> Result<(), PacketReadError> {
-        self.read_exact(buf)
-            .await
-            .map_err(|_| PacketReadError::ConnectionReceive)
-    }
-}
-
-impl<T> ConnectionReady for T
-where
-    T: Read + Write + ReadReady,
-{
-    fn receive_ready(&mut self) -> Result<bool, PacketReadError> {
-        self.read_ready()
-            .map_err(|_| PacketReadError::ConnectionReceive)
-    }
-}
+//     async fn receive_if_ready(&mut self, buf: &mut [u8]) -> Result<bool, PacketReadError> {
+//         if self
+//             .read_ready()
+//             .map_err(|_| PacketReadError::ConnectionReceive)?
+//         {
+//             self.receive(buf).await?;
+//             Ok(true)
+//         } else {
+//             Ok(false)
+//         }
+//     }
+// }
 
 pub struct PacketClient<'a, C> {
     connection: C,
@@ -86,13 +104,36 @@ where
     pub async fn receive<const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
     ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
-        let mut position: usize = 0;
+        // First, try to read one byte with blocking
+        self.connection.receive(&mut self.buf[0..1]).await?;
 
-        // First byte must always be a valid packet type
-        self.connection
-            .receive(&mut self.buf[position..position + 1])
+        // Then the rest of the packet
+        self.receive_rest_of_packet().await
+    }
+
+    pub async fn receive_if_ready<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+        &mut self,
+    ) -> Result<Option<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>>, PacketReadError> {
+        // First, try to read one byte without blocking - if this returns false, no packet is ready
+        // and we can return immediately to avoid blocking
+        let packet_started = self
+            .connection
+            .receive_if_ready(&mut self.buf[0..1])
             .await?;
-        position += 1;
+
+        if !packet_started {
+            return Ok(None);
+        }
+
+        // We have packet, and its first byte is in our buffer, so receive the rest of the packet
+        let packet = self.receive_rest_of_packet().await?;
+        Ok(Some(packet))
+    }
+
+    async fn receive_rest_of_packet<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+        &mut self,
+    ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
+        let mut position: usize = 1;
 
         // Check first header byte is valid, if not we can error early without
         // trying to read the rest of a packet
@@ -147,21 +188,6 @@ where
         let packet_generic = packet_reader.get()?;
 
         Ok(packet_generic)
-    }
-}
-
-impl<C> PacketClient<'_, C>
-where
-    C: ConnectionReady,
-{
-    pub async fn receive_if_ready<const PROPERTIES_N: usize, const REQUEST_N: usize>(
-        &mut self,
-    ) -> Result<Option<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>>, PacketReadError> {
-        if !self.connection.receive_ready()? {
-            Ok(None)
-        } else {
-            self.receive().await.map(Some)
-        }
     }
 }
 
@@ -260,6 +286,12 @@ mod tests {
             buf.copy_from_slice(slice);
             Ok(())
         }
+
+        async fn receive_if_ready(&mut self, buf: &mut [u8]) -> Result<bool, PacketReadError> {
+            // Assume data is always ready, will error on underflow as required for tests
+            self.receive(buf).await?;
+            Ok(true)
+        }
     }
 
     async fn decode(data: &[u8], packet_generic: PacketGeneric<'_, 16, 16>) {
@@ -269,9 +301,9 @@ mod tests {
         let mut buf = [0; 1024];
         let mut client = PacketClient::new(connection, &mut buf);
 
-        let packet: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
+        let packet: Option<PacketGeneric<'_, 16, 16>> = client.receive_if_ready().await.unwrap();
 
-        assert_eq!(packet, packet_generic);
+        assert_eq!(packet, Some(packet_generic));
     }
 
     async fn encode<P: Packet + write::Write>(packet: P, encoded: &[u8]) {
@@ -296,7 +328,8 @@ mod tests {
         let mut buf = [0; 1024];
         let mut client = PacketClient::new(connection, &mut buf);
 
-        let packet: Result<PacketGeneric<'_, 16, 16>, PacketReadError> = client.receive().await;
+        let packet: Result<Option<PacketGeneric<'_, 16, 16>>, PacketReadError> =
+            client.receive_if_ready().await;
         assert_eq!(packet, Err(PacketReadError::IncorrectPacketLength));
     }
 
@@ -349,7 +382,7 @@ mod tests {
         let mut client = PacketClient::new(connection, &mut buf);
 
         assert_eq!(
-            client.receive::<16, 16>().await,
+            client.receive_if_ready::<16, 16>().await,
             Err(PacketReadError::InvalidPacketType)
         );
     }
@@ -363,7 +396,7 @@ mod tests {
         let mut client = PacketClient::new(connection, &mut buf);
 
         assert_eq!(
-            client.receive::<16, 16>().await,
+            client.receive_if_ready::<16, 16>().await,
             Err(PacketReadError::InvalidVariableByteIntegerEncoding)
         );
     }
@@ -377,7 +410,7 @@ mod tests {
         let mut client = PacketClient::new(connection, &mut buf);
 
         assert_eq!(
-            client.receive::<16, 16>().await,
+            client.receive_if_ready::<16, 16>().await,
             Err(PacketReadError::PacketTooLargeForBuffer)
         );
     }
