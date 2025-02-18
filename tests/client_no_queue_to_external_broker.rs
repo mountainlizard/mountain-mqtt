@@ -16,6 +16,8 @@ impl Delay for TokioDelay {
     }
 }
 
+/// Expects tp connect to an MQTT server on 127.0.0.1:1883,
+/// server must accept connections with no username or password
 #[tokio::test]
 async fn client_connect_subscribe_and_publish() {
     let ip = core::net::Ipv4Addr::new(127, 0, 0, 1);
@@ -32,10 +34,7 @@ async fn client_connect_subscribe_and_publish() {
     let mut client =
         ClientNoQueue::new(connection, &mut buf, delay, 5000, |topic_name, payload| {
             message_tx
-                .try_send((
-                    topic_name.to_owned(),
-                    String::from_utf8_lossy(payload).to_string(),
-                ))
+                .try_send((topic_name.to_owned(), payload.to_vec()))
                 .unwrap();
             Ok(())
         });
@@ -44,6 +43,8 @@ async fn client_connect_subscribe_and_publish() {
     const TOPIC_NAME: &str = "mountain-mqtt-test-topic-client_connect_subscribe_and_publish";
     const PAYLOAD: &[u8] =
         "mountain-mqtt-test-payload-client_connect_subscribe_and_publish".as_bytes();
+    const PAYLOAD2: &[u8] =
+        "mountain-mqtt-test-payload2-client_connect_subscribe_and_publish".as_bytes();
 
     let connect: Connect<'_, 0> = Connect::new(60, None, None, CLIENT_ID, true, None, Vec::new());
     client.connect(connect).await.unwrap();
@@ -58,16 +59,28 @@ async fn client_connect_subscribe_and_publish() {
         .await
         .unwrap();
 
+    // Normally we would poll continuously with wait = false until we get an error/disconnect,
+    // in this case we know we are expecting just the publish packet from the server
     let received = client.poll(true).await.unwrap();
     assert!(received);
 
-    let r: Result<(String, String), mpsc::error::TryRecvError> = message_rx.try_recv();
+    // Send another message
+    client
+        .send_message(TOPIC_NAME, PAYLOAD2, QualityOfService::QoS0, false)
+        .await
+        .unwrap();
+    let received = client.poll(true).await.unwrap();
+    assert!(received);
+
+    // Check we got the messages through
     assert_eq!(
-        r,
-        Ok((
-            TOPIC_NAME.to_owned(),
-            String::from_utf8_lossy(PAYLOAD).to_string()
-        ))
+        message_rx.try_recv(),
+        Ok((TOPIC_NAME.to_owned(), PAYLOAD.to_vec()))
+    );
+
+    assert_eq!(
+        message_rx.try_recv(),
+        Ok((TOPIC_NAME.to_owned(), PAYLOAD2.to_vec()))
     );
 
     client.unsubscribe_from_topic(TOPIC_NAME).await.unwrap();
