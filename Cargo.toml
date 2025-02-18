@@ -7,6 +7,8 @@ edition = "2021"
 heapless = "0.8"
 embedded-io = "0.6"
 embedded-io-async = "0.6"
+# TODO: make this feature-gated
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

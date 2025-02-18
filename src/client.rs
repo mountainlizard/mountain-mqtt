@@ -12,7 +12,7 @@ use crate::{
         },
     },
     error::{PacketReadError, PacketWriteError},
-    packet_client::{ConnectionReady, PacketClient},
+    packet_client::PacketClient,
     packets::{
         connect::Connect,
         disconnect::Disconnect,
