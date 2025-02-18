@@ -11,7 +11,7 @@ use crate::{
     error::{PacketReadError, PacketWriteError},
     packets::{
         connect::Connect,
-        disconnect::{self, Disconnect},
+        disconnect::Disconnect,
         packet_generic::PacketGeneric,
         pingreq::Pingreq,
         puback::Puback,
@@ -28,6 +28,7 @@ pub enum ClientStateError {
     PacketRead(PacketReadError),
     NotIdle,
     Idle,
+    AuthNotSupported,
     QoS2NotSupported,
     ReceivedQoS2PublishNotSupported,
     QoS1MessagePending,
@@ -440,14 +441,14 @@ impl ClientState for ClientStateNoQueue {
             PacketGeneric::Disconnect(disconnect) => {
                 Ok(ClientStateReceiveEvent::Disconnect { disconnect })
             }
+            PacketGeneric::Auth(_auth) => Err(ClientStateError::AuthNotSupported),
             PacketGeneric::Connect(_)
             | PacketGeneric::Pubrec(_)
             | PacketGeneric::Pubrel(_)
             | PacketGeneric::Pubcomp(_)
             | PacketGeneric::Subscribe(_)
             | PacketGeneric::Unsubscribe(_)
-            | PacketGeneric::Pingreq(_)
-            | PacketGeneric::Auth(_) => Err(ClientStateError::ServerOnlyMessageReceived),
+            | PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
         }
     }
 
