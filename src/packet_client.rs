@@ -41,39 +41,6 @@ pub trait Connection {
     async fn receive_if_ready(&mut self, buf: &mut [u8]) -> Result<bool, PacketReadError>;
 }
 
-// TODO: reinstate for more specific trait/struct for embedded-net tcp stream
-// impl<T> Connection for T
-// where
-//     T: Read + Write + ReadReady,
-// {
-//     async fn send(&mut self, buf: &[u8]) -> Result<(), PacketWriteError> {
-//         self.write_all(buf)
-//             .await
-//             .map_err(|_| PacketWriteError::ConnectionSend)?;
-//         self.flush()
-//             .await
-//             .map_err(|_| PacketWriteError::ConnectionSend)
-//     }
-
-//     async fn receive(&mut self, buf: &mut [u8]) -> Result<(), PacketReadError> {
-//         self.read_exact(buf)
-//             .await
-//             .map_err(|_| PacketReadError::ConnectionReceive)
-//     }
-
-//     async fn receive_if_ready(&mut self, buf: &mut [u8]) -> Result<bool, PacketReadError> {
-//         if self
-//             .read_ready()
-//             .map_err(|_| PacketReadError::ConnectionReceive)?
-//         {
-//             self.receive(buf).await?;
-//             Ok(true)
-//         } else {
-//             Ok(false)
-//         }
-//     }
-// }
-
 pub struct PacketClient<'a, C> {
     connection: C,
     buf: &'a mut [u8],
