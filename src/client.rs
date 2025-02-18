@@ -1,9 +1,10 @@
 use crate::{
     client_state::{ClientState, ClientStateError, ClientStateNoQueue, ClientStateReceiveEvent},
+    codec::write,
     data::{quality_of_service::QualityOfService, reason_code::DisconnectReasonCode},
     error::{PacketReadError, PacketWriteError},
     packet_client::{Connection, PacketClient},
-    packets::{connect::Connect, packet_generic::PacketGeneric},
+    packets::{connect::Connect, packet::Packet, packet_generic::PacketGeneric},
 };
 
 /// [Client] error
@@ -146,21 +147,21 @@ where
         }
     }
 
-    // pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
-    // where
-    //     P: Packet + write::Write,
-    // {
-    //     match self.packet_client.send(packet).await {
-    //         Ok(()) => {
-    //             self.wait_for_responses(self.timeout_millis).await?;
-    //             Ok(())
-    //         }
-    //         Err(e) => {
-    //             self.client_state.error();
-    //             Err(e.into())
-    //         }
-    //     }
-    // }
+    pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
+    where
+        P: Packet + write::Write,
+    {
+        match self.packet_client.send(packet).await {
+            Ok(()) => {
+                self.wait_for_responses(self.timeout_millis).await?;
+                Ok(())
+            }
+            Err(e) => {
+                self.client_state.error();
+                Err(e.into())
+            }
+        }
+    }
 }
 
 impl<'a, C, D, F> Client<'a> for ClientNoQueue<'a, C, D, F>
@@ -174,30 +175,12 @@ where
         packet: Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
-        match self.packet_client.send(packet).await {
-            Ok(()) => {
-                self.wait_for_responses(self.timeout_millis).await?;
-                Ok(())
-            }
-            Err(e) => {
-                self.client_state.error();
-                Err(e.into())
-            }
-        }
+        self.send(packet).await
     }
 
     async fn disconnect(&mut self) -> Result<(), ClientError> {
         let packet = self.client_state.disconnect()?;
-        match self.packet_client.send(packet).await {
-            Ok(()) => {
-                self.wait_for_responses(self.timeout_millis).await?;
-                Ok(())
-            }
-            Err(e) => {
-                self.client_state.error();
-                Err(e.into())
-            }
-        }
+        self.send(packet).await
     }
 
     async fn send_message<'b>(
@@ -210,16 +193,7 @@ where
         let packet = self
             .client_state
             .send_message(topic_name, message, qos, retain)?;
-        match self.packet_client.send(packet).await {
-            Ok(()) => {
-                self.wait_for_responses(self.timeout_millis).await?;
-                Ok(())
-            }
-            Err(e) => {
-                self.client_state.error();
-                Err(e.into())
-            }
-        }
+        self.send(packet).await
     }
 
     async fn subscribe_to_topic<'b>(
@@ -230,16 +204,7 @@ where
         let packet = self
             .client_state
             .subscribe_to_topic(topic_name, maximum_qos)?;
-        match self.packet_client.send(packet).await {
-            Ok(()) => {
-                self.wait_for_responses(self.timeout_millis).await?;
-                Ok(())
-            }
-            Err(e) => {
-                self.client_state.error();
-                Err(e.into())
-            }
-        }
+        self.send(packet).await
     }
 
     async fn unsubscribe_from_topic<'b>(
@@ -247,30 +212,12 @@ where
         topic_name: &'b str,
     ) -> Result<(), ClientError> {
         let packet = self.client_state.unsubscribe_from_topic(topic_name)?;
-        match self.packet_client.send(packet).await {
-            Ok(()) => {
-                self.wait_for_responses(self.timeout_millis).await?;
-                Ok(())
-            }
-            Err(e) => {
-                self.client_state.error();
-                Err(e.into())
-            }
-        }
+        self.send(packet).await
     }
 
     async fn send_ping(&mut self) -> Result<(), ClientError> {
         let packet = self.client_state.send_ping()?;
-        match self.packet_client.send(packet).await {
-            Ok(()) => {
-                self.wait_for_responses(self.timeout_millis).await?;
-                Ok(())
-            }
-            Err(e) => {
-                self.client_state.error();
-                Err(e.into())
-            }
-        }
+        self.send(packet).await
     }
 
     async fn poll(&mut self, wait: bool) -> Result<bool, ClientError> {
@@ -316,18 +263,8 @@ where
 
         // Send any resulting packet, making sure to error client if this fails
         if let Some(packet) = to_send {
-            match self.packet_client.send(packet).await {
-                Ok(()) => {
-                    self.wait_for_responses(self.timeout_millis).await?;
-                    Ok(true)
-                }
-                Err(e) => {
-                    self.client_state.error();
-                    Err(e.into())
-                }
-            }
-        } else {
-            Ok(true)
+            self.send(packet).await?;
         }
+        Ok(true)
     }
 }

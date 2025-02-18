@@ -124,7 +124,7 @@ pub trait ClientState {
     ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to disconnect from server, update state
-    fn disconnect(&mut self) -> Result<Disconnect<'_, 0>, ClientStateError>;
+    fn disconnect<'b>(&mut self) -> Result<Disconnect<'b, 0>, ClientStateError>;
 
     /// Produce a packet to ping the server, update state
     fn send_ping(&mut self) -> Result<Pingreq, ClientStateError>;
@@ -141,20 +141,20 @@ pub trait ClientState {
 
     /// Produce a packet to subscribe to a topic by name, update state
     fn subscribe_to_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
         maximum_qos: &QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError>;
 
     /// Produce a packet to unsubscribe from a topic by name, update state
     fn unsubscribe_from_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError>;
 
     /// Produce a packet to publish to a given topic, update state
     fn send_message<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
         message: &'b [u8],
         qos: QualityOfService,
@@ -230,7 +230,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn disconnect(&mut self) -> Result<Disconnect<'_, 0>, ClientStateError> {
+    fn disconnect<'b>(&mut self) -> Result<Disconnect<'b, 0>, ClientStateError> {
         if self.connection_state == ConnectionState::Connected {
             self.connection_state = ConnectionState::Disconnected;
             Ok(Disconnect::default())
@@ -240,7 +240,7 @@ impl ClientState for ClientStateNoQueue {
     }
 
     fn send_message<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
         message: &'b [u8],
         qos: QualityOfService,
@@ -278,7 +278,7 @@ impl ClientState for ClientStateNoQueue {
     }
 
     fn subscribe_to_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
         maximum_qos: &QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
@@ -307,7 +307,7 @@ impl ClientState for ClientStateNoQueue {
     }
 
     fn unsubscribe_from_topic<'b>(
-        &'b mut self,
+        &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {
         if self.connection_state == ConnectionState::Connected {
