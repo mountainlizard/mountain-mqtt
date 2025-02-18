@@ -274,6 +274,11 @@ where
     }
 
     async fn poll(&mut self, wait: bool) -> Result<bool, ClientError> {
+        // We need to wrap up like this so we can drop the mutable reference to
+        // self.packet_client needed to receive data - this reference needs to live
+        // as long as the returned data from the client, so we need to drop everything
+        // but the packet we need to send, in order to be able to mutably borrow
+        // packet_client again to actually do the send.
         let to_send = {
             let packet: Option<PacketGeneric<'_, 16, 16>> = if wait {
                 Some(self.packet_client.receive().await?)
@@ -281,41 +286,49 @@ where
                 self.packet_client.receive_if_ready().await?
             };
 
-            if packet.is_none() {
+            if let Some(packet) = packet {
+                let event = self.client_state.receive(packet)?;
+
+                match event {
+                    ClientStateReceiveEvent::None => None,
+                    ClientStateReceiveEvent::Publish { publish } => {
+                        (self.message_handler)(publish.topic_name(), publish.payload())?;
+                        None
+                    }
+                    ClientStateReceiveEvent::PublishAndPubAck { publish, puback } => {
+                        (self.message_handler)(publish.topic_name(), publish.payload())?;
+                        Some(puback)
+                    }
+                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
+                        granted_qos: _,
+                        maximum_qos: _,
+                    } => None,
+                    ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => None,
+
+                    // TODO: Include disconnect reason
+                    ClientStateReceiveEvent::Disconnect { disconnect } => {
+                        return Err(ClientError::Disconnected(*disconnect.reason_code()));
+                    }
+                }
+            } else {
                 return Ok(false);
-            }
-
-            let packet = packet.unwrap();
-
-            let event = self.client_state.receive(packet)?;
-
-            match event {
-                ClientStateReceiveEvent::None => None,
-                ClientStateReceiveEvent::Publish { publish } => {
-                    (self.message_handler)(publish.topic_name(), publish.payload())?;
-                    None
-                }
-                ClientStateReceiveEvent::PublishAndPubAck { publish, puback } => {
-                    (self.message_handler)(publish.topic_name(), publish.payload())?;
-                    Some(puback)
-                }
-                ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
-                    granted_qos: _,
-                    maximum_qos: _,
-                } => None,
-                ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => None,
-
-                // TODO: Include disconnect reason
-                ClientStateReceiveEvent::Disconnect { disconnect } => {
-                    return Err(ClientError::Disconnected(*disconnect.reason_code()));
-                }
             }
         };
 
+        // Send any resulting packet, making sure to error client if this fails
         if let Some(packet) = to_send {
-            self.packet_client.send(packet).await?;
+            match self.packet_client.send(packet).await {
+                Ok(()) => {
+                    self.wait_for_responses(self.timeout_millis).await?;
+                    Ok(true)
+                }
+                Err(e) => {
+                    self.client_state.error();
+                    Err(e.into())
+                }
+            }
+        } else {
+            Ok(true)
         }
-
-        Ok(true)
     }
 }
