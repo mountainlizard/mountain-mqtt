@@ -263,8 +263,17 @@ where
 
         // Send any resulting packet, making sure to error client if this fails
         if let Some(packet) = to_send {
-            self.send(packet).await?;
+            // Note - don't use self.send, we don't want to wait for responses here since
+            // a) no response is expected and b) this leads to a recursive async function
+            match self.packet_client.send(packet).await {
+                Ok(()) => Ok(true),
+                Err(e) => {
+                    self.client_state.error();
+                    Err(e.into())
+                }
+            }
+        } else {
+            Ok(true)
         }
-        Ok(true)
     }
 }
