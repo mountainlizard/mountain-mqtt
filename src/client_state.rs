@@ -11,7 +11,7 @@ use crate::{
     error::{PacketReadError, PacketWriteError},
     packets::{
         connect::Connect,
-        disconnect::Disconnect,
+        disconnect::{self, Disconnect},
         packet_generic::PacketGeneric,
         pingreq::Pingreq,
         puback::Puback,
@@ -80,6 +80,11 @@ pub enum ClientStateReceiveEvent<'a, const PROPERTIES_N: usize> {
     /// E.g. if it was expected there would be subscribers, the client could try resending
     /// the message later
     PublishedMessageHadNoMatchingSubscribers,
+
+    /// A [Disconnect] packet was received, it should contain a reason for our disconnection
+    Disconnect {
+        disconnect: Disconnect<'a, PROPERTIES_N>,
+    },
 }
 
 impl From<PacketWriteError> for ClientStateError {
@@ -432,15 +437,17 @@ impl ClientState for ClientStateNoQueue {
                     Err(ClientStateError::UnexpectedPingresp)
                 }
             }
-            PacketGeneric::Disconnect(_) => Err(ClientStateError::Disconnect),
-            PacketGeneric::Connect(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pubrec(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pubrel(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pubcomp(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Subscribe(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Unsubscribe(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
-            PacketGeneric::Auth(_) => Err(ClientStateError::ServerOnlyMessageReceived),
+            PacketGeneric::Disconnect(disconnect) => {
+                Ok(ClientStateReceiveEvent::Disconnect { disconnect })
+            }
+            PacketGeneric::Connect(_)
+            | PacketGeneric::Pubrec(_)
+            | PacketGeneric::Pubrel(_)
+            | PacketGeneric::Pubcomp(_)
+            | PacketGeneric::Subscribe(_)
+            | PacketGeneric::Unsubscribe(_)
+            | PacketGeneric::Pingreq(_)
+            | PacketGeneric::Auth(_) => Err(ClientStateError::ServerOnlyMessageReceived),
         }
     }
 
