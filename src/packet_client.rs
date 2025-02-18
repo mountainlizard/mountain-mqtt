@@ -101,26 +101,39 @@ where
         self.connection.send(&self.buf[0..len]).await
     }
 
-    // async fn receive_rest_of_packet<const PROPERTIES_N: usize, const REQUEST_N: usize>(
-    //     &mut self,
-    // ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
+    pub async fn receive<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+        &mut self,
+    ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
+        // First, try to read one byte with blocking
+        self.connection.receive(&mut self.buf[0..1]).await?;
+
+        // Then the rest of the packet
+        self.receive_rest_of_packet().await
+    }
 
     pub async fn receive_if_ready<const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
     ) -> Result<Option<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>>, PacketReadError> {
-        let mut position: usize = 0;
-
         // First, try to read one byte without blocking - if this returns false, no packet is ready
         // and we can return immediately to avoid blocking
         let packet_started = self
             .connection
-            .receive_if_ready(&mut self.buf[position..position + 1])
+            .receive_if_ready(&mut self.buf[0..1])
             .await?;
-        position += 1;
 
         if !packet_started {
             return Ok(None);
         }
+
+        // We have packet, and its first byte is in our buffer, so receive the rest of the packet
+        let packet = self.receive_rest_of_packet().await?;
+        Ok(Some(packet))
+    }
+
+    async fn receive_rest_of_packet<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+        &mut self,
+    ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
+        let mut position: usize = 1;
 
         // Check first header byte is valid, if not we can error early without
         // trying to read the rest of a packet
@@ -174,7 +187,7 @@ where
         let mut packet_reader = MqttBufReader::new(packet_buf);
         let packet_generic = packet_reader.get()?;
 
-        Ok(Some(packet_generic))
+        Ok(packet_generic)
     }
 }
 
