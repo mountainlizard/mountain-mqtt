@@ -12,6 +12,7 @@
 - [ ] Look at embassy-net TcpSocket methods set_keep_alive and set_timeout - can use to timeout and close socket when it detects that endpoint is no longer responding at TCP level.
 - [ ] Extended embassy client, wrapping ClientNoQueue. Accept a list of topics to subscripe to on each reconnect, and then everything else is done with queues - incoming for messages to publish, outgoing for received messages.
 - [ ] Client integration test using QoS1 publish (send and receive)
+- [ ] Client detection of connection issues (e.g. too long since last received packet)
 - [ ] Add github actions for integration tests
 - [ ] More integration tests - try username and password, some properties?
 - [ ] Look at how we add in more embedded stuff - e.g. implementation of our Delay for embassy delay, convenience methods for using embassy networking, cfg-gated fmt implementations for errors. Probably nothing needed on no_std since we (hopefully) just don't use std?
