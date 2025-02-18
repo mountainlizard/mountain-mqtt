@@ -19,17 +19,19 @@ use mountain_mqtt::{
         unsuback::Unsuback,
         unsubscribe::Unsubscribe,
     },
+    tokio::ConnectionTcpStream,
 };
 use tokio::net::TcpStream;
 
 /// Create a client ready to connect to MQTT server on 127.0.0.1:1883,
 /// server must accept connections with no username or password
-async fn tokio_localhost_client(buf: &mut [u8]) -> PacketClient<'_, TcpStream> {
+async fn tokio_localhost_client(buf: &mut [u8]) -> PacketClient<'_, ConnectionTcpStream> {
     let ip = Ipv4Addr::new(127, 0, 0, 1);
     let port = 1883;
 
     let addr = SocketAddr::new(ip.into(), port);
-    let connection = TcpStream::connect(addr).await.unwrap();
+    let tcp_stream = TcpStream::connect(addr).await.unwrap();
+    let connection = ConnectionTcpStream::new(tcp_stream);
 
     PacketClient::new(connection, buf)
 }
@@ -43,7 +45,7 @@ async fn tokio_localhost_client(buf: &mut [u8]) -> PacketClient<'_, TcpStream> {
 async fn tokio_localhost_client_connected<'a>(
     client_id: &'a str,
     buf: &'a mut [u8],
-) -> PacketClient<'a, TcpStream> {
+) -> PacketClient<'a, ConnectionTcpStream> {
     let mut client = tokio_localhost_client(buf).await;
 
     let connect: Connect<'_, 0> = Connect::new(120, None, None, client_id, true, None, Vec::new());

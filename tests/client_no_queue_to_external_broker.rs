@@ -1,20 +1,11 @@
 use heapless::Vec;
 use mountain_mqtt::{
-    client::{Client, ClientNoQueue, Delay},
+    client::{Client, ClientNoQueue},
     data::quality_of_service::QualityOfService,
     packets::connect::Connect,
+    tokio::{ConnectionTcpStream, TokioDelay},
 };
-use std::time::Duration;
 use tokio::{net::TcpStream, sync::mpsc};
-
-#[derive(Clone)]
-pub struct TokioDelay;
-
-impl Delay for TokioDelay {
-    async fn delay_us(&mut self, us: u32) {
-        tokio::time::sleep(Duration::from_micros(us as u64)).await;
-    }
-}
 
 /// Expects tp connect to an MQTT server on 127.0.0.1:1883,
 /// server must accept connections with no username or password
@@ -24,7 +15,8 @@ async fn client_connect_subscribe_and_publish() {
     let port = 1883;
 
     let addr = core::net::SocketAddr::new(ip.into(), port);
-    let connection = TcpStream::connect(addr).await.unwrap();
+    let tcp_stream = TcpStream::connect(addr).await.unwrap();
+    let connection = ConnectionTcpStream::new(tcp_stream);
 
     let delay = TokioDelay;
 
