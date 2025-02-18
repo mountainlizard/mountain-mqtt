@@ -5,8 +5,8 @@
 - [x] Port across mqtt core in lightbox as new `Client`.
 - [x] Refactor `Client` errors to wrap packet read/write errors where appropriate, add own state-based errors on top.
 - [x] Send puback in response to qos1 publish in client state
-- [ ] Look at suback reason codes - expect to match the requested subscription qos?
-- [ ] Integration test for `Client`
+- [x] Look at suback reason codes - expect to match the requested subscription qos?
+- [x] Integration test for `Client`
 - [ ] Embedded network adapter, connect and disconnect from a pico w
 - [ ] Add github actions for integration tests
 - [ ] More integration tests - try username and password, some properties?
