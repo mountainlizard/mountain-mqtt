@@ -4,6 +4,8 @@
 
 - [x] Port across mqtt core in lightbox as new `Client`.
 - [x] Refactor `Client` errors to wrap packet read/write errors where appropriate, add own state-based errors on top.
+- [x] Send puback in response to qos1 publish in client state
+- [ ] Look at suback reason codes - expect to match the requested subscription qos?
 - [ ] Integration test for `Client`
 - [ ] Embedded network adapter, connect and disconnect from a pico w
 - [ ] Add github actions for integration tests
@@ -14,6 +16,8 @@
 - [ ] Robust reconnection - see below.
 
 ## Robust reconnection approaches
+
+Any approach - look at embassy-net TcpSocket methods set_keep_alive and set_timeout - can use to timeout and close socket when it detects that endpoint is no longer responding at TCP level.
 
 Multiple tasks, separate read and write tasks:
 
