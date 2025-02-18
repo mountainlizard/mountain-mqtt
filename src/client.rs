@@ -305,7 +305,6 @@ where
                     } => None,
                     ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => None,
 
-                    // TODO: Include disconnect reason
                     ClientStateReceiveEvent::Disconnect { disconnect } => {
                         return Err(ClientError::Disconnected(*disconnect.reason_code()));
                     }
