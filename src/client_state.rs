@@ -21,7 +21,7 @@ use crate::{
     },
 };
 
-/// [Client] error
+/// [ClientState] error
 #[derive(Debug, PartialEq)]
 pub enum ClientStateError {
     PacketWrite(PacketWriteError),
@@ -33,6 +33,7 @@ pub enum ClientStateError {
     ReceivedQoS2PublishNotSupported,
     QoS1MessagePending,
     NotConnected,
+    ReceiveWhenNotConnectedOrConnecting,
     SubscriptionPending,
     UnsubscriptionPending,
     UnexpectedPuback,
@@ -50,7 +51,7 @@ pub enum ClientStateError {
     Unsubscribe(UnsubscribeReasonCode),
 }
 
-pub enum ClientStateReceiveEvent<'a, const PROPERTIES_N: usize> {
+pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
     /// Nothing happened on receive
     None,
 
@@ -60,7 +61,7 @@ pub enum ClientStateReceiveEvent<'a, const PROPERTIES_N: usize> {
     /// A published message was received, and it needs to be acknowledged by sending provided puback to the server
     PublishAndPubAck {
         publish: Publish<'a, PROPERTIES_N>,
-        puback: Puback<'a, PROPERTIES_N>,
+        puback: Puback<'b, PROPERTIES_N>,
     },
 
     /// A subscription was granted but was at lower qos than the maximum requested
@@ -119,7 +120,7 @@ pub trait ClientState {
     /// Call this after connect packet has been successfully sent.
     fn connect<const PROPERTIES_N: usize>(
         &mut self,
-        connect: Connect<'_, PROPERTIES_N>,
+        connect: &Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to disconnect from server, update state
@@ -133,10 +134,10 @@ pub trait ClientState {
     /// action by the caller occurs, a [ClientStateReceiveEvent] is returned.
     /// Errors indicate an invalid packet was received, message_target errored,
     /// or the received packet was unexpected based on our state
-    fn receive<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    fn receive<'a, 'b, const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
         packet: PacketGeneric<'a, PROPERTIES_N, REQUEST_N>,
-    ) -> Result<ClientStateReceiveEvent<'a, PROPERTIES_N>, ClientStateError>;
+    ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError>;
 
     /// Produce a packet to subscribe to a topic by name, update state
     fn subscribe_to_topic<'b>(
@@ -159,6 +160,11 @@ pub trait ClientState {
         qos: QualityOfService,
         retain: bool,
     ) -> Result<Publish<'b, 0>, ClientStateError>;
+
+    /// Move to errored state, no further operations are possible
+    /// This must be called if the user of the client state cannot successfully send
+    /// a packet produced by this [ClientState]
+    fn error(&mut self);
 }
 
 #[derive(PartialEq)]
@@ -166,6 +172,8 @@ pub enum ConnectionState {
     Idle,
     Connecting,
     Connected,
+    Errored,
+    Disconnected,
 }
 
 pub struct ClientStateNoQueue {
@@ -212,7 +220,7 @@ impl ClientState for ClientStateNoQueue {
 
     fn connect<const PROPERTIES_N: usize>(
         &mut self,
-        _connect: Connect<'_, PROPERTIES_N>,
+        _connect: &Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientStateError> {
         if self.connection_state == ConnectionState::Idle {
             self.connection_state = ConnectionState::Connecting;
@@ -223,11 +231,11 @@ impl ClientState for ClientStateNoQueue {
     }
 
     fn disconnect(&mut self) -> Result<Disconnect<'_, 0>, ClientStateError> {
-        if self.connection_state != ConnectionState::Idle {
-            self.connection_state = ConnectionState::Idle;
+        if self.connection_state == ConnectionState::Connected {
+            self.connection_state = ConnectionState::Disconnected;
             Ok(Disconnect::default())
         } else {
-            Err(ClientStateError::Idle)
+            Err(ClientStateError::NotConnected)
         }
     }
 
@@ -330,10 +338,16 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn receive<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    fn receive<'a, 'b, const PROPERTIES_N: usize, const REQUEST_N: usize>(
         &mut self,
         packet: PacketGeneric<'a, PROPERTIES_N, REQUEST_N>,
-    ) -> Result<ClientStateReceiveEvent<'a, PROPERTIES_N>, ClientStateError> {
+    ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError> {
+        if self.connection_state != ConnectionState::Connected
+            && self.connection_state != ConnectionState::Connecting
+        {
+            return Err(ClientStateError::ReceiveWhenNotConnectedOrConnecting);
+        }
+
         match packet {
             PacketGeneric::Publish(publish) => match publish.publish_packet_identifier() {
                 PublishPacketIdentifier::None => Ok(ClientStateReceiveEvent::Publish { publish }),
@@ -454,5 +468,9 @@ impl ClientState for ClientStateNoQueue {
 
     fn pending_ping_count(&self) -> u32 {
         self.pending_ping_count
+    }
+
+    fn error(&mut self) {
+        self.connection_state = ConnectionState::Errored;
     }
 }
