@@ -8,6 +8,7 @@ A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mq
 2. Compatible with [`tokio`](https://tokio.rs). Provides adapters to use [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html) `TcpStream`.
 3. Layered design to allow reuse in different environments.
 4. Fairly thorough tests for `data`, `codec` and `packet` modules against the MQTT v5 specification.
+5. Basic client for connecting, disconnecting, subscribing and unsubscribing, publishing messages and receiving pubished message from the server. Supports Quality of Service levels 0 and 1.
 
 ## Todo
 
@@ -17,8 +18,10 @@ A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mq
 
 ## Non-goals
 
-1. MQTT v3 support is not planned.
-2. Server support is not planned, but the `data` and `codec` modules support the packets needed for this.
+The following goals are not planned, but may be considered later:
+
+1. MQTT v3 support.
+2. Server support. Note that the `data` and `codec` modules support the packets needed for this if anyone wants to implement one :)
 
 ## Layers
 
