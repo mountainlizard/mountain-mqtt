@@ -1,4 +1,7 @@
-use core::str::Utf8Error;
+use core::{
+    fmt::{Display, Formatter},
+    str::Utf8Error,
+};
 
 /// An error occurring while attempting to read/receive/decode an MQTT packet
 /// Can occur at multiple levels:
@@ -111,6 +114,41 @@ impl From<Utf8Error> for PacketReadError {
     }
 }
 
+impl Display for PacketReadError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InsufficientData => write!(f, "InsufficientData"),
+            Self::InvalidUtf8 => write!(f, "InvalidUtf8"),
+            Self::NullCharacterInString => write!(f, "NullCharacterInString"),
+            Self::InvalidVariableByteIntegerEncoding => {
+                write!(f, "InvalidVariableByteIntegerEncoding")
+            }
+            Self::IncorrectPacketType => write!(f, "IncorrectPacketType"),
+            Self::UnknownReasonCode => write!(f, "UnknownReasonCode"),
+            Self::InvalidBooleanValue => write!(f, "InvalidBooleanValue"),
+            Self::TooManyProperties => write!(f, "TooManyProperties"),
+            Self::InvalidQoSValue => write!(f, "InvalidQoSValue"),
+            Self::UnsupportedProtocolVersion => write!(f, "UnsupportedProtocolVersion"),
+            Self::TooManyRequests => write!(f, "TooManyRequests"),
+            Self::InvalidPacketType => write!(f, "InvalidPacketType"),
+            Self::ConnectionReceive => write!(f, "ConnectionReceive"),
+            Self::PacketTooLargeForBuffer => write!(f, "PacketTooLargeForBuffer"),
+            Self::UnexpectedPropertyIdentifier => write!(f, "UnexpectedPropertyIdentifier"),
+            Self::InvalidRetainHandlingValue => write!(f, "InvalidRetainHandlingValue"),
+            Self::InvalidConnectFlags => write!(f, "InvalidConnectFlags"),
+            Self::IncorrectPacketLength => write!(f, "IncorrectPacketLength"),
+            Self::SubscribeWithoutValidSubscriptionRequest => {
+                write!(f, "SubscribeWithoutValidSubscriptionRequest")
+            }
+            Self::SubackWithoutValidReasonCode => write!(f, "SubackWithoutValidReasonCode"),
+            Self::UnsubscribeWithoutValidSubscriptionRequest => {
+                write!(f, "UnsubscribeWithoutValidSubscriptionRequest")
+            }
+            Self::UnsubackWithoutValidReasonCode => write!(f, "UnsubackWithoutValidReasonCode"),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PacketWriteError {
     /// On attempt to put data that will not fit in buffer
@@ -130,4 +168,17 @@ pub enum PacketWriteError {
 
     /// Failure to send via connection
     ConnectionSend,
+}
+
+impl Display for PacketWriteError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Overflow => write!(f, "Overflow"),
+            Self::NullCharacterInString => write!(f, "NullCharacterInString"),
+            Self::VariableByteIntegerTooLarge => write!(f, "VariableByteIntegerTooLarge"),
+            Self::DataTooLarge => write!(f, "DataTooLarge"),
+            Self::StringTooLarge => write!(f, "StringTooLarge"),
+            Self::ConnectionSend => write!(f, "ConnectionSend"),
+        }
+    }
 }

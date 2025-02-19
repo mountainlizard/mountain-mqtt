@@ -1,3 +1,5 @@
+use core::fmt::{Display, Formatter};
+
 use crate::codec::{read::Read, write::Write};
 use crate::error::PacketReadError;
 
@@ -75,6 +77,16 @@ macro_rules! packet_reason_codes {
                 writer: &mut W,
             ) -> $crate::codec::mqtt_writer::Result<()> {
                 writer.put_u8(*self as u8)
+            }
+        }
+
+        impl Display for $n {
+            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                match self {
+                    $(
+                        Self::$c => write!(f, "$n($c)"),
+                    )*
+                }
             }
         }
 

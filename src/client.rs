@@ -1,3 +1,5 @@
+use core::fmt::{Display, Formatter};
+
 use crate::{
     client_state::{ClientState, ClientStateError, ClientStateNoQueue, ClientStateReceiveEvent},
     codec::write,
@@ -15,6 +17,7 @@ pub enum ClientError {
     ClientState(ClientStateError),
     TimeoutOnResponsePacket,
     Disconnected(DisconnectReasonCode),
+    MessageHandlerError,
 }
 
 impl From<ClientStateError> for ClientError {
@@ -32,6 +35,19 @@ impl From<PacketWriteError> for ClientError {
 impl From<PacketReadError> for ClientError {
     fn from(value: PacketReadError) -> Self {
         ClientError::PacketRead(value)
+    }
+}
+
+impl Display for ClientError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::PacketWrite(e) => write!(f, "PacketWrite({})", e),
+            Self::PacketRead(e) => write!(f, "PacketRead({})", e),
+            Self::ClientState(e) => write!(f, "ClientState({})", e),
+            Self::TimeoutOnResponsePacket => write!(f, "TimeoutOnResponsePacket"),
+            Self::Disconnected(e) => write!(f, "Disconnected({})", e),
+            Self::MessageHandlerError => write!(f, "MessageHandlerError"),
+        }
     }
 }
 

@@ -1,3 +1,5 @@
+use core::fmt::{Display, Formatter};
+
 use heapless::Vec;
 
 use crate::{
@@ -49,6 +51,43 @@ pub enum ClientStateError {
     Subscribe(SubscribeReasonCode),
     Publish(PublishReasonCode),
     Unsubscribe(UnsubscribeReasonCode),
+}
+
+impl Display for ClientStateError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::PacketWrite(e) => write!(f, "PacketWrite({})", e),
+            Self::PacketRead(e) => write!(f, "PacketRead({})", e),
+            Self::NotIdle => write!(f, "NotIdle"),
+            Self::Idle => write!(f, "Idle"),
+            Self::AuthNotSupported => write!(f, "AuthNotSupported"),
+            Self::QoS2NotSupported => write!(f, "QoS2NotSupported"),
+            Self::ReceivedQoS2PublishNotSupported => write!(f, "ReceivedQoS2PublishNotSupported"),
+            Self::QoS1MessagePending => write!(f, "QoS1MessagePending"),
+            Self::NotConnected => write!(f, "NotConnected"),
+            Self::ReceiveWhenNotConnectedOrConnecting => {
+                write!(f, "ReceiveWhenNotConnectedOrConnecting")
+            }
+            Self::SubscriptionPending => write!(f, "SubscriptionPending"),
+            Self::UnsubscriptionPending => write!(f, "UnsubscriptionPending"),
+            Self::UnexpectedPuback => write!(f, "UnexpectedPuback"),
+            Self::UnexpectedPubackPacketIdentifier => write!(f, "UnexpectedPubackPacketIdentifier"),
+            Self::UnexpectedSuback => write!(f, "UnexpectedSuback"),
+            Self::UnexpectedSubackPacketIdentifier => write!(f, "UnexpectedSubackPacketIdentifier"),
+            Self::UnexpectedUnsuback => write!(f, "UnexpectedUnsuback"),
+            Self::UnexpectedUnsubackPacketIdentifier => {
+                write!(f, "UnexpectedUnsubackPacketIdentifier")
+            }
+            Self::UnexpectedPingresp => write!(f, "UnexpectedPingresp"),
+            Self::Disconnect => write!(f, "Disconnect"),
+            Self::ServerOnlyMessageReceived => write!(f, "ServerOnlyMessageReceived"),
+            Self::Connect(e) => write!(f, "Connect({})", e),
+            Self::Subscribe(e) => write!(f, "Subscribe({})", e),
+            Self::Publish(e) => write!(f, "Publish({})", e),
+            Self::Unsubscribe(e) => write!(f, "Unsubscribe({})", e),
+            // Self::Overflow => write!(f, "Overflow"),
+        }
+    }
 }
 
 pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
