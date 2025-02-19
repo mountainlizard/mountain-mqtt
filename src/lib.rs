@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 pub mod client;
 pub mod client_state;
 pub mod codec;

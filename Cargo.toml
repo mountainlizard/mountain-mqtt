@@ -22,6 +22,7 @@ tokio-test = { version = "0.4.2" }
 
 [features]
 default = ["tokio", "embedded-io-async", "embedded-hal-async"]
-tokio = ["dep:tokio"]
+tokio = ["dep:tokio", "std"]
 embedded-io-async = ["dep:embedded-io-async", "dep:embedded-io"]
 embedded-hal-async = ["dep:embedded-hal-async"]
+std = []
