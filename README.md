@@ -7,8 +7,8 @@
 - [x] Send puback in response to qos1 publish in client state
 - [x] Look at suback reason codes - expect to match the requested subscription qos?
 - [x] Integration test for `Client`
-- [ ] Features - base code just relies on heapless etc., then a tokio feature for tokio adapters, embassy for embassy net adapters
-- [ ] Embedded network adapter, connect and disconnect from a pico w
+- [x] Features - base code just relies on heapless etc., then a tokio feature for tokio adapters, embassy for embassy net adapters
+- [x] Embedded network adapter, connect and disconnect from a pico w
 - [ ] Look at embassy-net TcpSocket methods set_keep_alive and set_timeout - can use to timeout and close socket when it detects that endpoint is no longer responding at TCP level.
 - [ ] Extended embassy client, wrapping ClientNoQueue. Accept a list of topics to subscripe to on each reconnect, and then everything else is done with queues - incoming for messages to publish, outgoing for received messages.
 - [ ] Client integration test using QoS1 publish (send and receive)
