@@ -1,32 +1,29 @@
 # mountain-mqtt
 
-## TODO
+A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client.
 
-- [x] Port across mqtt core in lightbox as new `Client`.
-- [x] Refactor `Client` errors to wrap packet read/write errors where appropriate, add own state-based errors on top.
-- [x] Send puback in response to qos1 publish in client state
-- [x] Look at suback reason codes - expect to match the requested subscription qos?
-- [x] Integration test for `Client`
-- [x] Features - base code just relies on heapless etc., then a tokio feature for tokio adapters, embassy for embassy net adapters
-- [x] Embedded network adapter, connect and disconnect from a pico w
-- [ ] Look at embassy-net TcpSocket methods set_keep_alive and set_timeout - can use to timeout and close socket when it detects that endpoint is no longer responding at TCP level.
-- [ ] Extended embassy client, wrapping ClientNoQueue. Accept a list of topics to subscripe to on each reconnect, and then everything else is done with queues - incoming for messages to publish, outgoing for received messages.
-- [ ] Client integration test using QoS1 publish (send and receive)
-- [ ] Client detection of connection issues (e.g. too long since last received packet)
-- [ ] Add github actions for integration tests
-- [ ] More integration tests - try username and password, some properties?
-- [ ] Look at how we add in more embedded stuff - e.g. implementation of our Delay for embassy delay, convenience methods for using embassy networking, cfg-gated fmt implementations for errors. Probably nothing needed on no_std since we (hopefully) just don't use std?
-- [ ] Docs, with some fairly full examples, overview of what you need to know about mqtt to use the highest level API (client?). Would be nice to have a simple/diagrammed run through a typical mqtt exchange, doesn't seem to be much like that available at the moment.
-- [ ] Can we make packet reads neater, by monitoring current remaining length for special case handling? So rather than checking remaining len directly, just read part by part and stop if we run out of data at a point where omitting remaining elements is accepted by the spec.
-- [ ] Look at new approaches to concurrency - e.g. use timeouts throughout reading/writing rather than just checking first byte of packet is available. E.g. in tokio, look at `timeout`, and carefully read up on which `TcpStream` methods are cancel safe - seems to be the "xxx_buf" ones, where it's guaranteed that any data that has been read has been used to update the provided buf position. Not sure if there is an equivalent in embassy-net, the Read trait mentions that implementations should document whether they are cancel safe, need to look into this. If this isn't possible, can we use multiple tasks so we don't require timeouts (or if we need a timeout, it will be one that leads to just giving up on the connection and starting again, unlike the current requirement for a timeout to intersperse sends and pings).
+## Features
 
-## Robust reconnection approaches
+1. Compatible with [`embedded-hal`](https://github.com/rust-embedded/embedded-hal). Provides adapters to use [`embedded-hal-async`](https://crates.io/crates/embedded-hal-async) and [`embedded-io-async`](https://crates.io/crates/embedded-io-async) traits (`Read`, `Write` and `ReadReady`) for network connection, e.g. using [`embassy-net`](https://crates.io/crates/embassy-net) for TCP.
+2. Compatible with [`tokio`](https://tokio.rs). Provides adapters to use [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html) `TcpStream`.
+3. Layered design to allow reuse in different environments.
+4. Fairly thorough tests for `data`, `codec` and `packet` modules against the MQTT v5 specification.
 
-Multiple tasks, separate read and write tasks:
+## Todo
 
-1. Make a connection to server (using a new tcp stream, client state etc.)
-2. Send a connect packet
-3. Wait for connack with timeout, if timeout kill connection, return to 1.
-4. Start Task 1: Uses only receive-side of TcpStream. Loop until connection killed, waiting for a packet (either with a timeout/read_ready poll, or if we have Task 3 watchdog doesn't need a timeout) and providing to client state. On receiving publish message back from client, push it to queue for another task to handle. On error in client state or reading from stream, kill connection, return to 1. If we DON'T have Task 3 (in which case we need to know we will do the following check regularly and so we need timeouts on read), on not having seen any packets from the server for more than a timeout that must be a sensible amount longer than PING_INTERVAL, kill connection, return to 1.
-   Start Task 2: Uses only send-side of TcpStream. Loop until connection killed, waiting for either a (topic_name/payload) to publish from a queue and using client_state to make a Publish packet then send it, or a timeout indicating we are due for a ping, so use client_state to make one and then send it.
-   TBD: Start Task 3: Watchdog - if there have been no received packets from server for timeout, kill connection and return to 1. Note that this probably implies we need to make task 1, 2 (and 3?) be joined futures, since we want to drop tasks 1 and 2 to abort any ongoing read/write attempts, also drop the stream.
+1. Support for Quality of Service level 2 in `Client`. The relevant MQTT v5 packets are implemented, but not the state management for handling them in the client.
+2. More sophisticated client implementation(s) - the current `Client` implementation `ClientNoQueue` only supports a single pending acknowledgement at a time, and waits for this before returning when sending packets, by polling for data ready. The concurrency model is not ideal, but allows support for embedded and tokio networking with the same relatively simple code. It may be possible to performance and capabilities either by providing separate client implementations for embedded and tokio, or by refactoring the shared concurrency model.
+3. Improve and add integration tests for `packet_client` and `client` modules.
+
+## Non-goals
+
+1. MQTT v3 support is not planned.
+2. Server support is not planned, but the `data` and `codec` modules support the packets needed for this.
+
+## Layers
+
+1. `data` module - provides basic data types used by MQTT to build packets.
+2. `codec` module - provides simple reader and writer traits, and implementations using a `buf: &'a [u8]` and position. `Read` and `Write` traits for data items.
+3. `packets` module - provides traits for describing MQTT v5 packets, and a struct for each packet type, with `Read` and `Write` implementations.
+4. `packet_client` module - provides a basic low-level client for reading and writing packets directly, using a `Connection` trait with implementations for tokio `TcpStream` and embedded-hal-async `Read + Write + ReadyReady`.
+5. `client` module - provides a higher-level basic client that manages connection state, waiting for acknowledgement etc.
