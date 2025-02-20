@@ -41,7 +41,7 @@ async fn client_connect_subscribe_and_publish() {
     client.connect(connect).await.unwrap();
 
     client
-        .subscribe(TOPIC_NAME, &QualityOfService::QoS0)
+        .subscribe(TOPIC_NAME, QualityOfService::QoS0)
         .await
         .unwrap();
 
