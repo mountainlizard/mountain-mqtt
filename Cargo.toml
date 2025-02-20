@@ -2,6 +2,18 @@
 name = "mountain-mqtt"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+keywords = ["mqtt", "tokio", "embedded-hal-async"]
+categories = [
+  "asynchronous",
+  "embedded",
+  "network-programming",
+  "no-std::no-alloc",
+  "encoding",
+]
+description = "A no_std compatible, async MQTT v5 client for tokio and embedded use"
+repository = "https://github.com/mountainlizard/mountain-mqtt"
+readme = "README.md"
 
 [dependencies]
 heapless = "0.8"
