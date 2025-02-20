@@ -1,3 +1,4 @@
+use core::net::Ipv4Addr;
 use std::time::Duration;
 
 use tokio::{
@@ -6,7 +7,7 @@ use tokio::{
 };
 
 use crate::{
-    client::Delay,
+    client::{ClientError, ClientNoQueue, Delay},
     error::{PacketReadError, PacketWriteError},
     packet_client::Connection,
 };
@@ -87,4 +88,22 @@ impl Connection for ConnectionTcpStream {
             Err(_e) => Err(PacketReadError::ConnectionReceive),
         }
     }
+}
+
+pub async fn client_tcp<F>(
+    ip: Ipv4Addr,
+    port: u16,
+    timeout_millis: u32,
+    buf: &mut [u8],
+    message_handler: F,
+) -> ClientNoQueue<'_, ConnectionTcpStream, TokioDelay, F>
+where
+    F: Fn(&str, &[u8]) -> Result<(), ClientError>,
+{
+    let addr = core::net::SocketAddr::new(ip.into(), port);
+    let tcp_stream = TcpStream::connect(addr).await.unwrap();
+    let connection = ConnectionTcpStream::new(tcp_stream);
+
+    let delay = TokioDelay;
+    ClientNoQueue::new(connection, buf, delay, timeout_millis, message_handler)
 }

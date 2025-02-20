@@ -1,4 +1,6 @@
-use super::packet::{Packet, PacketRead, PacketWrite, PROTOCOL_NAME, PROTOCOL_VERSION_5};
+use super::packet::{
+    Packet, PacketRead, PacketWrite, KEEP_ALIVE_DEFAULT, PROTOCOL_NAME, PROTOCOL_VERSION_5,
+};
 use crate::codec::mqtt_writer::{self, MqttWriter};
 use crate::data::{
     packet_type::PacketType,
@@ -34,6 +36,20 @@ pub struct Connect<'a, const PROPERTIES_N: usize> {
     clean_start: bool,
     will: Option<Will<'a, PROPERTIES_N>>,
     pub properties: Vec<ConnectProperty<'a>, PROPERTIES_N>,
+}
+
+impl<'a> Connect<'a, 0> {
+    pub fn unauthenticated(client_id: &'a str) -> Connect<'a, 0> {
+        Self {
+            keep_alive: KEEP_ALIVE_DEFAULT,
+            username: None,
+            password: None,
+            client_id,
+            clean_start: true,
+            will: None,
+            properties: Vec::new(),
+        }
+    }
 }
 
 impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
