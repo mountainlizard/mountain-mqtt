@@ -10,11 +10,35 @@ A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mq
 4. Fairly thorough tests for `data`, `codec` and `packet` modules against the MQTT v5 specification.
 5. Basic client for connecting, disconnecting, subscribing and unsubscribing, publishing messages and receiving pubished message from the server. Supports Quality of Service levels 0 and 1.
 
+## Adding to your project
+
+There is not yet a published crate, so check out the project sources (alongside the project where you want to use mountain-mqtt) and then reference via path from your `Cargo.toml`.
+
+1. For embedded-hal applications:
+
+   ```toml
+   [dependencies]
+   mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
+   "embedded-io-async",
+   "embedded-hal-async",
+   ] }
+   ```
+
+2. For tokio applications:
+
+   ```toml
+   [dependencies]
+   mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
+   "tokio",
+   ] }
+   ```
+
 ## Todo
 
 1. Support for Quality of Service level 2 in `Client`. The relevant MQTT v5 packets are implemented, but not the state management for handling them in the client.
 2. More sophisticated client implementation(s) - the current `Client` implementation `ClientNoQueue` only supports a single pending acknowledgement at a time, and waits for this before returning when sending packets, by polling for data ready. The concurrency model is not ideal, but allows support for embedded and tokio networking with the same relatively simple code. It may be possible to performance and capabilities either by providing separate client implementations for embedded and tokio, or by refactoring the shared concurrency model.
 3. Improve and add integration tests for `packet_client` and `client` modules.
+4. Publish as a crate.
 
 ## Non-goals
 
