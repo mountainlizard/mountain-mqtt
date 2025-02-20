@@ -22,9 +22,9 @@ async fn main() -> Result<(), ClientError> {
     let (message_tx, mut message_rx) = mpsc::channel(32);
 
     // Create a client with a message_handler that just sends the messages on to the channel
-    let mut client = client_tcp(ip, port, timeout_millis, &mut buf, |topic_name, payload| {
+    let mut client = client_tcp(ip, port, timeout_millis, &mut buf, |message| {
         message_tx
-            .try_send((topic_name.to_owned(), payload.to_vec()))
+            .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
             .map_err(|_| ClientError::MessageHandlerError)
     })
     .await;

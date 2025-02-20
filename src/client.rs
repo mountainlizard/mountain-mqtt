@@ -51,6 +51,12 @@ impl Display for ClientError {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Message<'a> {
+    pub topic_name: &'a str,
+    pub payload: &'a [u8],
+}
+
 /// A simple client interface for connecting to an MQTT server
 #[allow(async_fn_in_trait)]
 pub trait Client<'a> {
@@ -110,7 +116,7 @@ pub struct ClientNoQueue<'a, C, D, F>
 where
     C: Connection,
     D: Delay,
-    F: Fn(&str, &[u8]) -> Result<(), ClientError>,
+    F: Fn(Message) -> Result<(), ClientError>,
 {
     packet_client: PacketClient<'a, C>,
     client_state: ClientStateNoQueue,
@@ -123,7 +129,7 @@ impl<'a, C, D, F> ClientNoQueue<'a, C, D, F>
 where
     C: Connection,
     D: Delay,
-    F: Fn(&str, &[u8]) -> Result<(), ClientError>,
+    F: Fn(Message) -> Result<(), ClientError>,
 {
     pub fn new(
         connection: C,
@@ -193,7 +199,7 @@ impl<'a, C, D, F> Client<'a> for ClientNoQueue<'a, C, D, F>
 where
     C: Connection,
     D: Delay,
-    F: Fn(&str, &[u8]) -> Result<(), ClientError>,
+    F: Fn(Message) -> Result<(), ClientError>,
 {
     async fn connect<const PROPERTIES_N: usize>(
         &mut self,
@@ -261,11 +267,17 @@ where
                 match event {
                     ClientStateReceiveEvent::None => None,
                     ClientStateReceiveEvent::Publish { publish } => {
-                        (self.message_handler)(publish.topic_name(), publish.payload())?;
+                        (self.message_handler)(Message {
+                            topic_name: publish.topic_name(),
+                            payload: publish.payload(),
+                        })?;
                         None
                     }
                     ClientStateReceiveEvent::PublishAndPubAck { publish, puback } => {
-                        (self.message_handler)(publish.topic_name(), publish.payload())?;
+                        (self.message_handler)(Message {
+                            topic_name: publish.topic_name(),
+                            payload: publish.payload(),
+                        })?;
                         Some(puback)
                     }
                     ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
