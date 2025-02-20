@@ -33,7 +33,7 @@ async fn main() -> Result<(), ClientError> {
     // `unauthenticated` uses default settings and no username/password, see `Connect::new` for
     // available options (keep alive, will, authentication, additional properties etc.)
     client
-        .connect(Connect::unauthenticated("mountain-mqtt-example"))
+        .connect(Connect::unauthenticated("mountain-mqtt-example-client-id"))
         .await?;
 
     let topic_name = "mountain-mqtt-example-topic";
@@ -61,7 +61,11 @@ async fn main() -> Result<(), ClientError> {
 
     // Check we got the message back
     let (topic, payload) = message_rx.try_recv().unwrap();
-    println!("{}: {}", topic, String::from_utf8_lossy(&payload));
+    println!(
+        "Received from '{}': '{}'",
+        topic,
+        String::from_utf8_lossy(&payload)
+    );
 
     client.unsubscribe_from_topic(topic_name).await?;
 
