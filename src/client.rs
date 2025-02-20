@@ -79,21 +79,18 @@ pub trait Client<'a> {
     /// disconnected.
     async fn poll(&mut self, wait: bool) -> Result<bool, ClientError>;
 
-    /// Subscribe to a topic by name
-    async fn subscribe_to_topic<'b>(
+    /// Subscribe to a topic
+    async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
         maximum_qos: &QualityOfService,
     ) -> Result<(), ClientError>;
 
-    /// Unsubscribe from a topic by name.
-    async fn unsubscribe_from_topic<'b>(
-        &'b mut self,
-        topic_name: &'b str,
-    ) -> Result<(), ClientError>;
+    /// Unsubscribe from a topic
+    async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError>;
 
-    /// Send a message to a given topic, on the connected broker.
-    async fn send_message<'b>(
+    /// Publish a message to a given topic
+    async fn publish<'b>(
         &'b mut self,
         topic_name: &'b str,
         message: &'b [u8],
@@ -211,7 +208,7 @@ where
         self.send(packet).await
     }
 
-    async fn send_message<'b>(
+    async fn publish<'b>(
         &'b mut self,
         topic_name: &'b str,
         message: &'b [u8],
@@ -224,7 +221,7 @@ where
         self.send_wait_for_responses(packet).await
     }
 
-    async fn subscribe_to_topic<'b>(
+    async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
         maximum_qos: &QualityOfService,
@@ -235,10 +232,7 @@ where
         self.send_wait_for_responses(packet).await
     }
 
-    async fn unsubscribe_from_topic<'b>(
-        &'b mut self,
-        topic_name: &'b str,
-    ) -> Result<(), ClientError> {
+    async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError> {
         let packet = self.client_state.unsubscribe_from_topic(topic_name)?;
         self.send_wait_for_responses(packet).await
     }

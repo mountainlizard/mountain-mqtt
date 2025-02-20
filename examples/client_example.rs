@@ -41,12 +41,12 @@ async fn main() -> Result<(), ClientError> {
 
     // Subscribe to the topic so we will get our messages back
     client
-        .subscribe_to_topic(topic_name, &QualityOfService::QoS0)
+        .subscribe(topic_name, &QualityOfService::QoS0)
         .await?;
 
     // Publish a message
     client
-        .send_message(
+        .publish(
             topic_name,
             "Hello MQTT!".as_bytes(),
             QualityOfService::QoS0,
@@ -67,7 +67,7 @@ async fn main() -> Result<(), ClientError> {
         String::from_utf8_lossy(&payload)
     );
 
-    client.unsubscribe_from_topic(topic_name).await?;
+    client.unsubscribe(topic_name).await?;
 
     client.disconnect().await?;
 
