@@ -39,12 +39,10 @@ async fn main() -> Result<(), ClientError> {
     let topic_name = "mountain-mqtt-example-topic";
     let retain = false;
 
-    // Subscribe to the topic so we will get our messages back
     client
         .subscribe(topic_name, &QualityOfService::QoS0)
         .await?;
 
-    // Publish a message
     client
         .publish(
             topic_name,
@@ -68,7 +66,6 @@ async fn main() -> Result<(), ClientError> {
     );
 
     client.unsubscribe(topic_name).await?;
-
     client.disconnect().await?;
 
     Ok(())
