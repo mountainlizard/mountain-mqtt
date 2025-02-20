@@ -179,20 +179,20 @@ pub trait ClientState {
     ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError>;
 
     /// Produce a packet to subscribe to a topic by name, update state
-    fn subscribe_to_topic<'b>(
+    fn subscribe<'b>(
         &mut self,
         topic_name: &'b str,
-        maximum_qos: &QualityOfService,
+        maximum_qos: QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError>;
 
     /// Produce a packet to unsubscribe from a topic by name, update state
-    fn unsubscribe_from_topic<'b>(
+    fn unsubscribe<'b>(
         &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError>;
 
     /// Produce a packet to publish to a given topic, update state
-    fn send_message<'b>(
+    fn publish<'b>(
         &mut self,
         topic_name: &'b str,
         message: &'b [u8],
@@ -278,7 +278,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn send_message<'b>(
+    fn publish<'b>(
         &mut self,
         topic_name: &'b str,
         message: &'b [u8],
@@ -316,18 +316,18 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn subscribe_to_topic<'b>(
+    fn subscribe<'b>(
         &mut self,
         topic_name: &'b str,
-        maximum_qos: &QualityOfService,
+        maximum_qos: QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
         if self.connection_state == ConnectionState::Connected {
             if self.pending_suback_identifier_and_qos.is_some() {
                 Err(ClientStateError::SubscriptionPending)
-            } else if maximum_qos == &QualityOfService::QoS2 {
+            } else if maximum_qos == QualityOfService::QoS2 {
                 Err(ClientStateError::QoS2NotSupported)
             } else {
-                let first_request = SubscriptionRequest::new(topic_name, *maximum_qos);
+                let first_request = SubscriptionRequest::new(topic_name, maximum_qos);
                 let subscribe: Subscribe<'_, 0, 0> = Subscribe::new(
                     Self::SUBSCRIBE_PACKET_IDENTIFIER,
                     first_request,
@@ -336,7 +336,7 @@ impl ClientState for ClientStateNoQueue {
                 );
 
                 self.pending_suback_identifier_and_qos =
-                    Some((Self::SUBSCRIBE_PACKET_IDENTIFIER, *maximum_qos));
+                    Some((Self::SUBSCRIBE_PACKET_IDENTIFIER, maximum_qos));
 
                 Ok(subscribe)
             }
@@ -345,7 +345,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn unsubscribe_from_topic<'b>(
+    fn unsubscribe<'b>(
         &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {

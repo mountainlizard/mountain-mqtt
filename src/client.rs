@@ -89,7 +89,7 @@ pub trait Client<'a> {
     async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
-        maximum_qos: &QualityOfService,
+        maximum_qos: QualityOfService,
     ) -> Result<(), ClientError>;
 
     /// Unsubscribe from a topic
@@ -223,23 +223,21 @@ where
     ) -> Result<(), ClientError> {
         let packet = self
             .client_state
-            .send_message(topic_name, message, qos, retain)?;
+            .publish(topic_name, message, qos, retain)?;
         self.send_wait_for_responses(packet).await
     }
 
     async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
-        maximum_qos: &QualityOfService,
+        maximum_qos: QualityOfService,
     ) -> Result<(), ClientError> {
-        let packet = self
-            .client_state
-            .subscribe_to_topic(topic_name, maximum_qos)?;
+        let packet = self.client_state.subscribe(topic_name, maximum_qos)?;
         self.send_wait_for_responses(packet).await
     }
 
     async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError> {
-        let packet = self.client_state.unsubscribe_from_topic(topic_name)?;
+        let packet = self.client_state.unsubscribe(topic_name)?;
         self.send_wait_for_responses(packet).await
     }
 
