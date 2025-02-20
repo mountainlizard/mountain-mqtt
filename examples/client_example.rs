@@ -21,7 +21,9 @@ async fn main() -> Result<(), ClientError> {
     // them in another task, here we'll just read them back at the end of the example
     let (message_tx, mut message_rx) = mpsc::channel(32);
 
-    // Create a client with a message_handler that just sends the messages on to the channel
+    // Create a client.
+    // The message_handler closure is called whenever a published message is received.
+    // This sends copies of the message contents to our channel for later processing.
     let mut client = client_tcp(ip, port, timeout_millis, &mut buf, |message| {
         message_tx
             .try_send((message.topic_name.to_owned(), message.payload.to_vec()))

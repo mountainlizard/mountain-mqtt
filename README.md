@@ -9,8 +9,8 @@ Note that this is in very early development. It is functional but not yet stable
 1. Compatible with [`embedded-hal`](https://github.com/rust-embedded/embedded-hal). Provides adapters to use [`embedded-hal-async`](https://crates.io/crates/embedded-hal-async) and [`embedded-io-async`](https://crates.io/crates/embedded-io-async) traits (`Read`, `Write` and `ReadReady`) for network connection, e.g. using [`embassy-net`](https://crates.io/crates/embassy-net) for TCP.
 2. Compatible with [`tokio`](https://tokio.rs). Provides adapters to use [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html) `TcpStream`.
 3. Layered design to allow reuse in different environments.
-4. Fairly thorough tests for `data`, `codec` and `packet` modules against the MQTT v5 specification.
-5. Basic client for connecting, disconnecting, subscribing and unsubscribing, publishing messages and receiving pubished message from the server. Supports Quality of Service levels 0 and 1.
+4. Fairly thorough tests for `data`, `codec` and `packet` modules against the [MQTT v5 specification](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html).
+5. Provides a basic client trait/implementation for connecting, disconnecting, subscribing and unsubscribing, publishing messages and receiving pubished messages from the server. Supports Quality of Service levels 0 and 1.
 6. Can run without allocation, using only `core` on `no_std`.
 
 ## Adding to your project
@@ -52,7 +52,7 @@ The following goals are not planned, but may be considered later:
 
 ## Layers
 
-1. `data` module - provides basic data types used by MQTT to build packets.
+1. `data` module - provides basic data types used in MQTT packets.
 2. `codec` module - provides simple reader and writer traits, and implementations using a `buf: &'a [u8]` and position. `Read` and `Write` traits for data items.
 3. `packets` module - provides traits for describing MQTT v5 packets, and a struct for each packet type, with `Read` and `Write` implementations.
 4. `packet_client` module - provides a basic low-level client for reading and writing packets directly, using a `Connection` trait with implementations for tokio `TcpStream` and embedded-hal-async `Read + Write + ReadyReady`.
@@ -63,6 +63,14 @@ The following goals are not planned, but may be considered later:
 See the `examples` directory for a simple example of using the basic client - try it out with `cargo run --example client_example`:
 
 ```rust
+use mountain_mqtt::{
+    client::{Client, ClientError},
+    data::quality_of_service::QualityOfService,
+    packets::connect::Connect,
+    tokio::client_tcp,
+};
+use tokio::sync::mpsc;
+
 /// Connect to an MQTT server on 127.0.0.1:1883,
 /// server must accept connections with no username or password.
 /// Subscribe to a topic, send a message, check we receive it
@@ -78,7 +86,9 @@ async fn main() -> Result<(), ClientError> {
     // them in another task, here we'll just read them back at the end of the example
     let (message_tx, mut message_rx) = mpsc::channel(32);
 
-    // Create a client with a message_handler that just sends the messages on to the channel
+    // Create a client.
+    // The message_handler closure is called whenever a published message is received.
+    // This sends copies of the message contents to our channel for later processing.
     let mut client = client_tcp(ip, port, timeout_millis, &mut buf, |message| {
         message_tx
             .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
