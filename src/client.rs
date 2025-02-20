@@ -148,7 +148,7 @@ where
 
     async fn wait_for_responses(&mut self, timeout_millis: u32) -> Result<(), ClientError> {
         let mut elapsed = 0;
-        let mut waiting = true;
+        let mut waiting = self.client_state.waiting_for_responses();
         while waiting && elapsed <= timeout_millis {
             self.poll(false).await?;
             waiting = self.client_state.waiting_for_responses();
@@ -163,7 +163,7 @@ where
         }
     }
 
-    pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
+    pub async fn send_wait_for_responses<P>(&mut self, packet: P) -> Result<(), ClientError>
     where
         P: Packet + write::Write,
     {
@@ -178,6 +178,18 @@ where
             }
         }
     }
+
+    pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
+    where
+        P: Packet + write::Write,
+    {
+        let r = self.packet_client.send(packet).await;
+        if r.is_err() {
+            self.client_state.error();
+        }
+        r?;
+        Ok(())
+    }
 }
 
 impl<'a, C, D, F> Client<'a> for ClientNoQueue<'a, C, D, F>
@@ -191,7 +203,7 @@ where
         packet: Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
-        self.send(packet).await
+        self.send_wait_for_responses(packet).await
     }
 
     async fn disconnect(&mut self) -> Result<(), ClientError> {
@@ -209,7 +221,7 @@ where
         let packet = self
             .client_state
             .send_message(topic_name, message, qos, retain)?;
-        self.send(packet).await
+        self.send_wait_for_responses(packet).await
     }
 
     async fn subscribe_to_topic<'b>(
@@ -220,7 +232,7 @@ where
         let packet = self
             .client_state
             .subscribe_to_topic(topic_name, maximum_qos)?;
-        self.send(packet).await
+        self.send_wait_for_responses(packet).await
     }
 
     async fn unsubscribe_from_topic<'b>(
@@ -228,7 +240,7 @@ where
         topic_name: &'b str,
     ) -> Result<(), ClientError> {
         let packet = self.client_state.unsubscribe_from_topic(topic_name)?;
-        self.send(packet).await
+        self.send_wait_for_responses(packet).await
     }
 
     async fn send_ping(&mut self) -> Result<(), ClientError> {
@@ -277,19 +289,11 @@ where
             }
         };
 
-        // Send any resulting packet, making sure to error client if this fails
+        // Send any resulting packet, no need to wait for responses
         if let Some(packet) = to_send {
-            // Note - don't use self.send, we don't want to wait for responses here since
-            // a) no response is expected and b) this leads to a recursive async function
-            match self.packet_client.send(packet).await {
-                Ok(()) => Ok(true),
-                Err(e) => {
-                    self.client_state.error();
-                    Err(e.into())
-                }
-            }
-        } else {
-            Ok(true)
+            self.send(packet).await?;
         }
+
+        Ok(true)
     }
 }
