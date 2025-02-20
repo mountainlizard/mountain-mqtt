@@ -9,6 +9,7 @@ A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mq
 3. Layered design to allow reuse in different environments.
 4. Fairly thorough tests for `data`, `codec` and `packet` modules against the MQTT v5 specification.
 5. Basic client for connecting, disconnecting, subscribing and unsubscribing, publishing messages and receiving pubished message from the server. Supports Quality of Service levels 0 and 1.
+6. Can run without allocation, using only `core` on `no_std`.
 
 ## Adding to your project
 
