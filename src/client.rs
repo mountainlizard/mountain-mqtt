@@ -89,11 +89,11 @@ pub trait Client<'a> {
     /// Unsubscribe from a topic
     async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError>;
 
-    /// Publish a message to a given topic
+    /// Publish a message with given payload to a given topic
     async fn publish<'b>(
         &'b mut self,
         topic_name: &'b str,
-        message: &'b [u8],
+        payload: &'b [u8],
         qos: QualityOfService,
         retain: bool,
     ) -> Result<(), ClientError>;
