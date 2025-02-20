@@ -1,0 +1,18 @@
+Short version for non-lawyers:
+
+The mountain-mqtt Project is dual-licensed under Apache 2.0 and MIT
+terms.
+
+It is Copyright (c) The mountain-mqtt Project Contributors.
+
+Longer version:
+
+Copyrights in the mountain-mqtt project are retained by their contributors. No
+copyright assignment is required to contribute to the mountain-mqtt project.
+
+Some files may include explicit copyright notices and/or license notices.
+For full authorship information, see the version control history.
+
+Except as otherwise noted, mountain-mqtt is licensed under the Apache License, Version
+2.0 <LICENSE-APACHE-2.0.txt> or <http://www.apache.org/licenses/LICENSE-2.0> or the MIT
+license <LICENSE-MIT.txt> or <http://opensource.org/licenses/MIT>, at your option.
