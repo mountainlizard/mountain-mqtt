@@ -23,11 +23,16 @@ const NO_LOCAL_BIT: u8 = 1 << 2;
 const RETAIN_AS_PUBLISHED_BIT: u8 = 1 << 3;
 const RETAIN_HANDLING_SHIFT: i32 = 4;
 const RETAIN_HANDLING_MASK: u8 = 0x3;
+const RESERVED_BITS: u8 = 0b1100_0000;
 
 impl TryFrom<u8> for SubscriptionOptions {
     type Error = PacketReadError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value & RESERVED_BITS != 0 {
+            return Err(PacketReadError::SubscriptionOptionsReservedBitsNonZero);
+        }
+
         let maximum_qos_value = value & QOS_MASK;
         let maximum_qos = maximum_qos_value.try_into()?;
         let no_local = value & (NO_LOCAL_BIT) != 0;
@@ -38,6 +43,7 @@ impl TryFrom<u8> for SubscriptionOptions {
             2 => Ok(RetainHandling::DoNotSend),
             _ => Err(PacketReadError::InvalidRetainHandlingValue),
         }?;
+
         Ok(SubscriptionOptions {
             maximum_qos,
             no_local,

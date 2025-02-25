@@ -265,6 +265,32 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn mqtt_buf_reader_errors_on_reserved_bit6_set_in_subscription_options(
+    ) -> mqtt_reader::Result<()> {
+        let buf = [0b0100_0000];
+        let mut r = MqttBufReader::new(&buf);
+        assert_eq!(
+            r.get_subscription_options(),
+            Err(PacketReadError::SubscriptionOptionsReservedBitsNonZero)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn mqtt_buf_reader_errors_on_reserved_bit7_set_in_subscription_options(
+    ) -> mqtt_reader::Result<()> {
+        let buf = [0b1000_0000];
+        let mut r = MqttBufReader::new(&buf);
+        assert_eq!(
+            r.get_subscription_options(),
+            Err(PacketReadError::SubscriptionOptionsReservedBitsNonZero)
+        );
+
+        Ok(())
+    }
+
     fn example_packet<'a>() -> Subscribe<'a, 1, 2> {
         let first_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
         let mut other_requests = Vec::new();
