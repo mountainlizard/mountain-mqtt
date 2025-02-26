@@ -165,7 +165,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
 
         let connect_flags = reader.get_u8()?; // 3.1.2.3 Connect Flags
 
-        // Check MQTT-3.1.2-2 (connect flags bit 0 must be 0)
+        // Check MQTT-3.1.2-3 (connect flags bit 0 must be 0)
         if connect_flags & 0x01 != 0 {
             return Err(PacketReadError::InvalidConnectFlags);
         }
@@ -183,10 +183,10 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
 
         // Will
         let has_will = connect_flags & (WILL_PRESENT_BIT) != 0;
+        let will_qos_value = (connect_flags >> WILL_QOS_SHIFT) & WILL_QOS_MASK;
+        let will_retain = connect_flags & (WILL_RETAIN_BIT) != 0;
         let will = if has_will {
-            let will_qos_value = (connect_flags >> WILL_QOS_SHIFT) & WILL_QOS_MASK;
             let will_qos = will_qos_value.try_into()?;
-            let will_retain = connect_flags & (WILL_RETAIN_BIT) != 0;
 
             let mut will_properties = Vec::new();
             reader.get_property_list(&mut will_properties)?; // 3.1.3.2 Will Properties
@@ -201,6 +201,16 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
                 properties: will_properties,
             })
         } else {
+            // If will flag is not set, we must have the following values, otherwise
+            // this is an error
+            // QoS bits as 0 [MQTT-3.1.2-11]
+            if will_qos_value != 0 {
+                return Err(PacketReadError::WillQoSSpecifiedWithoutWill);
+            }
+            // Retain bit as 0 [MQTT-3.1.2-13]
+            if will_retain {
+                return Err(PacketReadError::WillRetainSpecifiedWithoutWill);
+            }
             None
         };
 
@@ -474,6 +484,66 @@ mod tests {
         0x00, 0x04, 0x70, 0x61, 0x73, 0x73,
     ];
 
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_WILL_QOS_WITHOUT_WILL_FLAG: [u8; 33] = [
+        // header byte
+        0x10,
+        // packet length
+        0x1F,
+        // protocol name and version
+        0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 clear so no will, bit 3+4 will QoS (2),
+        // bit 5 will retain is clear, bit 6 password, bit 7 username
+        0b0001_1010,
+        // Keep alive
+        0x00, 0x3c,
+        // length of encoded properties
+        0x03,
+        // Receive maximum id 0x21, contents
+        0x21, 0x00, 0x14,
+        // Client id (length 0, no data)
+        0x00, 0x00,
+        // Will properties
+        // length of encoded properties
+        0x05,
+        // Property: Message expiry interval id 0x02, u32 value
+        0x02, 0x00, 0x00, 0x30, 0x39,
+        // Will topic
+        0x00, 0x02, 0x77, 0x74,
+        // Will payload
+        0x00, 0x03, 0x01, 0x02, 0x03,
+    ];
+
+    #[rustfmt::skip]
+    const EXAMPLE_DATA_WILL_RETAIN_WITHOUT_WILL_FLAG: [u8; 33] = [
+        // header byte
+        0x10,
+        // packet length
+        0x1F,
+        // protocol name and version
+        0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 clear so no will, bit 3+4 will QoS (0),
+        // bit 5 will retain is set, bit 6 password, bit 7 username
+        0b0010_0010,
+        // Keep alive
+        0x00, 0x3c,
+        // length of encoded properties
+        0x03,
+        // Receive maximum id 0x21, contents
+        0x21, 0x00, 0x14,
+        // Client id (length 0, no data)
+        0x00, 0x00,
+        // Will properties
+        // length of encoded properties
+        0x05,
+        // Property: Message expiry interval id 0x02, u32 value
+        0x02, 0x00, 0x00, 0x30, 0x39,
+        // Will topic
+        0x00, 0x02, 0x77, 0x74,
+        // Will payload
+        0x00, 0x03, 0x01, 0x02, 0x03,
+    ];
+
     fn encode_decode_and_check<const PROPERTIES_N: usize>(
         packet: &Connect<'_, PROPERTIES_N>,
         encoded: &[u8],
@@ -512,6 +582,24 @@ mod tests {
         assert_eq!(
             r.get::<Connect<'_, 16>>(),
             Err(PacketReadError::IncorrectPacketLength)
+        );
+    }
+
+    #[test]
+    fn error_on_decoding_data_with_will_qos_not_zero_but_no_will_flag() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_QOS_WITHOUT_WILL_FLAG);
+        assert_eq!(
+            r.get::<Connect<'_, 16>>(),
+            Err(PacketReadError::WillQoSSpecifiedWithoutWill)
+        );
+    }
+
+    #[test]
+    fn error_on_decoding_data_with_will_retain_set_but_no_will_flag() {
+        let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_RETAIN_WITHOUT_WILL_FLAG);
+        assert_eq!(
+            r.get::<Connect<'_, 16>>(),
+            Err(PacketReadError::WillRetainSpecifiedWithoutWill)
         );
     }
 

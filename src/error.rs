@@ -56,6 +56,7 @@ pub enum PacketReadError {
     TooManyProperties,
 
     /// Data contained an encoded [QualityOfService] value which was not a recognised value
+    /// (Malformed Packet)
     InvalidQoSValue,
 
     /// A Connect packet was decoded which did not contain the expected protocol name (MQTT) and version (5)
@@ -86,7 +87,7 @@ pub enum PacketReadError {
     /// specification was encountered
     InvalidRetainHandlingValue,
 
-    /// When decoding connect flags of Connect packet, an invalid value was encountered
+    /// When decoding connect flags of Connect packet, an invalid value was encountered (Malformed Packet)
     InvalidConnectFlags,
 
     /// When decoding a packet, the "remaining length" in the packet header was incorrect -
@@ -106,6 +107,15 @@ pub enum PacketReadError {
     /// All Unsuback packets must have at least one reason code, since they are responding
     /// to a [Unsubscribe] with at least one subscription request [MQTT-3.10.3-2]
     UnsubackWithoutValidReasonCode,
+
+    // If a connect packet has no will specified, it must also have the will QoS bits as 0 [MQTT-3.1.2-11]
+    WillQoSSpecifiedWithoutWill,
+
+    // If a connect packet has no will specified, it must also have the will Retain bit as 0 [MQTT-3.1.2-13]
+    WillRetainSpecifiedWithoutWill,
+
+    // Subscription options u8 values must not have reserved bits set to non-zero [MQTT-3.8.3-5]
+    SubscriptionOptionsReservedBitsNonZero,
 }
 
 impl From<Utf8Error> for PacketReadError {
@@ -145,6 +155,11 @@ impl Display for PacketReadError {
                 write!(f, "UnsubscribeWithoutValidSubscriptionRequest")
             }
             Self::UnsubackWithoutValidReasonCode => write!(f, "UnsubackWithoutValidReasonCode"),
+            Self::WillQoSSpecifiedWithoutWill => write!(f, "WillQoSSpecifiedWithoutWill"),
+            Self::WillRetainSpecifiedWithoutWill => write!(f, "WillRetainSpecifiedWithoutWill"),
+            Self::SubscriptionOptionsReservedBitsNonZero => {
+                write!(f, "ReservedBitsSetInSubscriptionOptions")
+            }
         }
     }
 }
