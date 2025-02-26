@@ -5,6 +5,7 @@ use heapless::Vec;
 use crate::{
     data::{
         packet_identifier::{PacketIdentifier, PublishPacketIdentifier},
+        property::{ConnackProperty, Property},
         quality_of_service::QualityOfService,
         reason_code::{
             ConnectReasonCode, PublishReasonCode, SubscribeReasonCode, UnsubscribeReasonCode,
@@ -33,11 +34,9 @@ pub enum ClientStateError {
     AuthNotSupported,
     QoS2NotSupported,
     ReceivedQoS2PublishNotSupported,
-    QoS1MessagePending,
+    ClientIsWaitingForResponse,
     NotConnected,
     ReceiveWhenNotConnectedOrConnecting,
-    SubscriptionPending,
-    UnsubscriptionPending,
     UnexpectedPuback,
     UnexpectedPubackPacketIdentifier,
     UnexpectedSuback,
@@ -47,6 +46,9 @@ pub enum ClientStateError {
     UnexpectedPingresp,
     Disconnect,
     ServerOnlyMessageReceived,
+    ReceivedPacketOtherThanConnackWhenConnecting,
+    ReceivedConnackWhenNotConnecting,
+    UnexpectedSessionPresentForCleanStart,
     Connect(ConnectReasonCode),
     Subscribe(SubscribeReasonCode),
     Publish(PublishReasonCode),
@@ -63,13 +65,11 @@ impl Display for ClientStateError {
             Self::AuthNotSupported => write!(f, "AuthNotSupported"),
             Self::QoS2NotSupported => write!(f, "QoS2NotSupported"),
             Self::ReceivedQoS2PublishNotSupported => write!(f, "ReceivedQoS2PublishNotSupported"),
-            Self::QoS1MessagePending => write!(f, "QoS1MessagePending"),
+            Self::ClientIsWaitingForResponse => write!(f, "QoS1MessagePending"),
             Self::NotConnected => write!(f, "NotConnected"),
             Self::ReceiveWhenNotConnectedOrConnecting => {
                 write!(f, "ReceiveWhenNotConnectedOrConnecting")
             }
-            Self::SubscriptionPending => write!(f, "SubscriptionPending"),
-            Self::UnsubscriptionPending => write!(f, "UnsubscriptionPending"),
             Self::UnexpectedPuback => write!(f, "UnexpectedPuback"),
             Self::UnexpectedPubackPacketIdentifier => write!(f, "UnexpectedPubackPacketIdentifier"),
             Self::UnexpectedSuback => write!(f, "UnexpectedSuback"),
@@ -86,6 +86,13 @@ impl Display for ClientStateError {
             Self::Publish(e) => write!(f, "Publish({})", e),
             Self::Unsubscribe(e) => write!(f, "Unsubscribe({})", e),
             // Self::Overflow => write!(f, "Overflow"),
+            Self::ReceivedPacketOtherThanConnackWhenConnecting => {
+                write!(f, "ReceivedPacketOtherThanConnackWhenConnecting")
+            }
+            Self::ReceivedConnackWhenNotConnecting => write!(f, "ReceivedConnackWhenNotConnecting"),
+            Self::UnexpectedSessionPresentForCleanStart => {
+                write!(f, "UnexpectedSessionPresentForCleanStart")
+            }
         }
     }
 }
@@ -151,10 +158,6 @@ pub trait ClientState {
     /// while `waiting_for_responses` is true.
     fn waiting_for_responses(&self) -> bool;
 
-    /// Return the number of pings that have been sent, but not responded to
-    /// This can be used as a way of detecting a dead connection or server
-    fn pending_ping_count(&self) -> u32;
-
     /// Update state based on a packet used to connect to server
     /// Call this after connect packet has been successfully sent.
     fn connect<const PROPERTIES_N: usize>(
@@ -207,20 +210,57 @@ pub trait ClientState {
 }
 
 #[derive(PartialEq)]
-pub enum ConnectionState {
+pub enum ClientStateNoQueue {
     Idle,
-    Connecting,
-    Connected,
+    Connecting(RequestedConnectionInfo),
+    Connected(ConnectionState),
     Errored,
     Disconnected,
 }
 
-pub struct ClientStateNoQueue {
-    connection_state: ConnectionState,
-    pending_puback_identifier: Option<PacketIdentifier>,
-    pending_suback_identifier_and_qos: Option<(PacketIdentifier, QualityOfService)>,
-    pending_unsuback_identifier: Option<PacketIdentifier>,
+#[derive(PartialEq)]
+pub struct RequestedConnectionInfo {
+    clean_start: bool,
+    keep_alive: u16,
+}
+
+#[derive(PartialEq)]
+pub struct ConnectionInfo {
     pending_ping_count: u32,
+    session_present: bool,
+    keep_alive: u16,
+}
+
+#[derive(PartialEq)]
+pub struct ConnectionState {
+    info: ConnectionInfo,
+    waiting: Waiting,
+}
+
+#[derive(PartialEq)]
+enum Waiting {
+    None,
+    ForPuback {
+        id: PacketIdentifier,
+    },
+    ForSuback {
+        id: PacketIdentifier,
+        qos: QualityOfService,
+    },
+    ForUnsuback {
+        id: PacketIdentifier,
+    },
+}
+
+impl Waiting {
+    fn is_waiting(&self) -> bool {
+        match self {
+            Self::None => false,
+            Self::ForPuback { id: _ } => true,
+            Self::ForSuback { id: _, qos: _ } => true,
+            Self::ForUnsuback { id: _ } => true,
+        }
+    }
 }
 
 impl ClientStateNoQueue {
@@ -229,19 +269,7 @@ impl ClientStateNoQueue {
     const UNSUBSCRIBE_PACKET_IDENTIFIER: PacketIdentifier = PacketIdentifier(3);
 
     pub fn new() -> Self {
-        Self {
-            connection_state: ConnectionState::Idle,
-            pending_puback_identifier: None,
-            pending_suback_identifier_and_qos: None,
-            pending_unsuback_identifier: None,
-            pending_ping_count: 0,
-        }
-    }
-
-    fn any_pending(&self) -> bool {
-        self.pending_puback_identifier.is_some()
-            || self.pending_suback_identifier_and_qos.is_some()
-            || self.pending_unsuback_identifier.is_some()
+        Self::Idle
     }
 }
 
@@ -253,28 +281,38 @@ impl Default for ClientStateNoQueue {
 
 impl ClientState for ClientStateNoQueue {
     fn waiting_for_responses(&self) -> bool {
-        self.connection_state == ConnectionState::Connecting
-            || (self.connection_state == ConnectionState::Connected && self.any_pending())
+        match self {
+            Self::Idle => false,
+            Self::Connecting(_) => true,
+            Self::Connected(connection_data) => connection_data.waiting.is_waiting(),
+            Self::Errored => false,
+            Self::Disconnected => false,
+        }
     }
 
     fn connect<const PROPERTIES_N: usize>(
         &mut self,
-        _connect: &Connect<'_, PROPERTIES_N>,
+        connect: &Connect<'_, PROPERTIES_N>,
     ) -> Result<(), ClientStateError> {
-        if self.connection_state == ConnectionState::Idle {
-            self.connection_state = ConnectionState::Connecting;
-            Ok(())
-        } else {
-            Err(ClientStateError::NotIdle)
+        match self {
+            ClientStateNoQueue::Idle => {
+                *self = Self::Connecting(RequestedConnectionInfo {
+                    clean_start: connect.clean_start(),
+                    keep_alive: connect.keep_alive(),
+                });
+                Ok(())
+            }
+            _ => Err(ClientStateError::NotIdle),
         }
     }
 
     fn disconnect<'b>(&mut self) -> Result<Disconnect<'b, 0>, ClientStateError> {
-        if self.connection_state == ConnectionState::Connected {
-            self.connection_state = ConnectionState::Disconnected;
-            Ok(Disconnect::default())
-        } else {
-            Err(ClientStateError::NotConnected)
+        match self {
+            ClientStateNoQueue::Connected(_d) => {
+                *self = Self::Disconnected;
+                Ok(Disconnect::default())
+            }
+            _ => Err(ClientStateError::NotConnected),
         }
     }
 
@@ -285,34 +323,37 @@ impl ClientState for ClientStateNoQueue {
         qos: QualityOfService,
         retain: bool,
     ) -> Result<Publish<'b, 0>, ClientStateError> {
-        if self.connection_state == ConnectionState::Connected {
-            let publish_packet_identifier = match qos {
-                QualityOfService::QoS0 => Ok(PublishPacketIdentifier::None),
-                QualityOfService::QoS1 if self.pending_puback_identifier.is_some() => {
-                    Err(ClientStateError::QoS1MessagePending)
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                let publish_packet_identifier = match qos {
+                    QualityOfService::QoS0 => Ok(PublishPacketIdentifier::None),
+                    QualityOfService::QoS1 if waiting.is_waiting() => {
+                        Err(ClientStateError::ClientIsWaitingForResponse)
+                    }
+                    QualityOfService::QoS1 => Ok(PublishPacketIdentifier::Qos1(
+                        Self::PUBLISH_PACKET_IDENTIFIER,
+                    )),
+                    QualityOfService::QoS2 => Err(ClientStateError::QoS2NotSupported),
+                }?;
+
+                let publish: Publish<'_, 0> = Publish::new(
+                    false,
+                    retain,
+                    topic_name,
+                    publish_packet_identifier,
+                    message,
+                    Vec::new(),
+                );
+
+                if qos == QualityOfService::QoS1 {
+                    *waiting = Waiting::ForPuback {
+                        id: Self::PUBLISH_PACKET_IDENTIFIER,
+                    };
                 }
-                QualityOfService::QoS1 => Ok(PublishPacketIdentifier::Qos1(
-                    Self::PUBLISH_PACKET_IDENTIFIER,
-                )),
-                QualityOfService::QoS2 => Err(ClientStateError::QoS2NotSupported),
-            }?;
 
-            let publish: Publish<'_, 0> = Publish::new(
-                false,
-                retain,
-                topic_name,
-                publish_packet_identifier,
-                message,
-                Vec::new(),
-            );
-
-            if qos == QualityOfService::QoS1 {
-                self.pending_puback_identifier = Some(Self::PUBLISH_PACKET_IDENTIFIER);
+                Ok(publish)
             }
-
-            Ok(publish)
-        } else {
-            Err(ClientStateError::NotConnected)
+            _ => Err(ClientStateError::NotConnected),
         }
     }
 
@@ -321,27 +362,30 @@ impl ClientState for ClientStateNoQueue {
         topic_name: &'b str,
         maximum_qos: QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
-        if self.connection_state == ConnectionState::Connected {
-            if self.pending_suback_identifier_and_qos.is_some() {
-                Err(ClientStateError::SubscriptionPending)
-            } else if maximum_qos == QualityOfService::QoS2 {
-                Err(ClientStateError::QoS2NotSupported)
-            } else {
-                let first_request = SubscriptionRequest::new(topic_name, maximum_qos);
-                let subscribe: Subscribe<'_, 0, 0> = Subscribe::new(
-                    Self::SUBSCRIBE_PACKET_IDENTIFIER,
-                    first_request,
-                    Vec::new(),
-                    Vec::new(),
-                );
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                if waiting.is_waiting() {
+                    Err(ClientStateError::ClientIsWaitingForResponse)
+                } else if maximum_qos == QualityOfService::QoS2 {
+                    Err(ClientStateError::QoS2NotSupported)
+                } else {
+                    let first_request = SubscriptionRequest::new(topic_name, maximum_qos);
+                    let subscribe: Subscribe<'_, 0, 0> = Subscribe::new(
+                        Self::SUBSCRIBE_PACKET_IDENTIFIER,
+                        first_request,
+                        Vec::new(),
+                        Vec::new(),
+                    );
 
-                self.pending_suback_identifier_and_qos =
-                    Some((Self::SUBSCRIBE_PACKET_IDENTIFIER, maximum_qos));
+                    *waiting = Waiting::ForSuback {
+                        id: Self::SUBSCRIBE_PACKET_IDENTIFIER,
+                        qos: maximum_qos,
+                    };
 
-                Ok(subscribe)
+                    Ok(subscribe)
+                }
             }
-        } else {
-            Err(ClientStateError::NotConnected)
+            _ => Err(ClientStateError::NotConnected),
         }
     }
 
@@ -349,31 +393,36 @@ impl ClientState for ClientStateNoQueue {
         &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {
-        if self.connection_state == ConnectionState::Connected {
-            if self.pending_unsuback_identifier.is_some() {
-                Err(ClientStateError::UnsubscriptionPending)
-            } else {
-                let unsubscribe: Unsubscribe<'_, 0, 0> = Unsubscribe::new(
-                    Self::UNSUBSCRIBE_PACKET_IDENTIFIER,
-                    topic_name,
-                    Vec::new(),
-                    Vec::new(),
-                );
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                if waiting.is_waiting() {
+                    Err(ClientStateError::ClientIsWaitingForResponse)
+                } else {
+                    let unsubscribe: Unsubscribe<'_, 0, 0> = Unsubscribe::new(
+                        Self::UNSUBSCRIBE_PACKET_IDENTIFIER,
+                        topic_name,
+                        Vec::new(),
+                        Vec::new(),
+                    );
 
-                self.pending_unsuback_identifier = Some(Self::UNSUBSCRIBE_PACKET_IDENTIFIER);
-                Ok(unsubscribe)
+                    *waiting = Waiting::ForUnsuback {
+                        id: Self::UNSUBSCRIBE_PACKET_IDENTIFIER,
+                    };
+
+                    Ok(unsubscribe)
+                }
             }
-        } else {
-            Err(ClientStateError::NotConnected)
+            _ => Err(ClientStateError::NotConnected),
         }
     }
 
     fn send_ping(&mut self) -> Result<Pingreq, ClientStateError> {
-        if self.connection_state == ConnectionState::Connected {
-            self.pending_ping_count += 1;
-            Ok(Pingreq::default())
-        } else {
-            Err(ClientStateError::NotConnected)
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info, waiting: _ }) => {
+                info.pending_ping_count += 1;
+                Ok(Pingreq::default())
+            }
+            _ => Err(ClientStateError::NotConnected),
         }
     }
 
@@ -381,71 +430,100 @@ impl ClientState for ClientStateNoQueue {
         &mut self,
         packet: PacketGeneric<'a, PROPERTIES_N, REQUEST_N>,
     ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError> {
-        if self.connection_state != ConnectionState::Connected
-            && self.connection_state != ConnectionState::Connecting
-        {
-            return Err(ClientStateError::ReceiveWhenNotConnectedOrConnecting);
-        }
+        match self {
+            // If we are connecting, we only expect a Connack packet
+            ClientStateNoQueue::Connecting(RequestedConnectionInfo {
+                clean_start,
+                keep_alive,
+            }) => match packet {
+                PacketGeneric::Connack(connack) => match connack.reason_code() {
+                    ConnectReasonCode::Success => {
+                        let session_present = connack.session_present();
 
-        match packet {
-            PacketGeneric::Publish(publish) => match publish.publish_packet_identifier() {
-                PublishPacketIdentifier::None => Ok(ClientStateReceiveEvent::Publish { publish }),
-                PublishPacketIdentifier::Qos1(packet_identifier) => {
-                    let puback =
-                        Puback::new(*packet_identifier, PublishReasonCode::Success, Vec::new());
-                    Ok(ClientStateReceiveEvent::PublishAndPubAck { publish, puback })
-                }
-                PublishPacketIdentifier::Qos2(_) => {
-                    Err(ClientStateError::ReceivedQoS2PublishNotSupported)
-                }
-            },
-            PacketGeneric::Connack(connack) => match connack.reason_code() {
-                ConnectReasonCode::Success => {
-                    self.connection_state = ConnectionState::Connected;
-                    Ok(ClientStateReceiveEvent::None)
-                }
-                reason_code => Err(ClientStateError::Connect(*reason_code)),
-            },
-            PacketGeneric::Puback(puback) => {
-                let reason_code = puback.reason_code();
-                if reason_code.is_error() {
-                    return Err(ClientStateError::Publish(*reason_code));
-                }
+                        // If there's a session, but we requested a clean start, this is an error
+                        if session_present && *clean_start {
+                            return Err(ClientStateError::UnexpectedSessionPresentForCleanStart);
+                        }
 
-                let ack_packet_identifier = puback.packet_identifier();
-                match &self.pending_puback_identifier {
-                    Some(expected_packet_identifier) => {
-                        if expected_packet_identifier == ack_packet_identifier {
-                            self.pending_puback_identifier = None;
-
-                            if reason_code == &PublishReasonCode::NoMatchingSubscribers {
-                                Ok(ClientStateReceiveEvent::None)
-                            } else {
-                                Ok(ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers)
+                        // Keep alive is the one we requested, unless server returns a new one as a property
+                        let mut actual_keep_alive = *keep_alive;
+                        for p in connack.properties().iter() {
+                            if let ConnackProperty::ServerKeepAlive(server_keep_alive) = p {
+                                actual_keep_alive = server_keep_alive.value();
                             }
-                        } else {
+                        }
+
+                        let info = ConnectionInfo {
+                            pending_ping_count: 0,
+                            session_present,
+                            keep_alive: actual_keep_alive,
+                        };
+
+                        *self = Self::Connected(ConnectionState {
+                            info,
+                            waiting: Waiting::None,
+                        });
+
+                        Ok(ClientStateReceiveEvent::None)
+                    }
+                    reason_code => Err(ClientStateError::Connect(*reason_code)),
+                },
+                _ => Err(ClientStateError::ReceivedPacketOtherThanConnackWhenConnecting),
+            },
+
+            // If we are connected, we handle all client packets other than Connack
+            ClientStateNoQueue::Connected(ConnectionState { info, waiting }) => match packet {
+                PacketGeneric::Publish(publish) => match publish.publish_packet_identifier() {
+                    PublishPacketIdentifier::None => {
+                        Ok(ClientStateReceiveEvent::Publish { publish })
+                    }
+                    PublishPacketIdentifier::Qos1(packet_identifier) => {
+                        let puback =
+                            Puback::new(*packet_identifier, PublishReasonCode::Success, Vec::new());
+                        Ok(ClientStateReceiveEvent::PublishAndPubAck { publish, puback })
+                    }
+                    PublishPacketIdentifier::Qos2(_) => {
+                        Err(ClientStateError::ReceivedQoS2PublishNotSupported)
+                    }
+                },
+
+                PacketGeneric::Puback(puback) => {
+                    let ack_id = puback.packet_identifier();
+                    match waiting {
+                        Waiting::ForPuback { id } if id == ack_id => {
+                            *waiting = Waiting::None;
+
+                            let reason_code = puback.reason_code();
+                            if reason_code.is_error() {
+                                Err(ClientStateError::Publish(*reason_code))
+                            } else if reason_code == &PublishReasonCode::NoMatchingSubscribers {
+                                Ok(ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers)
+                            } else {
+                                Ok(ClientStateReceiveEvent::None)
+                            }
+                        }
+                        Waiting::ForPuback { id: _ } => {
                             Err(ClientStateError::UnexpectedPubackPacketIdentifier)
                         }
+                        _ => Err(ClientStateError::UnexpectedPuback),
                     }
-                    None => Err(ClientStateError::UnexpectedPuback),
                 }
-            }
-            PacketGeneric::Suback(suback) => {
-                let reason_code = suback.first_reason_code();
-                let granted_qos = match reason_code {
-                    SubscribeReasonCode::Success => QualityOfService::QoS0,
-                    SubscribeReasonCode::GrantedQoS1 => QualityOfService::QoS1,
-                    SubscribeReasonCode::GrantedQoS2 => QualityOfService::QoS2,
-                    err => return Err(ClientStateError::Subscribe(*err)),
-                };
 
-                let ack_packet_identifier = suback.packet_identifier();
+                PacketGeneric::Suback(suback) => {
+                    let ack_id = suback.packet_identifier();
 
-                match &self.pending_suback_identifier_and_qos {
-                    Some((expected_packet_identifier, maximum_qos)) => {
-                        if expected_packet_identifier == ack_packet_identifier {
-                            let maximum_qos = *maximum_qos;
-                            self.pending_suback_identifier_and_qos = None;
+                    match waiting {
+                        Waiting::ForSuback { id, qos } if id == ack_id => {
+                            let maximum_qos = *qos;
+                            *waiting = Waiting::None;
+
+                            let reason_code = suback.first_reason_code();
+                            let granted_qos = match reason_code {
+                                SubscribeReasonCode::Success => QualityOfService::QoS0,
+                                SubscribeReasonCode::GrantedQoS1 => QualityOfService::QoS1,
+                                SubscribeReasonCode::GrantedQoS2 => QualityOfService::QoS2,
+                                err => return Err(ClientStateError::Subscribe(*err)),
+                            };
 
                             if granted_qos != maximum_qos {
                                 Ok(
@@ -457,59 +535,61 @@ impl ClientState for ClientStateNoQueue {
                             } else {
                                 Ok(ClientStateReceiveEvent::None)
                             }
-                        } else {
+                        }
+                        Waiting::ForSuback { id: _, qos: _ } => {
                             Err(ClientStateError::UnexpectedSubackPacketIdentifier)
                         }
+                        _ => Err(ClientStateError::UnexpectedSuback),
                     }
-                    None => Err(ClientStateError::UnexpectedSuback),
                 }
-            }
-            PacketGeneric::Unsuback(unsuback) => {
-                let reason_code = unsuback.first_reason_code();
-                if reason_code.is_error() {
-                    return Err(ClientStateError::Unsubscribe(*reason_code));
-                }
+                PacketGeneric::Unsuback(unsuback) => {
+                    let ack_id = unsuback.packet_identifier();
 
-                let ack_packet_identifier = unsuback.packet_identifier();
-                match &self.pending_unsuback_identifier {
-                    Some(expected_packet_identifier) => {
-                        if expected_packet_identifier == ack_packet_identifier {
-                            self.pending_unsuback_identifier = None;
-                            Ok(ClientStateReceiveEvent::None)
-                        } else {
+                    match waiting {
+                        Waiting::ForUnsuback { id } if id == ack_id => {
+                            *waiting = Waiting::None;
+
+                            let reason_code = unsuback.first_reason_code();
+                            if reason_code.is_error() {
+                                Err(ClientStateError::Unsubscribe(*reason_code))
+                            } else {
+                                Ok(ClientStateReceiveEvent::None)
+                            }
+                        }
+                        Waiting::ForUnsuback { id: _ } => {
                             Err(ClientStateError::UnexpectedUnsubackPacketIdentifier)
                         }
+                        _ => Err(ClientStateError::UnexpectedUnsuback),
                     }
-                    None => Err(ClientStateError::UnexpectedUnsuback),
                 }
-            }
-            PacketGeneric::Pingresp(_pingresp) => {
-                if self.pending_ping_count > 0 {
-                    self.pending_ping_count -= 1;
-                    Ok(ClientStateReceiveEvent::None)
-                } else {
-                    Err(ClientStateError::UnexpectedPingresp)
+                PacketGeneric::Pingresp(_pingresp) => {
+                    if info.pending_ping_count > 0 {
+                        info.pending_ping_count -= 1;
+                        Ok(ClientStateReceiveEvent::None)
+                    } else {
+                        Err(ClientStateError::UnexpectedPingresp)
+                    }
                 }
-            }
-            PacketGeneric::Disconnect(disconnect) => {
-                Ok(ClientStateReceiveEvent::Disconnect { disconnect })
-            }
-            PacketGeneric::Auth(_auth) => Err(ClientStateError::AuthNotSupported),
-            PacketGeneric::Connect(_)
-            | PacketGeneric::Pubrec(_)
-            | PacketGeneric::Pubrel(_)
-            | PacketGeneric::Pubcomp(_)
-            | PacketGeneric::Subscribe(_)
-            | PacketGeneric::Unsubscribe(_)
-            | PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
+                PacketGeneric::Disconnect(disconnect) => {
+                    Ok(ClientStateReceiveEvent::Disconnect { disconnect })
+                }
+                PacketGeneric::Connack(_) => {
+                    Err(ClientStateError::ReceivedConnackWhenNotConnecting)
+                }
+                PacketGeneric::Auth(_auth) => Err(ClientStateError::AuthNotSupported),
+                PacketGeneric::Connect(_)
+                | PacketGeneric::Pubrec(_)
+                | PacketGeneric::Pubrel(_)
+                | PacketGeneric::Pubcomp(_)
+                | PacketGeneric::Subscribe(_)
+                | PacketGeneric::Unsubscribe(_)
+                | PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
+            },
+            _ => Err(ClientStateError::ReceiveWhenNotConnectedOrConnecting),
         }
     }
 
-    fn pending_ping_count(&self) -> u32 {
-        self.pending_ping_count
-    }
-
     fn error(&mut self) {
-        self.connection_state = ConnectionState::Errored;
+        *self = Self::Errored;
     }
 }
