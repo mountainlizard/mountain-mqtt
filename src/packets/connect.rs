@@ -94,6 +94,14 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
         }
         flags
     }
+
+    pub fn keep_alive(&self) -> u16 {
+        self.keep_alive
+    }
+
+    pub fn clean_start(&self) -> bool {
+        self.clean_start
+    }
 }
 
 impl<const PROPERTIES_N: usize> Packet for Connect<'_, PROPERTIES_N> {
