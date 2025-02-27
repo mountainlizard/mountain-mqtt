@@ -11,15 +11,15 @@ use crate::{
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
-pub struct Auth<'a, const PROPERTIES_N: usize> {
+pub struct Auth<'a, const P: usize> {
     reason_code: AuthReasonCode,
-    properties: Vec<AuthProperty<'a>, PROPERTIES_N>,
+    properties: Vec<AuthProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize> Auth<'a, PROPERTIES_N> {
+impl<'a, const P: usize> Auth<'a, P> {
     pub fn new(
         reason_code: AuthReasonCode,
-        properties: Vec<AuthProperty<'a>, PROPERTIES_N>,
+        properties: Vec<AuthProperty<'a>, P>,
     ) -> Self {
         Self {
             reason_code,
@@ -28,13 +28,13 @@ impl<'a, const PROPERTIES_N: usize> Auth<'a, PROPERTIES_N> {
     }
 }
 
-impl<const PROPERTIES_N: usize> Packet for Auth<'_, PROPERTIES_N> {
+impl<const P: usize> Packet for Auth<'_, P> {
     fn packet_type(&self) -> PacketType {
         PacketType::Auth
     }
 }
 
-impl<const PROPERTIES_N: usize> PacketWrite for Auth<'_, PROPERTIES_N> {
+impl<const P: usize> PacketWrite for Auth<'_, P> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -54,7 +54,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Auth<'_, PROPERTIES_N> {
     }
 }
 
-impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Auth<'a, PROPERTIES_N> {
+impl<'a, const P: usize> PacketRead<'a> for Auth<'a, P> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
@@ -107,16 +107,16 @@ mod tests {
         packet
     }
 
-    fn encode_decode_and_check<const PROPERTIES_N: usize>(
-        packet: &Auth<'_, PROPERTIES_N>,
+    fn encode_decode_and_check<const P: usize>(
+        packet: &Auth<'_, P>,
         encoded: &[u8],
     ) {
         encode_and_check(packet, encoded);
         decode_and_check(packet, encoded);
     }
 
-    fn encode_and_check<const PROPERTIES_N: usize>(
-        packet: &Auth<'_, PROPERTIES_N>,
+    fn encode_and_check<const P: usize>(
+        packet: &Auth<'_, P>,
         encoded: &[u8],
     ) {
         let mut buf = [0u8; 1024];
@@ -128,12 +128,12 @@ mod tests {
         assert_eq!(&buf[0..len], encoded);
     }
 
-    fn decode_and_check<const PROPERTIES_N: usize>(
-        packet: &Auth<'_, PROPERTIES_N>,
+    fn decode_and_check<const P: usize>(
+        packet: &Auth<'_, P>,
         encoded: &[u8],
     ) {
         let mut r = MqttBufReader::new(encoded);
-        let read_packet: Auth<'_, PROPERTIES_N> = r.get().unwrap();
+        let read_packet: Auth<'_, P> = r.get().unwrap();
         assert_eq!(&read_packet, packet);
         assert_eq!(r.position(), encoded.len());
         assert_eq!(r.remaining(), 0);

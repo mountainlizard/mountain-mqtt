@@ -10,17 +10,17 @@ use crate::data::{
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
-pub struct Puback<'a, const PROPERTIES_N: usize> {
+pub struct Puback<'a, const P: usize> {
     packet_identifier: PacketIdentifier,
     reason_code: PublishReasonCode,
-    properties: Vec<PubackProperty<'a>, PROPERTIES_N>,
+    properties: Vec<PubackProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize> Puback<'a, PROPERTIES_N> {
+impl<'a, const P: usize> Puback<'a, P> {
     pub fn new(
         packet_identifier: PacketIdentifier,
         reason_code: PublishReasonCode,
-        properties: Vec<PubackProperty<'a>, PROPERTIES_N>,
+        properties: Vec<PubackProperty<'a>, P>,
     ) -> Self {
         Self {
             packet_identifier,
@@ -35,18 +35,18 @@ impl<'a, const PROPERTIES_N: usize> Puback<'a, PROPERTIES_N> {
     pub fn reason_code(&self) -> &PublishReasonCode {
         &self.reason_code
     }
-    pub fn properties(&self) -> &Vec<PubackProperty<'a>, PROPERTIES_N> {
+    pub fn properties(&self) -> &Vec<PubackProperty<'a>, P> {
         &self.properties
     }
 }
 
-impl<const PROPERTIES_N: usize> Packet for Puback<'_, PROPERTIES_N> {
+impl<const P: usize> Packet for Puback<'_, P> {
     fn packet_type(&self) -> PacketType {
         PacketType::Puback
     }
 }
 
-impl<const PROPERTIES_N: usize> PacketWrite for Puback<'_, PROPERTIES_N> {
+impl<const P: usize> PacketWrite for Puback<'_, P> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -76,7 +76,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Puback<'_, PROPERTIES_N> {
     }
 }
 
-impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Puback<'a, PROPERTIES_N> {
+impl<'a, const P: usize> PacketRead<'a> for Puback<'a, P> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
@@ -153,18 +153,12 @@ mod tests {
         packet
     }
 
-    fn encode_decode_and_check<const PROPERTIES_N: usize>(
-        packet: &Puback<'_, PROPERTIES_N>,
-        encoded: &[u8],
-    ) {
+    fn encode_decode_and_check<const P: usize>(packet: &Puback<'_, P>, encoded: &[u8]) {
         encode_and_check(packet, encoded);
         decode_and_check(packet, encoded);
     }
 
-    fn encode_and_check<const PROPERTIES_N: usize>(
-        packet: &Puback<'_, PROPERTIES_N>,
-        encoded: &[u8],
-    ) {
+    fn encode_and_check<const P: usize>(packet: &Puback<'_, P>, encoded: &[u8]) {
         let mut buf = [0u8; 1024];
         let len = {
             let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
@@ -174,12 +168,9 @@ mod tests {
         assert_eq!(&buf[0..len], encoded);
     }
 
-    fn decode_and_check<const PROPERTIES_N: usize>(
-        packet: &Puback<'_, PROPERTIES_N>,
-        encoded: &[u8],
-    ) {
+    fn decode_and_check<const P: usize>(packet: &Puback<'_, P>, encoded: &[u8]) {
         let mut r = MqttBufReader::new(encoded);
-        let read_packet: Puback<'_, PROPERTIES_N> = r.get().unwrap();
+        let read_packet: Puback<'_, P> = r.get().unwrap();
         assert_eq!(&read_packet, packet);
         assert_eq!(r.position(), encoded.len());
         assert_eq!(r.remaining(), 0);

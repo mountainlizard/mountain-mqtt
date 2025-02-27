@@ -26,23 +26,23 @@ pub fn is_valid_publish_first_header_byte(encoded: u8) -> bool {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Publish<'a, const PROPERTIES_N: usize> {
+pub struct Publish<'a, const P: usize> {
     duplicate: bool,
     retain: bool,
     topic_name: &'a str,
     publish_packet_identifier: PublishPacketIdentifier,
     payload: &'a [u8],
-    properties: Vec<PublishProperty<'a>, PROPERTIES_N>,
+    properties: Vec<PublishProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize> Publish<'a, PROPERTIES_N> {
+impl<'a, const P: usize> Publish<'a, P> {
     pub fn new(
         duplicate: bool,
         retain: bool,
         topic_name: &'a str,
         packet_identifier: PublishPacketIdentifier,
         payload: &'a [u8],
-        properties: Vec<PublishProperty<'a>, PROPERTIES_N>,
+        properties: Vec<PublishProperty<'a>, P>,
     ) -> Self {
         Self {
             duplicate,
@@ -78,12 +78,12 @@ impl<'a, const PROPERTIES_N: usize> Publish<'a, PROPERTIES_N> {
     pub fn payload(&self) -> &'a [u8] {
         self.payload
     }
-    pub fn properties(&self) -> &Vec<PublishProperty<'a>, PROPERTIES_N> {
+    pub fn properties(&self) -> &Vec<PublishProperty<'a>, P> {
         &self.properties
     }
 }
 
-impl<const PROPERTIES_N: usize> Packet for Publish<'_, PROPERTIES_N> {
+impl<const P: usize> Packet for Publish<'_, P> {
     fn packet_type(&self) -> PacketType {
         PacketType::Publish
     }
@@ -101,7 +101,7 @@ impl<const PROPERTIES_N: usize> Packet for Publish<'_, PROPERTIES_N> {
     }
 }
 
-impl<const PROPERTIES_N: usize> PacketWrite for Publish<'_, PROPERTIES_N> {
+impl<const P: usize> PacketWrite for Publish<'_, P> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -128,7 +128,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Publish<'_, PROPERTIES_N> {
     }
 }
 
-impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N> {
+impl<'a, const P: usize> PacketRead<'a> for Publish<'a, P> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         first_header_byte: u8,
@@ -167,7 +167,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
             let payload_len = payload_end_position - position;
             let payload = reader.get_slice(payload_len)?;
 
-            let packet: Publish<'a, PROPERTIES_N> = Publish::new(
+            let packet: Publish<'a, P> = Publish::new(
                 duplicate,
                 retain,
                 topic_name,

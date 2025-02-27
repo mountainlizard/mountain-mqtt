@@ -9,15 +9,15 @@ use crate::data::{
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
-pub struct Disconnect<'a, const PROPERTIES_N: usize> {
+pub struct Disconnect<'a, const P: usize> {
     reason_code: DisconnectReasonCode,
-    properties: Vec<DisconnectProperty<'a>, PROPERTIES_N>,
+    properties: Vec<DisconnectProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize> Disconnect<'a, PROPERTIES_N> {
+impl<'a, const P: usize> Disconnect<'a, P> {
     pub fn new(
         reason_code: DisconnectReasonCode,
-        properties: Vec<DisconnectProperty<'a>, PROPERTIES_N>,
+        properties: Vec<DisconnectProperty<'a>, P>,
     ) -> Self {
         Self {
             reason_code,
@@ -28,7 +28,7 @@ impl<'a, const PROPERTIES_N: usize> Disconnect<'a, PROPERTIES_N> {
     pub fn reason_code(&self) -> &DisconnectReasonCode {
         &self.reason_code
     }
-    pub fn properties(&self) -> &Vec<DisconnectProperty<'a>, PROPERTIES_N> {
+    pub fn properties(&self) -> &Vec<DisconnectProperty<'a>, P> {
         &self.properties
     }
 }
@@ -39,13 +39,13 @@ impl Default for Disconnect<'_, 0> {
     }
 }
 
-impl<const PROPERTIES_N: usize> Packet for Disconnect<'_, PROPERTIES_N> {
+impl<const P: usize> Packet for Disconnect<'_, P> {
     fn packet_type(&self) -> PacketType {
         PacketType::Disconnect
     }
 }
 
-impl<const PROPERTIES_N: usize> PacketWrite for Disconnect<'_, PROPERTIES_N> {
+impl<const P: usize> PacketWrite for Disconnect<'_, P> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -78,7 +78,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Disconnect<'_, PROPERTIES_N> {
     }
 }
 
-impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Disconnect<'a, PROPERTIES_N> {
+impl<'a, const P: usize> PacketRead<'a> for Disconnect<'a, P> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,

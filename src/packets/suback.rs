@@ -13,19 +13,19 @@ use crate::{
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
-pub struct Suback<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
+pub struct Suback<'a, const P: usize, const S: usize> {
     packet_identifier: PacketIdentifier,
     first_reason_code: SubscribeReasonCode,
-    other_reason_codes: Vec<SubscribeReasonCode, REQUEST_N>,
-    properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
+    other_reason_codes: Vec<SubscribeReasonCode, S>,
+    properties: Vec<SubackProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIES_N, REQUEST_N> {
+impl<'a, const P: usize, const S: usize> Suback<'a, P, S> {
     pub fn new(
         packet_identifier: PacketIdentifier,
         first_reason_code: SubscribeReasonCode,
-        other_reason_codes: Vec<SubscribeReasonCode, REQUEST_N>,
-        properties: Vec<SubackProperty<'a>, PROPERTIES_N>,
+        other_reason_codes: Vec<SubscribeReasonCode, S>,
+        properties: Vec<SubackProperty<'a>, P>,
     ) -> Self {
         Self {
             packet_identifier,
@@ -41,25 +41,21 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Suback<'a, PROPERTIE
     pub fn first_reason_code(&self) -> &SubscribeReasonCode {
         &self.first_reason_code
     }
-    pub fn other_reason_codes(&self) -> &Vec<SubscribeReasonCode, REQUEST_N> {
+    pub fn other_reason_codes(&self) -> &Vec<SubscribeReasonCode, S> {
         &self.other_reason_codes
     }
-    pub fn properties(&self) -> &Vec<SubackProperty<'a>, PROPERTIES_N> {
+    pub fn properties(&self) -> &Vec<SubackProperty<'a>, P> {
         &self.properties
     }
 }
 
-impl<const PROPERTIES_N: usize, const REQUEST_N: usize> Packet
-    for Suback<'_, PROPERTIES_N, REQUEST_N>
-{
+impl<const P: usize, const S: usize> Packet for Suback<'_, P, S> {
     fn packet_type(&self) -> PacketType {
         PacketType::Suback
     }
 }
 
-impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
-    for Suback<'_, PROPERTIES_N, REQUEST_N>
-{
+impl<const P: usize, const S: usize> PacketWrite for Suback<'_, P, S> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -79,9 +75,7 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
     }
 }
 
-impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
-    for Suback<'a, PROPERTIES_N, REQUEST_N>
-{
+impl<'a, const P: usize, const S: usize> PacketRead<'a> for Suback<'a, P, S> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,

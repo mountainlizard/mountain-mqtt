@@ -9,17 +9,17 @@ use crate::data::{
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
-pub struct Connack<'a, const PROPERTIES_N: usize> {
+pub struct Connack<'a, const P: usize> {
     session_present: bool,
     reason_code: ConnectReasonCode,
-    properties: Vec<ConnackProperty<'a>, PROPERTIES_N>,
+    properties: Vec<ConnackProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize> Connack<'a, PROPERTIES_N> {
+impl<'a, const P: usize> Connack<'a, P> {
     pub fn new(
         session_present: bool,
         reason_code: ConnectReasonCode,
-        properties: Vec<ConnackProperty<'a>, PROPERTIES_N>,
+        properties: Vec<ConnackProperty<'a>, P>,
     ) -> Self {
         Self {
             session_present,
@@ -34,18 +34,18 @@ impl<'a, const PROPERTIES_N: usize> Connack<'a, PROPERTIES_N> {
     pub fn reason_code(&self) -> &ConnectReasonCode {
         &self.reason_code
     }
-    pub fn properties(&self) -> &Vec<ConnackProperty<'a>, PROPERTIES_N> {
+    pub fn properties(&self) -> &Vec<ConnackProperty<'a>, P> {
         &self.properties
     }
 }
 
-impl<const PROPERTIES_N: usize> Packet for Connack<'_, PROPERTIES_N> {
+impl<const P: usize> Packet for Connack<'_, P> {
     fn packet_type(&self) -> PacketType {
         PacketType::Connack
     }
 }
 
-impl<const PROPERTIES_N: usize> PacketWrite for Connack<'_, PROPERTIES_N> {
+impl<const P: usize> PacketWrite for Connack<'_, P> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -67,7 +67,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connack<'_, PROPERTIES_N> {
     }
 }
 
-impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N> {
+impl<'a, const P: usize> PacketRead<'a> for Connack<'a, P> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
@@ -82,7 +82,7 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connack<'a, PROPERTIES_N>
 
         let reason_code = reader.get()?;
 
-        let mut packet: Connack<'a, PROPERTIES_N> =
+        let mut packet: Connack<'a, P> =
             Connack::new(session_present, reason_code, Vec::new());
 
         // Add properties into packet

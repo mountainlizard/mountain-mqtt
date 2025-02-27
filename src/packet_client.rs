@@ -68,9 +68,9 @@ where
         self.connection.send(&self.buf[0..len]).await
     }
 
-    pub async fn receive<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    pub async fn receive<const P: usize, const S: usize>(
         &mut self,
-    ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
+    ) -> Result<PacketGeneric<'_, P, S>, PacketReadError> {
         // First, try to read one byte with blocking
         self.connection.receive(&mut self.buf[0..1]).await?;
 
@@ -78,9 +78,9 @@ where
         self.receive_rest_of_packet().await
     }
 
-    pub async fn receive_if_ready<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    pub async fn receive_if_ready<const P: usize, const S: usize>(
         &mut self,
-    ) -> Result<Option<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>>, PacketReadError> {
+    ) -> Result<Option<PacketGeneric<'_, P, S>>, PacketReadError> {
         // First, try to read one byte without blocking - if this returns false, no packet is ready
         // and we can return immediately to avoid blocking
         let packet_started = self
@@ -97,9 +97,9 @@ where
         Ok(Some(packet))
     }
 
-    async fn receive_rest_of_packet<const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    async fn receive_rest_of_packet<const P: usize, const S: usize>(
         &mut self,
-    ) -> Result<PacketGeneric<'_, PROPERTIES_N, REQUEST_N>, PacketReadError> {
+    ) -> Result<PacketGeneric<'_, P, S>, PacketReadError> {
         let mut position: usize = 1;
 
         // Check first header byte is valid, if not we can error early without

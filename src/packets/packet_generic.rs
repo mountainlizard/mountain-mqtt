@@ -23,28 +23,32 @@ use super::{
     unsubscribe::Unsubscribe,
 };
 
+/// A generic packet, this has a variant for each packet type
+/// Allows for e.g. decoding data of an unknown packet type, we can
+/// then match to handle the different cases.
+/// `P` is the maximum number of properties in a packet.
+/// `S` is the maximum number of _additional_ subscription requests
+/// after the mandatory request.
 #[derive(Debug, PartialEq)]
-pub enum PacketGeneric<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
-    Connect(Connect<'a, PROPERTIES_N>),
-    Connack(Connack<'a, PROPERTIES_N>),
-    Publish(Publish<'a, PROPERTIES_N>),
-    Puback(Puback<'a, PROPERTIES_N>),
-    Pubrec(Pubrec<'a, PROPERTIES_N>),
-    Pubrel(Pubrel<'a, PROPERTIES_N>),
-    Pubcomp(Pubcomp<'a, PROPERTIES_N>),
-    Subscribe(Subscribe<'a, PROPERTIES_N, REQUEST_N>),
-    Suback(Suback<'a, PROPERTIES_N, REQUEST_N>),
-    Unsubscribe(Unsubscribe<'a, PROPERTIES_N, REQUEST_N>),
-    Unsuback(Unsuback<'a, PROPERTIES_N, REQUEST_N>),
+pub enum PacketGeneric<'a, const P: usize, const S: usize> {
+    Connect(Connect<'a, P>),
+    Connack(Connack<'a, P>),
+    Publish(Publish<'a, P>),
+    Puback(Puback<'a, P>),
+    Pubrec(Pubrec<'a, P>),
+    Pubrel(Pubrel<'a, P>),
+    Pubcomp(Pubcomp<'a, P>),
+    Subscribe(Subscribe<'a, P, S>),
+    Suback(Suback<'a, P, S>),
+    Unsubscribe(Unsubscribe<'a, P, S>),
+    Unsuback(Unsuback<'a, P, S>),
     Pingreq(Pingreq),
     Pingresp(Pingresp),
-    Disconnect(Disconnect<'a, PROPERTIES_N>),
-    Auth(Auth<'a, PROPERTIES_N>),
+    Disconnect(Disconnect<'a, P>),
+    Auth(Auth<'a, P>),
 }
 
-impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Read<'a>
-    for PacketGeneric<'a, PROPERTIES_N, REQUEST_N>
-{
+impl<'a, const P: usize, const S: usize> Read<'a> for PacketGeneric<'a, P, S> {
     fn read<R: crate::codec::mqtt_reader::MqttReader<'a>>(
         reader: &mut R,
     ) -> mqtt_reader::Result<Self>
@@ -146,9 +150,7 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Read<'a>
     }
 }
 
-impl<const PROPERTIES_N: usize, const REQUEST_N: usize> Packet
-    for PacketGeneric<'_, PROPERTIES_N, REQUEST_N>
-{
+impl<const P: usize, const S: usize> Packet for PacketGeneric<'_, P, S> {
     fn packet_type(&self) -> PacketType {
         match self {
             PacketGeneric::Connect(_) => PacketType::Connect,
