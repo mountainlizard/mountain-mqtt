@@ -263,7 +263,7 @@ where
                 let event = self.client_state.receive(packet)?;
 
                 match event {
-                    ClientStateReceiveEvent::None => None,
+                    ClientStateReceiveEvent::Ack => None,
                     ClientStateReceiveEvent::Publish { publish } => {
                         (self.message_handler)(Message {
                             topic_name: publish.topic_name(),
@@ -271,7 +271,7 @@ where
                         })?;
                         None
                     }
-                    ClientStateReceiveEvent::PublishAndPubAck { publish, puback } => {
+                    ClientStateReceiveEvent::PublishAndPuback { publish, puback } => {
                         (self.message_handler)(Message {
                             topic_name: publish.topic_name(),
                             payload: publish.payload(),

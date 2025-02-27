@@ -96,14 +96,17 @@ impl Display for ClientStateError {
 }
 
 pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
-    /// Nothing happened on receive
-    None,
+    /// Client received an acknowledgement/response for a previous message sent
+    /// to the server (e.g. Connack, Puback, Suback, Unsuback, Pingresp)
+    /// These are all handled internally by the state, so do not need an external
+    /// response
+    Ack,
 
     /// A published message was received
     Publish { publish: Publish<'a, PROPERTIES_N> },
 
     /// A published message was received, and it needs to be acknowledged by sending provided puback to the server
-    PublishAndPubAck {
+    PublishAndPuback {
         publish: Publish<'a, PROPERTIES_N>,
         puback: Puback<'b, PROPERTIES_N>,
     },
@@ -472,7 +475,7 @@ impl ClientState for ClientStateNoQueue {
                             waiting: Waiting::None,
                         });
 
-                        Ok(ClientStateReceiveEvent::None)
+                        Ok(ClientStateReceiveEvent::Ack)
                     }
                     reason_code => Err(ClientStateError::Connect(*reason_code)),
                 },
@@ -489,7 +492,7 @@ impl ClientState for ClientStateNoQueue {
                     PublishPacketIdentifier::Qos1(packet_identifier) => {
                         let puback =
                             Puback::new(*packet_identifier, PublishReasonCode::Success, Vec::new());
-                        Ok(ClientStateReceiveEvent::PublishAndPubAck { publish, puback })
+                        Ok(ClientStateReceiveEvent::PublishAndPuback { publish, puback })
                     }
                     PublishPacketIdentifier::Qos2(_) => {
                         Err(ClientStateError::ReceivedQoS2PublishNotSupported)
@@ -508,7 +511,7 @@ impl ClientState for ClientStateNoQueue {
                             } else if reason_code == &PublishReasonCode::NoMatchingSubscribers {
                                 Ok(ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers)
                             } else {
-                                Ok(ClientStateReceiveEvent::None)
+                                Ok(ClientStateReceiveEvent::Ack)
                             }
                         }
                         Waiting::ForPuback { id: _ } => {
@@ -542,7 +545,7 @@ impl ClientState for ClientStateNoQueue {
                                     },
                                 )
                             } else {
-                                Ok(ClientStateReceiveEvent::None)
+                                Ok(ClientStateReceiveEvent::Ack)
                             }
                         }
                         Waiting::ForSuback { id: _, qos: _ } => {
@@ -564,7 +567,7 @@ impl ClientState for ClientStateNoQueue {
                             } else if reason_code == &UnsubscribeReasonCode::NoSubscriptionExisted {
                                 Ok(ClientStateReceiveEvent::NoSubscriptionExisted)
                             } else {
-                                Ok(ClientStateReceiveEvent::None)
+                                Ok(ClientStateReceiveEvent::Ack)
                             }
                         }
                         Waiting::ForUnsuback { id: _ } => {
@@ -576,7 +579,7 @@ impl ClientState for ClientStateNoQueue {
                 PacketGeneric::Pingresp(_pingresp) => {
                     if info.pending_ping_count > 0 {
                         info.pending_ping_count -= 1;
-                        Ok(ClientStateReceiveEvent::None)
+                        Ok(ClientStateReceiveEvent::Ack)
                     } else {
                         Err(ClientStateError::UnexpectedPingresp)
                     }
