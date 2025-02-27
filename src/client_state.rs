@@ -54,6 +54,55 @@ pub enum ClientStateError {
     Unsubscribe(UnsubscribeReasonCode),
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for ClientStateError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Self::PacketWrite(e) => defmt::write!(f, "PacketWrite({})", e),
+            Self::PacketRead(e) => defmt::write!(f, "PacketRead({})", e),
+            Self::NotIdle => defmt::write!(f, "NotIdle"),
+            Self::AuthNotSupported => defmt::write!(f, "AuthNotSupported"),
+            Self::Qos2NotSupported => defmt::write!(f, "Qos2NotSupported"),
+            Self::ReceivedQos2PublishNotSupported => {
+                defmt::write!(f, "ReceivedQos2PublishNotSupported")
+            }
+            Self::ClientIsWaitingForResponse => defmt::write!(f, "ClientIsWaitingForResponse"),
+            Self::NotConnected => defmt::write!(f, "NotConnected"),
+            Self::ReceiveWhenNotConnectedOrConnecting => {
+                defmt::write!(f, "ReceiveWhenNotConnectedOrConnecting")
+            }
+            Self::UnexpectedPuback => defmt::write!(f, "UnexpectedPuback"),
+            Self::UnexpectedPubackPacketIdentifier => {
+                defmt::write!(f, "UnexpectedPubackPacketIdentifier")
+            }
+            Self::UnexpectedSuback => defmt::write!(f, "UnexpectedSuback"),
+            Self::UnexpectedSubackPacketIdentifier => {
+                defmt::write!(f, "UnexpectedSubackPacketIdentifier")
+            }
+            Self::UnexpectedUnsuback => defmt::write!(f, "UnexpectedUnsuback"),
+            Self::UnexpectedUnsubackPacketIdentifier => {
+                defmt::write!(f, "UnexpectedUnsubackPacketIdentifier")
+            }
+            Self::UnexpectedPingresp => defmt::write!(f, "UnexpectedPingresp"),
+            Self::Disconnect => defmt::write!(f, "Disconnect"),
+            Self::ServerOnlyMessageReceived => defmt::write!(f, "ServerOnlyMessageReceived"),
+            Self::ReceivedPacketOtherThanConnackOrAuthWhenConnecting => {
+                defmt::write!(f, "ReceivedPacketOtherThanConnackOrAuthWhenConnecting")
+            }
+            Self::ReceivedConnackWhenNotConnecting => {
+                defmt::write!(f, "ReceivedConnackWhenNotConnecting")
+            }
+            Self::UnexpectedSessionPresentForCleanStart => {
+                defmt::write!(f, "UnexpectedSessionPresentForCleanStart")
+            }
+            Self::Connect(r) => defmt::write!(f, "Connect({})", r),
+            Self::Subscribe(r) => defmt::write!(f, "Subscribe({})", r),
+            Self::Publish(r) => defmt::write!(f, "Publish({})", r),
+            Self::Unsubscribe(r) => defmt::write!(f, "Unsubscribe({})", r),
+        }
+    }
+}
+
 impl Display for ClientStateError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {

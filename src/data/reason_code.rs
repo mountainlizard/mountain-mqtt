@@ -90,6 +90,17 @@ macro_rules! packet_reason_codes {
             }
         }
 
+        #[cfg(feature = "defmt")]
+        impl defmt::Format for $n {
+            fn format(&self, f: defmt::Formatter) {
+                match self {
+                    $(
+                        Self::$c => defmt::write!(f, "$n($c)"),
+                    )*
+                }
+            }
+        }
+
     };
 }
 
