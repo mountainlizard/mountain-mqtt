@@ -6,7 +6,7 @@ use crate::{
     data::{quality_of_service::QualityOfService, reason_code::DisconnectReasonCode},
     error::{PacketReadError, PacketWriteError},
     packet_client::{Connection, PacketClient},
-    packets::{connect::Connect, packet::Packet, packet_generic::PacketGeneric},
+    packets::{connect::Connect, packet::Packet, packet_generic::PacketGeneric, publish::Publish},
 };
 
 /// [Client] error
@@ -55,16 +55,27 @@ impl Display for ClientError {
 pub struct Message<'a> {
     pub topic_name: &'a str,
     pub payload: &'a [u8],
+    pub retain: bool,
+    pub qos: QualityOfService,
+}
+
+impl<'a, const P: usize> From<Publish<'a, P>> for Message<'a> {
+    fn from(p: Publish<'a, P>) -> Self {
+        Message {
+            topic_name: p.topic_name(),
+            payload: p.payload(),
+            retain: p.retain(),
+            qos: p.qos(),
+        }
+    }
 }
 
 /// A simple client interface for connecting to an MQTT server
 #[allow(async_fn_in_trait)]
 pub trait Client<'a> {
     /// Connect to server
-    async fn connect<const P: usize>(
-        &mut self,
-        connect: Connect<'_, P>,
-    ) -> Result<(), ClientError>;
+    async fn connect<const P: usize>(&mut self, connect: Connect<'_, P>)
+        -> Result<(), ClientError>;
 
     /// Disconnect from server
     async fn disconnect(&mut self) -> Result<(), ClientError>;
@@ -201,10 +212,7 @@ where
     D: Delay,
     F: Fn(Message) -> Result<(), ClientError>,
 {
-    async fn connect<const P: usize>(
-        &mut self,
-        packet: Connect<'_, P>,
-    ) -> Result<(), ClientError> {
+    async fn connect<const P: usize>(&mut self, packet: Connect<'_, P>) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
         self.send_wait_for_responses(packet).await
     }
@@ -265,17 +273,11 @@ where
                 match event {
                     ClientStateReceiveEvent::Ack => None,
                     ClientStateReceiveEvent::Publish { publish } => {
-                        (self.message_handler)(Message {
-                            topic_name: publish.topic_name(),
-                            payload: publish.payload(),
-                        })?;
+                        (self.message_handler)(publish.into())?;
                         None
                     }
                     ClientStateReceiveEvent::PublishAndPuback { publish, puback } => {
-                        (self.message_handler)(Message {
-                            topic_name: publish.topic_name(),
-                            payload: publish.payload(),
-                        })?;
+                        (self.message_handler)(publish.into())?;
                         Some(puback)
                     }
 
