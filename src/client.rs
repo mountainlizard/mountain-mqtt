@@ -1,13 +1,20 @@
 use core::fmt::{Display, Formatter};
 
+use heapless::Vec;
+
 use crate::{
     client_state::{ClientState, ClientStateError, ClientStateNoQueue, ClientStateReceiveEvent},
     codec::write,
-    data::{quality_of_service::QualityOfService, reason_code::DisconnectReasonCode},
+    data::{
+        property::ConnectProperty, quality_of_service::QualityOfService,
+        reason_code::DisconnectReasonCode,
+    },
     error::{PacketReadError, PacketWriteError},
     packet_client::{Connection, PacketClient},
     packets::{
-        connect::Connect, packet::Packet, packet_generic::PacketGeneric,
+        connect::Connect,
+        packet::{Packet, KEEP_ALIVE_DEFAULT},
+        packet_generic::PacketGeneric,
         publish::ApplicationMessage,
     },
 };
@@ -20,7 +27,12 @@ pub enum ClientError {
     ClientState(ClientStateError),
     TimeoutOnResponsePacket,
     Disconnected(DisconnectReasonCode),
-    MessageHandlerError,
+    MessageHandler,
+    /// Client received an empty topic name when it has disabled topic aliases
+    /// This indicates a server error, client should disconnect, it may send
+    /// a Disconnect with [DisconnectReasonCode::TopicAliasInvalid], on the assumption
+    /// that the packet also had some topic alias specified.
+    EmptyTopicNameWithAliasesDisabled,
 }
 
 #[cfg(feature = "defmt")]
@@ -32,7 +44,10 @@ impl defmt::Format for ClientError {
             Self::ClientState(e) => defmt::write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => defmt::write!(f, "TimeoutOnResponsePacket"),
             Self::Disconnected(r) => defmt::write!(f, "Disconnected({})", r),
-            Self::MessageHandlerError => defmt::write!(f, "MessageHandlerError"),
+            Self::MessageHandler => defmt::write!(f, "MessageHandler"),
+            Self::EmptyTopicNameWithAliasesDisabled => {
+                defmt::write!(f, "EmptyTopicNameWithAliasesDisabled")
+            }
         }
     }
 }
@@ -63,7 +78,8 @@ impl Display for ClientError {
             Self::ClientState(e) => write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => write!(f, "TimeoutOnResponsePacket"),
             Self::Disconnected(e) => write!(f, "Disconnected({})", e),
-            Self::MessageHandlerError => write!(f, "MessageHandlerError"),
+            Self::MessageHandler => write!(f, "MessageHandlerError"),
+            Self::EmptyTopicNameWithAliasesDisabled => write!(f, "EmptyTopicWithAliasesDisabled"),
         }
     }
 }
@@ -72,8 +88,7 @@ impl Display for ClientError {
 #[allow(async_fn_in_trait)]
 pub trait Client<'a> {
     /// Connect to server
-    async fn connect<const P: usize>(&mut self, connect: Connect<'_, P>)
-        -> Result<(), ClientError>;
+    async fn connect(&mut self, settings: ConnectionSettings) -> Result<(), ClientError>;
 
     /// Disconnect from server
     async fn disconnect(&mut self) -> Result<(), ClientError>;
@@ -119,6 +134,24 @@ pub trait Delay {
     /// Pauses execution for at minimum `us` microseconds. Pause can be longer
     /// if the implementation requires it due to precision/timing issues.
     async fn delay_us(&mut self, us: u32);
+}
+
+pub struct ConnectionSettings<'a> {
+    keep_alive: u16,
+    username: Option<&'a str>,
+    password: Option<&'a [u8]>,
+    client_id: &'a str,
+}
+
+impl<'a> ConnectionSettings<'a> {
+    pub fn unauthenticated(client_id: &'a str) -> ConnectionSettings<'a> {
+        Self {
+            keep_alive: KEEP_ALIVE_DEFAULT,
+            username: None,
+            password: None,
+            client_id,
+        }
+    }
 }
 
 pub struct ClientNoQueue<'a, C, D, F, const P: usize>
@@ -210,10 +243,25 @@ where
     D: Delay,
     F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
 {
-    async fn connect<const CONNECT_P: usize>(
-        &mut self,
-        packet: Connect<'_, CONNECT_P>,
-    ) -> Result<(), ClientError> {
+    async fn connect(&mut self, settings: ConnectionSettings<'_>) -> Result<(), ClientError> {
+        let mut properties = Vec::new();
+        // By setting maximum topic alias to 0, we prevent the server
+        // trying to use aliases, which we don't support. They are optional
+        // and only provide for reduced packet size, but would require storing
+        // topic names from the server for the length of the connection,
+        // which might be awkward without alloc.
+        properties
+            .push(ConnectProperty::TopicAliasMaximum(0.into()))
+            .unwrap();
+        let packet: Connect<'_, 1> = Connect::new(
+            settings.keep_alive,
+            settings.username,
+            settings.password,
+            settings.client_id,
+            true,
+            None,
+            properties,
+        );
         self.client_state.connect(&packet)?;
         self.send_wait_for_responses(packet).await
     }
@@ -274,10 +322,16 @@ where
                 match event {
                     ClientStateReceiveEvent::Ack => None,
                     ClientStateReceiveEvent::Publish { publish } => {
+                        if publish.topic_name().is_empty() {
+                            return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
+                        }
                         (self.message_handler)(publish.into())?;
                         None
                     }
                     ClientStateReceiveEvent::PublishAndPuback { publish, puback } => {
+                        if publish.topic_name().is_empty() {
+                            return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
+                        }
                         (self.message_handler)(publish.into())?;
                         Some(puback)
                     }
