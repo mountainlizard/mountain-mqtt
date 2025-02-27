@@ -24,10 +24,13 @@ There is not yet a published crate, so check out the project sources (alongside 
    mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
    "embedded-io-async",
    "embedded-hal-async",
+   "defmt"
    ] }
    ```
 
-2. For tokio applications:
+   `defmt` is not required, but provides some `defmt::Format` implementations, e.g. for errors.
+
+2. For tokio applications (this requires `std`):
 
    ```toml
    [dependencies]

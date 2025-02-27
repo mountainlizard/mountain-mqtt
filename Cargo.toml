@@ -22,6 +22,7 @@ embedded-io = { version = "0.6", optional = true }
 embedded-io-async = { version = "0.6", optional = true }
 
 embedded-hal-async = { version = "1.0", optional = true }
+defmt = { version = "0.3", optional = true }
 
 tokio = { version = "1", features = ["full"], optional = true }
 
@@ -33,7 +34,7 @@ embedded-hal-async = "1.0"
 tokio-test = { version = "0.4.2" }
 
 [features]
-default = ["tokio", "embedded-io-async", "embedded-hal-async"]
+default = ["tokio", "embedded-io-async", "embedded-hal-async", "defmt"]
 tokio = ["dep:tokio", "std"]
 embedded-io-async = ["dep:embedded-io-async", "dep:embedded-io"]
 embedded-hal-async = ["dep:embedded-hal-async"]

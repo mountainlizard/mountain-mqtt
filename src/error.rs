@@ -118,6 +118,51 @@ pub enum PacketReadError {
     SubscriptionOptionsReservedBitsNonZero,
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for PacketReadError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Self::InsufficientData => defmt::write!(f, "InsufficientData"),
+            Self::InvalidUtf8 => defmt::write!(f, "InvalidUtf8"),
+            Self::NullCharacterInString => defmt::write!(f, "NullCharacterInString"),
+            Self::InvalidVariableByteIntegerEncoding => {
+                defmt::write!(f, "InvalidVariableByteIntegerEncoding")
+            }
+            Self::IncorrectPacketType => defmt::write!(f, "IncorrectPacketType"),
+            Self::UnknownReasonCode => defmt::write!(f, "UnknownReasonCode"),
+            Self::InvalidBooleanValue => defmt::write!(f, "InvalidBooleanValue"),
+            Self::TooManyProperties => defmt::write!(f, "TooManyProperties"),
+            Self::InvalidQosValue => defmt::write!(f, "InvalidQosValue"),
+            Self::UnsupportedProtocolVersion => defmt::write!(f, "UnsupportedProtocolVersion"),
+            Self::TooManyRequests => defmt::write!(f, "TooManyRequests"),
+            Self::InvalidPacketType => defmt::write!(f, "InvalidPacketType"),
+            Self::ConnectionReceive => defmt::write!(f, "ConnectionReceive"),
+            Self::PacketTooLargeForBuffer => defmt::write!(f, "PacketTooLargeForBuffer"),
+            Self::UnexpectedPropertyIdentifier => defmt::write!(f, "UnexpectedPropertyIdentifier"),
+            Self::InvalidRetainHandlingValue => defmt::write!(f, "InvalidRetainHandlingValue"),
+            Self::InvalidConnectFlags => defmt::write!(f, "InvalidConnectFlags"),
+            Self::IncorrectPacketLength => defmt::write!(f, "IncorrectPacketLength"),
+            Self::SubscribeWithoutValidSubscriptionRequest => {
+                defmt::write!(f, "SubscribeWithoutValidSubscriptionRequest")
+            }
+            Self::SubackWithoutValidReasonCode => defmt::write!(f, "SubackWithoutValidReasonCode"),
+            Self::UnsubscribeWithoutValidSubscriptionRequest => {
+                defmt::write!(f, "UnsubscribeWithoutValidSubscriptionRequest")
+            }
+            Self::UnsubackWithoutValidReasonCode => {
+                defmt::write!(f, "UnsubackWithoutValidReasonCode")
+            }
+            Self::WillQosSpecifiedWithoutWill => defmt::write!(f, "WillQosSpecifiedWithoutWill"),
+            Self::WillRetainSpecifiedWithoutWill => {
+                defmt::write!(f, "WillRetainSpecifiedWithoutWill")
+            }
+            Self::SubscriptionOptionsReservedBitsNonZero => {
+                defmt::write!(f, "SubscriptionOptionsReservedBitsNonZero")
+            }
+        }
+    }
+}
+
 impl From<Utf8Error> for PacketReadError {
     fn from(_e: Utf8Error) -> Self {
         Self::InvalidUtf8
@@ -183,6 +228,20 @@ pub enum PacketWriteError {
 
     /// Failure to send via connection
     ConnectionSend,
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for PacketWriteError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Self::Overflow => defmt::write!(f, "Overflow"),
+            Self::NullCharacterInString => defmt::write!(f, "NullCharacterInString"),
+            Self::VariableByteIntegerTooLarge => defmt::write!(f, "VariableByteIntegerTooLarge"),
+            Self::DataTooLarge => defmt::write!(f, "DataTooLarge"),
+            Self::StringTooLarge => defmt::write!(f, "StringTooLarge"),
+            Self::ConnectionSend => defmt::write!(f, "ConnectionSend"),
+        }
+    }
 }
 
 impl Display for PacketWriteError {

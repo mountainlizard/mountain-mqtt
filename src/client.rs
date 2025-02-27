@@ -23,6 +23,20 @@ pub enum ClientError {
     MessageHandlerError,
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for ClientError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Self::PacketWrite(e) => defmt::write!(f, "PacketWrite({})", e),
+            Self::PacketRead(e) => defmt::write!(f, "PacketRead({})", e),
+            Self::ClientState(e) => defmt::write!(f, "ClientState({})", e),
+            Self::TimeoutOnResponsePacket => defmt::write!(f, "TimeoutOnResponsePacket"),
+            Self::Disconnected(r) => defmt::write!(f, "Disconnected({})", r),
+            Self::MessageHandlerError => defmt::write!(f, "MessageHandlerError"),
+        }
+    }
+}
+
 impl From<ClientStateError> for ClientError {
     fn from(value: ClientStateError) -> Self {
         ClientError::ClientState(value)
