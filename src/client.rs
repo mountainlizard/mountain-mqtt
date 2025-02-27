@@ -278,11 +278,18 @@ where
                         })?;
                         Some(puback)
                     }
+
+                    // Not an error, no handler for now
                     ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
                         granted_qos: _,
                         maximum_qos: _,
                     } => None,
+
+                    // Not an error, no handler for now
                     ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => None,
+
+                    // Not an error, no handler for now
+                    ClientStateReceiveEvent::NoSubscriptionExisted => None,
 
                     ClientStateReceiveEvent::Disconnect { disconnect } => {
                         return Err(ClientError::Disconnected(*disconnect.reason_code()));

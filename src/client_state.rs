@@ -30,7 +30,6 @@ pub enum ClientStateError {
     PacketWrite(PacketWriteError),
     PacketRead(PacketReadError),
     NotIdle,
-    Idle,
     AuthNotSupported,
     QoS2NotSupported,
     ReceivedQoS2PublishNotSupported,
@@ -46,7 +45,7 @@ pub enum ClientStateError {
     UnexpectedPingresp,
     Disconnect,
     ServerOnlyMessageReceived,
-    ReceivedPacketOtherThanConnackWhenConnecting,
+    ReceivedPacketOtherThanConnackOrAuthWhenConnecting,
     ReceivedConnackWhenNotConnecting,
     UnexpectedSessionPresentForCleanStart,
     Connect(ConnectReasonCode),
@@ -61,7 +60,6 @@ impl Display for ClientStateError {
             Self::PacketWrite(e) => write!(f, "PacketWrite({})", e),
             Self::PacketRead(e) => write!(f, "PacketRead({})", e),
             Self::NotIdle => write!(f, "NotIdle"),
-            Self::Idle => write!(f, "Idle"),
             Self::AuthNotSupported => write!(f, "AuthNotSupported"),
             Self::QoS2NotSupported => write!(f, "QoS2NotSupported"),
             Self::ReceivedQoS2PublishNotSupported => write!(f, "ReceivedQoS2PublishNotSupported"),
@@ -86,7 +84,7 @@ impl Display for ClientStateError {
             Self::Publish(e) => write!(f, "Publish({})", e),
             Self::Unsubscribe(e) => write!(f, "Unsubscribe({})", e),
             // Self::Overflow => write!(f, "Overflow"),
-            Self::ReceivedPacketOtherThanConnackWhenConnecting => {
+            Self::ReceivedPacketOtherThanConnackOrAuthWhenConnecting => {
                 write!(f, "ReceivedPacketOtherThanConnackWhenConnecting")
             }
             Self::ReceivedConnackWhenNotConnecting => write!(f, "ReceivedConnackWhenNotConnecting"),
@@ -128,6 +126,14 @@ pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
     /// E.g. if it was expected there would be subscribers, the client could try resending
     /// the message later
     PublishedMessageHadNoMatchingSubscribers,
+
+    // Server processed an unsubscribe request, but no such subscription existed on the server,
+    // so nothing changed.
+    /// This may or may not require action depending on client requirements / expectations
+    /// E.g. if it was expected there would be a subscription, the client could produce
+    /// an error, and the user of the client might try reconnecting to the server to set
+    /// up subscriptions again.
+    NoSubscriptionExisted,
 
     /// A [Disconnect] packet was received, it should contain a reason for our disconnection
     Disconnect {
@@ -432,6 +438,8 @@ impl ClientState for ClientStateNoQueue {
     ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError> {
         match self {
             // If we are connecting, we only expect a Connack packet
+            // (server cannot disconnect before Connack [MQTT-3.14.0-1])
+            // or an Auth packet [MQTT-3.2.0-1]
             ClientStateNoQueue::Connecting(RequestedConnectionInfo {
                 clean_start,
                 keep_alive,
@@ -468,7 +476,8 @@ impl ClientState for ClientStateNoQueue {
                     }
                     reason_code => Err(ClientStateError::Connect(*reason_code)),
                 },
-                _ => Err(ClientStateError::ReceivedPacketOtherThanConnackWhenConnecting),
+                PacketGeneric::Auth(_) => Err(ClientStateError::AuthNotSupported),
+                _ => Err(ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting),
             },
 
             // If we are connected, we handle all client packets other than Connack
@@ -552,6 +561,8 @@ impl ClientState for ClientStateNoQueue {
                             let reason_code = unsuback.first_reason_code();
                             if reason_code.is_error() {
                                 Err(ClientStateError::Unsubscribe(*reason_code))
+                            } else if reason_code == &UnsubscribeReasonCode::NoSubscriptionExisted {
+                                Ok(ClientStateReceiveEvent::NoSubscriptionExisted)
                             } else {
                                 Ok(ClientStateReceiveEvent::None)
                             }
