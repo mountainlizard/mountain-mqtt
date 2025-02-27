@@ -6,7 +6,10 @@ use crate::{
     data::{quality_of_service::QualityOfService, reason_code::DisconnectReasonCode},
     error::{PacketReadError, PacketWriteError},
     packet_client::{Connection, PacketClient},
-    packets::{connect::Connect, packet::Packet, packet_generic::PacketGeneric, publish::Publish},
+    packets::{
+        connect::Connect, packet::Packet, packet_generic::PacketGeneric,
+        publish::ApplicationMessage,
+    },
 };
 
 /// [Client] error
@@ -47,25 +50,6 @@ impl Display for ClientError {
             Self::TimeoutOnResponsePacket => write!(f, "TimeoutOnResponsePacket"),
             Self::Disconnected(e) => write!(f, "Disconnected({})", e),
             Self::MessageHandlerError => write!(f, "MessageHandlerError"),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Message<'a> {
-    pub topic_name: &'a str,
-    pub payload: &'a [u8],
-    pub retain: bool,
-    pub qos: QualityOfService,
-}
-
-impl<'a, const P: usize> From<Publish<'a, P>> for Message<'a> {
-    fn from(p: Publish<'a, P>) -> Self {
-        Message {
-            topic_name: p.topic_name(),
-            payload: p.payload(),
-            retain: p.retain(),
-            qos: p.qos(),
         }
     }
 }
@@ -123,11 +107,11 @@ pub trait Delay {
     async fn delay_us(&mut self, us: u32);
 }
 
-pub struct ClientNoQueue<'a, C, D, F>
+pub struct ClientNoQueue<'a, C, D, F, const P: usize>
 where
     C: Connection,
     D: Delay,
-    F: Fn(Message) -> Result<(), ClientError>,
+    F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
 {
     packet_client: PacketClient<'a, C>,
     client_state: ClientStateNoQueue,
@@ -136,11 +120,11 @@ where
     message_handler: F,
 }
 
-impl<'a, C, D, F> ClientNoQueue<'a, C, D, F>
+impl<'a, C, D, F, const P: usize> ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(Message) -> Result<(), ClientError>,
+    F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
 {
     pub fn new(
         connection: C,
@@ -177,9 +161,9 @@ where
         }
     }
 
-    pub async fn send_wait_for_responses<P>(&mut self, packet: P) -> Result<(), ClientError>
+    async fn send_wait_for_responses<PW>(&mut self, packet: PW) -> Result<(), ClientError>
     where
-        P: Packet + write::Write,
+        PW: Packet + write::Write,
     {
         match self.packet_client.send(packet).await {
             Ok(()) => {
@@ -193,9 +177,9 @@ where
         }
     }
 
-    pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
+    async fn send<PW>(&mut self, packet: PW) -> Result<(), ClientError>
     where
-        P: Packet + write::Write,
+        PW: Packet + write::Write,
     {
         let r = self.packet_client.send(packet).await;
         if r.is_err() {
@@ -206,13 +190,16 @@ where
     }
 }
 
-impl<'a, C, D, F> Client<'a> for ClientNoQueue<'a, C, D, F>
+impl<'a, C, D, F, const P: usize> Client<'a> for ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(Message) -> Result<(), ClientError>,
+    F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
 {
-    async fn connect<const P: usize>(&mut self, packet: Connect<'_, P>) -> Result<(), ClientError> {
+    async fn connect<const CONNECT_P: usize>(
+        &mut self,
+        packet: Connect<'_, CONNECT_P>,
+    ) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
         self.send_wait_for_responses(packet).await
     }
@@ -261,7 +248,7 @@ where
         // but the packet we need to send, in order to be able to mutably borrow
         // packet_client again to actually do the send.
         let to_send = {
-            let packet: Option<PacketGeneric<'_, 16, 16>> = if wait {
+            let packet: Option<PacketGeneric<'_, P, 0>> = if wait {
                 Some(self.packet_client.receive().await?)
             } else {
                 self.packet_client.receive_if_ready().await?

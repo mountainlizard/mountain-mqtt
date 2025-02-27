@@ -25,6 +25,28 @@ pub fn is_valid_publish_first_header_byte(encoded: u8) -> bool {
     first_nibble_ok && qos_ok
 }
 
+/// Contains the parts of a [Publish] packet relevant to the application.
+#[derive(Debug, PartialEq)]
+pub struct ApplicationMessage<'a, const P: usize> {
+    pub retain: bool,
+    pub topic_name: &'a str,
+    pub qos: QualityOfService,
+    pub payload: &'a [u8],
+    pub properties: Vec<PublishProperty<'a>, P>,
+}
+
+impl<'a, const P: usize> From<Publish<'a, P>> for ApplicationMessage<'a, P> {
+    fn from(p: Publish<'a, P>) -> Self {
+        ApplicationMessage {
+            retain: p.retain,
+            topic_name: p.topic_name,
+            qos: p.qos(),
+            payload: p.payload,
+            properties: p.properties,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Publish<'a, const P: usize> {
     duplicate: bool,

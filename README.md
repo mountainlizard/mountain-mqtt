@@ -66,7 +66,7 @@ See the `examples` directory for a simple example of using the basic client - tr
 use mountain_mqtt::{
     client::{Client, ClientError},
     data::quality_of_service::QualityOfService,
-    packets::connect::Connect,
+    packets::{connect::Connect, publish::ApplicationMessage},
     tokio::client_tcp,
 };
 use tokio::sync::mpsc;
@@ -89,11 +89,17 @@ async fn main() -> Result<(), ClientError> {
     // Create a client.
     // The message_handler closure is called whenever a published message is received.
     // This sends copies of the message contents to our channel for later processing.
-    let mut client = client_tcp(ip, port, timeout_millis, &mut buf, |message| {
-        message_tx
-            .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-            .map_err(|_| ClientError::MessageHandlerError)
-    })
+    let mut client = client_tcp(
+        ip,
+        port,
+        timeout_millis,
+        &mut buf,
+        |message: ApplicationMessage<'_, 16>| {
+            message_tx
+                .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
+                .map_err(|_| ClientError::MessageHandlerError)
+        },
+    )
     .await;
 
     // Send a Connect packet to connect to the server.

@@ -2,7 +2,7 @@ use heapless::Vec;
 use mountain_mqtt::{
     client::{Client, ClientNoQueue},
     data::quality_of_service::QualityOfService,
-    packets::connect::Connect,
+    packets::{connect::Connect, publish::ApplicationMessage},
     tokio::{ConnectionTcpStream, TokioDelay},
 };
 use tokio::{net::TcpStream, sync::mpsc};
@@ -23,12 +23,18 @@ async fn client_connect_subscribe_and_publish() {
     let (message_tx, mut message_rx) = mpsc::channel(32);
 
     let mut buf = [0; 1024];
-    let mut client = ClientNoQueue::new(connection, &mut buf, delay, 5000, |message| {
-        message_tx
-            .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-            .unwrap();
-        Ok(())
-    });
+    let mut client = ClientNoQueue::new(
+        connection,
+        &mut buf,
+        delay,
+        5000,
+        |message: ApplicationMessage<'_, 16>| {
+            message_tx
+                .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
+                .unwrap();
+            Ok(())
+        },
+    );
 
     const CLIENT_ID: &str = "mountain-mqtt-test-client-client_connect_subscribe_and_publish";
     const TOPIC_NAME: &str = "mountain-mqtt-test-topic-client_connect_subscribe_and_publish";
