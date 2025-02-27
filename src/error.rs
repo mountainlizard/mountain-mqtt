@@ -57,7 +57,7 @@ pub enum PacketReadError {
 
     /// Data contained an encoded [QualityOfService] value which was not a recognised value
     /// (Malformed Packet)
-    InvalidQoSValue,
+    InvalidQosValue,
 
     /// A Connect packet was decoded which did not contain the expected protocol name (MQTT) and version (5)
     /// This can be returned to clients, but it is also acceptable to simply close the network connection,
@@ -108,8 +108,8 @@ pub enum PacketReadError {
     /// to a [Unsubscribe] with at least one subscription request [MQTT-3.10.3-2]
     UnsubackWithoutValidReasonCode,
 
-    // If a connect packet has no will specified, it must also have the will QoS bits as 0 [MQTT-3.1.2-11]
-    WillQoSSpecifiedWithoutWill,
+    // If a connect packet has no will specified, it must also have the will quality of service bits as 0 [MQTT-3.1.2-11]
+    WillQosSpecifiedWithoutWill,
 
     // If a connect packet has no will specified, it must also have the will Retain bit as 0 [MQTT-3.1.2-13]
     WillRetainSpecifiedWithoutWill,
@@ -137,7 +137,7 @@ impl Display for PacketReadError {
             Self::UnknownReasonCode => write!(f, "UnknownReasonCode"),
             Self::InvalidBooleanValue => write!(f, "InvalidBooleanValue"),
             Self::TooManyProperties => write!(f, "TooManyProperties"),
-            Self::InvalidQoSValue => write!(f, "InvalidQoSValue"),
+            Self::InvalidQosValue => write!(f, "InvalidQosValue"),
             Self::UnsupportedProtocolVersion => write!(f, "UnsupportedProtocolVersion"),
             Self::TooManyRequests => write!(f, "TooManyRequests"),
             Self::InvalidPacketType => write!(f, "InvalidPacketType"),
@@ -155,7 +155,7 @@ impl Display for PacketReadError {
                 write!(f, "UnsubscribeWithoutValidSubscriptionRequest")
             }
             Self::UnsubackWithoutValidReasonCode => write!(f, "UnsubackWithoutValidReasonCode"),
-            Self::WillQoSSpecifiedWithoutWill => write!(f, "WillQoSSpecifiedWithoutWill"),
+            Self::WillQosSpecifiedWithoutWill => write!(f, "WillQosSpecifiedWithoutWill"),
             Self::WillRetainSpecifiedWithoutWill => write!(f, "WillRetainSpecifiedWithoutWill"),
             Self::SubscriptionOptionsReservedBitsNonZero => {
                 write!(f, "ReservedBitsSetInSubscriptionOptions")

@@ -263,7 +263,7 @@ where
                 let event = self.client_state.receive(packet)?;
 
                 match event {
-                    ClientStateReceiveEvent::None => None,
+                    ClientStateReceiveEvent::Ack => None,
                     ClientStateReceiveEvent::Publish { publish } => {
                         (self.message_handler)(Message {
                             topic_name: publish.topic_name(),
@@ -271,18 +271,25 @@ where
                         })?;
                         None
                     }
-                    ClientStateReceiveEvent::PublishAndPubAck { publish, puback } => {
+                    ClientStateReceiveEvent::PublishAndPuback { publish, puback } => {
                         (self.message_handler)(Message {
                             topic_name: publish.topic_name(),
                             payload: publish.payload(),
                         })?;
                         Some(puback)
                     }
-                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
+
+                    // Not an error, no handler for now
+                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQos {
                         granted_qos: _,
                         maximum_qos: _,
                     } => None,
+
+                    // Not an error, no handler for now
                     ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => None,
+
+                    // Not an error, no handler for now
+                    ClientStateReceiveEvent::NoSubscriptionExisted => None,
 
                     ClientStateReceiveEvent::Disconnect { disconnect } => {
                         return Err(ClientError::Disconnected(*disconnect.reason_code()));

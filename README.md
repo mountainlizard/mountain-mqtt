@@ -106,13 +106,13 @@ async fn main() -> Result<(), ClientError> {
     let topic_name = "mountain-mqtt-example-topic";
     let retain = false;
 
-    client.subscribe(topic_name, QualityOfService::QoS0).await?;
+    client.subscribe(topic_name, QualityOfService::Qos0).await?;
 
     client
         .publish(
             topic_name,
             "Hello MQTT!".as_bytes(),
-            QualityOfService::QoS0,
+            QualityOfService::Qos0,
             retain,
         )
         .await?;
@@ -136,3 +136,12 @@ async fn main() -> Result<(), ClientError> {
     Ok(())
 }
 ```
+
+## Miscellaneous
+
+The shortening "QoS" for "Quality of Service" occurs a lot in the code (and MQTT specification) - this is confusing to adapt to code, we use these forms:
+
+1. For "UpperCamelCase", we use "Qos" - e.g. `SubscriptionGrantedBelowMaximumQos` or `Qos1`. This treats "QoS" as an acronym/contraction and so follows the [Rust naming convention](https://rust-lang.github.io/api-guidelines/naming.html) that this counts as one word for capitalisation.
+2. For "SCREAMING_SNAKE_CASE" we use "QOS" - e.g. `QOS_MASK`
+
+This applies to `ReasonCode` names as well, even where these use `QoS` in the spec, e.g. "Granted QoS 1" becomes `GrantedQos1`.

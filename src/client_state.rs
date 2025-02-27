@@ -30,10 +30,9 @@ pub enum ClientStateError {
     PacketWrite(PacketWriteError),
     PacketRead(PacketReadError),
     NotIdle,
-    Idle,
     AuthNotSupported,
-    QoS2NotSupported,
-    ReceivedQoS2PublishNotSupported,
+    Qos2NotSupported,
+    ReceivedQos2PublishNotSupported,
     ClientIsWaitingForResponse,
     NotConnected,
     ReceiveWhenNotConnectedOrConnecting,
@@ -46,7 +45,7 @@ pub enum ClientStateError {
     UnexpectedPingresp,
     Disconnect,
     ServerOnlyMessageReceived,
-    ReceivedPacketOtherThanConnackWhenConnecting,
+    ReceivedPacketOtherThanConnackOrAuthWhenConnecting,
     ReceivedConnackWhenNotConnecting,
     UnexpectedSessionPresentForCleanStart,
     Connect(ConnectReasonCode),
@@ -61,11 +60,10 @@ impl Display for ClientStateError {
             Self::PacketWrite(e) => write!(f, "PacketWrite({})", e),
             Self::PacketRead(e) => write!(f, "PacketRead({})", e),
             Self::NotIdle => write!(f, "NotIdle"),
-            Self::Idle => write!(f, "Idle"),
             Self::AuthNotSupported => write!(f, "AuthNotSupported"),
-            Self::QoS2NotSupported => write!(f, "QoS2NotSupported"),
-            Self::ReceivedQoS2PublishNotSupported => write!(f, "ReceivedQoS2PublishNotSupported"),
-            Self::ClientIsWaitingForResponse => write!(f, "QoS1MessagePending"),
+            Self::Qos2NotSupported => write!(f, "Qos2NotSupported"),
+            Self::ReceivedQos2PublishNotSupported => write!(f, "ReceivedQos2PublishNotSupported"),
+            Self::ClientIsWaitingForResponse => write!(f, "ClientIsWaitingForResponse"),
             Self::NotConnected => write!(f, "NotConnected"),
             Self::ReceiveWhenNotConnectedOrConnecting => {
                 write!(f, "ReceiveWhenNotConnectedOrConnecting")
@@ -86,7 +84,7 @@ impl Display for ClientStateError {
             Self::Publish(e) => write!(f, "Publish({})", e),
             Self::Unsubscribe(e) => write!(f, "Unsubscribe({})", e),
             // Self::Overflow => write!(f, "Overflow"),
-            Self::ReceivedPacketOtherThanConnackWhenConnecting => {
+            Self::ReceivedPacketOtherThanConnackOrAuthWhenConnecting => {
                 write!(f, "ReceivedPacketOtherThanConnackWhenConnecting")
             }
             Self::ReceivedConnackWhenNotConnecting => write!(f, "ReceivedConnackWhenNotConnecting"),
@@ -98,14 +96,17 @@ impl Display for ClientStateError {
 }
 
 pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
-    /// Nothing happened on receive
-    None,
+    /// Client received an acknowledgement/response for a previous message sent
+    /// to the server (e.g. Connack, Puback, Suback, Unsuback, Pingresp)
+    /// These are all handled internally by the state, so do not need an external
+    /// response
+    Ack,
 
     /// A published message was received
     Publish { publish: Publish<'a, PROPERTIES_N> },
 
     /// A published message was received, and it needs to be acknowledged by sending provided puback to the server
-    PublishAndPubAck {
+    PublishAndPuback {
         publish: Publish<'a, PROPERTIES_N>,
         puback: Puback<'b, PROPERTIES_N>,
     },
@@ -117,7 +118,7 @@ pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
     /// then the client could respond by showing an error to the user stating the
     /// server is incompatible, or possibly trying to unsubscribe and resubscribe,
     /// assuming this is expected to make any difference with the server(s) in use.
-    SubscriptionGrantedBelowMaximumQoS {
+    SubscriptionGrantedBelowMaximumQos {
         granted_qos: QualityOfService,
         maximum_qos: QualityOfService,
     },
@@ -128,6 +129,14 @@ pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
     /// E.g. if it was expected there would be subscribers, the client could try resending
     /// the message later
     PublishedMessageHadNoMatchingSubscribers,
+
+    // Server processed an unsubscribe request, but no such subscription existed on the server,
+    // so nothing changed.
+    /// This may or may not require action depending on client requirements / expectations
+    /// E.g. if it was expected there would be a subscription, the client could produce
+    /// an error, and the user of the client might try reconnecting to the server to set
+    /// up subscriptions again.
+    NoSubscriptionExisted,
 
     /// A [Disconnect] packet was received, it should contain a reason for our disconnection
     Disconnect {
@@ -326,14 +335,14 @@ impl ClientState for ClientStateNoQueue {
         match self {
             ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
                 let publish_packet_identifier = match qos {
-                    QualityOfService::QoS0 => Ok(PublishPacketIdentifier::None),
-                    QualityOfService::QoS1 if waiting.is_waiting() => {
+                    QualityOfService::Qos0 => Ok(PublishPacketIdentifier::None),
+                    QualityOfService::Qos1 if waiting.is_waiting() => {
                         Err(ClientStateError::ClientIsWaitingForResponse)
                     }
-                    QualityOfService::QoS1 => Ok(PublishPacketIdentifier::Qos1(
+                    QualityOfService::Qos1 => Ok(PublishPacketIdentifier::Qos1(
                         Self::PUBLISH_PACKET_IDENTIFIER,
                     )),
-                    QualityOfService::QoS2 => Err(ClientStateError::QoS2NotSupported),
+                    QualityOfService::Qos2 => Err(ClientStateError::Qos2NotSupported),
                 }?;
 
                 let publish: Publish<'_, 0> = Publish::new(
@@ -345,7 +354,7 @@ impl ClientState for ClientStateNoQueue {
                     Vec::new(),
                 );
 
-                if qos == QualityOfService::QoS1 {
+                if qos == QualityOfService::Qos1 {
                     *waiting = Waiting::ForPuback {
                         id: Self::PUBLISH_PACKET_IDENTIFIER,
                     };
@@ -366,8 +375,8 @@ impl ClientState for ClientStateNoQueue {
             ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
                 if waiting.is_waiting() {
                     Err(ClientStateError::ClientIsWaitingForResponse)
-                } else if maximum_qos == QualityOfService::QoS2 {
-                    Err(ClientStateError::QoS2NotSupported)
+                } else if maximum_qos == QualityOfService::Qos2 {
+                    Err(ClientStateError::Qos2NotSupported)
                 } else {
                     let first_request = SubscriptionRequest::new(topic_name, maximum_qos);
                     let subscribe: Subscribe<'_, 0, 0> = Subscribe::new(
@@ -432,6 +441,8 @@ impl ClientState for ClientStateNoQueue {
     ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError> {
         match self {
             // If we are connecting, we only expect a Connack packet
+            // (server cannot disconnect before Connack [MQTT-3.14.0-1])
+            // or an Auth packet [MQTT-3.2.0-1]
             ClientStateNoQueue::Connecting(RequestedConnectionInfo {
                 clean_start,
                 keep_alive,
@@ -464,11 +475,12 @@ impl ClientState for ClientStateNoQueue {
                             waiting: Waiting::None,
                         });
 
-                        Ok(ClientStateReceiveEvent::None)
+                        Ok(ClientStateReceiveEvent::Ack)
                     }
                     reason_code => Err(ClientStateError::Connect(*reason_code)),
                 },
-                _ => Err(ClientStateError::ReceivedPacketOtherThanConnackWhenConnecting),
+                PacketGeneric::Auth(_) => Err(ClientStateError::AuthNotSupported),
+                _ => Err(ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting),
             },
 
             // If we are connected, we handle all client packets other than Connack
@@ -480,10 +492,10 @@ impl ClientState for ClientStateNoQueue {
                     PublishPacketIdentifier::Qos1(packet_identifier) => {
                         let puback =
                             Puback::new(*packet_identifier, PublishReasonCode::Success, Vec::new());
-                        Ok(ClientStateReceiveEvent::PublishAndPubAck { publish, puback })
+                        Ok(ClientStateReceiveEvent::PublishAndPuback { publish, puback })
                     }
                     PublishPacketIdentifier::Qos2(_) => {
-                        Err(ClientStateError::ReceivedQoS2PublishNotSupported)
+                        Err(ClientStateError::ReceivedQos2PublishNotSupported)
                     }
                 },
 
@@ -499,7 +511,7 @@ impl ClientState for ClientStateNoQueue {
                             } else if reason_code == &PublishReasonCode::NoMatchingSubscribers {
                                 Ok(ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers)
                             } else {
-                                Ok(ClientStateReceiveEvent::None)
+                                Ok(ClientStateReceiveEvent::Ack)
                             }
                         }
                         Waiting::ForPuback { id: _ } => {
@@ -519,21 +531,21 @@ impl ClientState for ClientStateNoQueue {
 
                             let reason_code = suback.first_reason_code();
                             let granted_qos = match reason_code {
-                                SubscribeReasonCode::Success => QualityOfService::QoS0,
-                                SubscribeReasonCode::GrantedQoS1 => QualityOfService::QoS1,
-                                SubscribeReasonCode::GrantedQoS2 => QualityOfService::QoS2,
+                                SubscribeReasonCode::Success => QualityOfService::Qos0,
+                                SubscribeReasonCode::GrantedQos1 => QualityOfService::Qos1,
+                                SubscribeReasonCode::GrantedQos2 => QualityOfService::Qos2,
                                 err => return Err(ClientStateError::Subscribe(*err)),
                             };
 
                             if granted_qos != maximum_qos {
                                 Ok(
-                                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
+                                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQos {
                                         granted_qos,
                                         maximum_qos,
                                     },
                                 )
                             } else {
-                                Ok(ClientStateReceiveEvent::None)
+                                Ok(ClientStateReceiveEvent::Ack)
                             }
                         }
                         Waiting::ForSuback { id: _, qos: _ } => {
@@ -552,8 +564,10 @@ impl ClientState for ClientStateNoQueue {
                             let reason_code = unsuback.first_reason_code();
                             if reason_code.is_error() {
                                 Err(ClientStateError::Unsubscribe(*reason_code))
+                            } else if reason_code == &UnsubscribeReasonCode::NoSubscriptionExisted {
+                                Ok(ClientStateReceiveEvent::NoSubscriptionExisted)
                             } else {
-                                Ok(ClientStateReceiveEvent::None)
+                                Ok(ClientStateReceiveEvent::Ack)
                             }
                         }
                         Waiting::ForUnsuback { id: _ } => {
@@ -565,7 +579,7 @@ impl ClientState for ClientStateNoQueue {
                 PacketGeneric::Pingresp(_pingresp) => {
                     if info.pending_ping_count > 0 {
                         info.pending_ping_count -= 1;
-                        Ok(ClientStateReceiveEvent::None)
+                        Ok(ClientStateReceiveEvent::Ack)
                     } else {
                         Err(ClientStateError::UnexpectedPingresp)
                     }

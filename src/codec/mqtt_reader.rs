@@ -179,8 +179,8 @@ pub trait MqttReader<'a>: Sized {
         let value = self.get_u8()?;
         match value {
             0 => Ok(ReasonCode::Success),
-            1 => Ok(ReasonCode::GrantedQoS1),
-            2 => Ok(ReasonCode::GrantedQoS2),
+            1 => Ok(ReasonCode::GrantedQos1),
+            2 => Ok(ReasonCode::GrantedQos2),
             4 => Ok(ReasonCode::DisconnectWithWillMessage),
             16 => Ok(ReasonCode::NoMatchingSubscribers),
             17 => Ok(ReasonCode::NoSubscriptionExisted),
@@ -213,7 +213,7 @@ pub trait MqttReader<'a>: Sized {
             152 => Ok(ReasonCode::AdministrativeAction),
             153 => Ok(ReasonCode::PayloadFormatInvalid),
             154 => Ok(ReasonCode::RetainNotSupported),
-            155 => Ok(ReasonCode::QoSNotSupported),
+            155 => Ok(ReasonCode::QosNotSupported),
             156 => Ok(ReasonCode::UseAnotherServer),
             157 => Ok(ReasonCode::ServerMoved),
             158 => Ok(ReasonCode::SharedSubscriptionsNotSupported),
@@ -669,7 +669,7 @@ mod tests {
         let codes = [
             ReasonCode::AdministrativeAction,
             ReasonCode::Banned,
-            ReasonCode::GrantedQoS1,
+            ReasonCode::GrantedQos1,
             ReasonCode::PayloadFormatInvalid,
             ReasonCode::Success,
             ReasonCode::UnspecifiedError,

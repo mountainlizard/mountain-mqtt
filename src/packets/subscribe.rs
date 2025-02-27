@@ -155,7 +155,7 @@ mod tests {
     pub const SUBSCRIPTION_OPTIONS_CASES: [(SubscriptionOptions, u8); 7] = [
         (
             SubscriptionOptions {
-                maximum_qos: QualityOfService::QoS0,
+                maximum_qos: QualityOfService::Qos0,
                 no_local: false,
                 retain_as_published: false,
                 retain_handling: RetainHandling::SendOnSubscribe,
@@ -164,7 +164,7 @@ mod tests {
         ),
         (
             SubscriptionOptions {
-                maximum_qos: QualityOfService::QoS1,
+                maximum_qos: QualityOfService::Qos1,
                 no_local: false,
                 retain_as_published: false,
                 retain_handling: RetainHandling::SendOnSubscribe,
@@ -173,7 +173,7 @@ mod tests {
         ),
         (
             SubscriptionOptions {
-                maximum_qos: QualityOfService::QoS2,
+                maximum_qos: QualityOfService::Qos2,
                 no_local: false,
                 retain_as_published: false,
                 retain_handling: RetainHandling::SendOnSubscribe,
@@ -182,7 +182,7 @@ mod tests {
         ),
         (
             SubscriptionOptions {
-                maximum_qos: QualityOfService::QoS0,
+                maximum_qos: QualityOfService::Qos0,
                 no_local: true,
                 retain_as_published: false,
                 retain_handling: RetainHandling::SendOnSubscribe,
@@ -191,7 +191,7 @@ mod tests {
         ),
         (
             SubscriptionOptions {
-                maximum_qos: QualityOfService::QoS0,
+                maximum_qos: QualityOfService::Qos0,
                 no_local: false,
                 retain_as_published: true,
                 retain_handling: RetainHandling::SendOnSubscribe,
@@ -200,7 +200,7 @@ mod tests {
         ),
         (
             SubscriptionOptions {
-                maximum_qos: QualityOfService::QoS0,
+                maximum_qos: QualityOfService::Qos0,
                 no_local: false,
                 retain_as_published: false,
                 retain_handling: RetainHandling::SendOnNewSubscribe,
@@ -209,7 +209,7 @@ mod tests {
         ),
         (
             SubscriptionOptions {
-                maximum_qos: QualityOfService::QoS0,
+                maximum_qos: QualityOfService::Qos0,
                 no_local: false,
                 retain_as_published: false,
                 retain_handling: RetainHandling::DoNotSend,
@@ -292,10 +292,10 @@ mod tests {
     }
 
     fn example_packet<'a>() -> Subscribe<'a, 1, 2> {
-        let first_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
+        let first_request = SubscriptionRequest::new("test/topic", QualityOfService::Qos0);
         let mut other_requests = Vec::new();
         other_requests
-            .push(SubscriptionRequest::new("hehe/#", QualityOfService::QoS1))
+            .push(SubscriptionRequest::new("hehe/#", QualityOfService::Qos1))
             .unwrap();
         let mut properties = Vec::new();
         properties
