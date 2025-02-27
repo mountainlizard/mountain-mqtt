@@ -136,3 +136,12 @@ async fn main() -> Result<(), ClientError> {
     Ok(())
 }
 ```
+
+## Miscellaneous
+
+The shortening "QoS" for "Quality of Service" occurs a lot in the code (and MQTT specification) - this is confusing to adapt to code, we use these forms:
+
+1. For "UpperCamelCase", we use "Qos" - e.g. `SubscriptionGrantedBelowMaximumQos` or `Qos1`
+2. For "SCREAMING_SNAKE_CASE" we use "QOS" - e.g. `QOS_MASK`
+
+This applies to `ReasonCode` names as well, even where these use `QoS` in the spec, e.g. "Granted QoS 1" becomes `GrantedQos1`.
