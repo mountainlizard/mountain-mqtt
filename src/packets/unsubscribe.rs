@@ -12,21 +12,21 @@ use crate::{
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
-pub struct Unsubscribe<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
+pub struct Unsubscribe<'a, const P: usize, const S: usize> {
     packet_identifier: PacketIdentifier,
     first_request: &'a str,
-    other_requests: Vec<&'a str, REQUEST_N>,
-    properties: Vec<UnsubscribeProperty<'a>, PROPERTIES_N>,
+    other_requests: Vec<&'a str, S>,
+    properties: Vec<UnsubscribeProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>
-    Unsubscribe<'a, PROPERTIES_N, REQUEST_N>
+impl<'a, const P: usize, const S: usize>
+    Unsubscribe<'a, P, S>
 {
     pub fn new(
         packet_identifier: PacketIdentifier,
         first_request: &'a str,
-        other_requests: Vec<&'a str, REQUEST_N>,
-        properties: Vec<UnsubscribeProperty<'a>, PROPERTIES_N>,
+        other_requests: Vec<&'a str, S>,
+        properties: Vec<UnsubscribeProperty<'a>, P>,
     ) -> Self {
         Self {
             packet_identifier,
@@ -37,16 +37,16 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize>
     }
 }
 
-impl<const PROPERTIES_N: usize, const REQUEST_N: usize> Packet
-    for Unsubscribe<'_, PROPERTIES_N, REQUEST_N>
+impl<const P: usize, const S: usize> Packet
+    for Unsubscribe<'_, P, S>
 {
     fn packet_type(&self) -> PacketType {
         PacketType::Unsubscribe
     }
 }
 
-impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
-    for Unsubscribe<'_, PROPERTIES_N, REQUEST_N>
+impl<const P: usize, const S: usize> PacketWrite
+    for Unsubscribe<'_, P, S>
 {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
@@ -67,8 +67,8 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
     }
 }
 
-impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
-    for Unsubscribe<'a, PROPERTIES_N, REQUEST_N>
+impl<'a, const P: usize, const S: usize> PacketRead<'a>
+    for Unsubscribe<'a, P, S>
 {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,

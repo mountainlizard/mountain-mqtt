@@ -95,7 +95,7 @@ impl Display for ClientStateError {
     }
 }
 
-pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
+pub enum ClientStateReceiveEvent<'a, 'b, const P: usize> {
     /// Client received an acknowledgement/response for a previous message sent
     /// to the server (e.g. Connack, Puback, Suback, Unsuback, Pingresp)
     /// These are all handled internally by the state, so do not need an external
@@ -103,12 +103,12 @@ pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
     Ack,
 
     /// A published message was received
-    Publish { publish: Publish<'a, PROPERTIES_N> },
+    Publish { publish: Publish<'a, P> },
 
     /// A published message was received, and it needs to be acknowledged by sending provided puback to the server
     PublishAndPuback {
-        publish: Publish<'a, PROPERTIES_N>,
-        puback: Puback<'b, PROPERTIES_N>,
+        publish: Publish<'a, P>,
+        puback: Puback<'b, P>,
     },
 
     /// A subscription was granted but was at lower qos than the maximum requested
@@ -139,9 +139,7 @@ pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
     NoSubscriptionExisted,
 
     /// A [Disconnect] packet was received, it should contain a reason for our disconnection
-    Disconnect {
-        disconnect: Disconnect<'a, PROPERTIES_N>,
-    },
+    Disconnect { disconnect: Disconnect<'a, P> },
 }
 
 impl From<PacketWriteError> for ClientStateError {
@@ -169,10 +167,8 @@ pub trait ClientState {
 
     /// Update state based on a packet used to connect to server
     /// Call this after connect packet has been successfully sent.
-    fn connect<const PROPERTIES_N: usize>(
-        &mut self,
-        connect: &Connect<'_, PROPERTIES_N>,
-    ) -> Result<(), ClientStateError>;
+    fn connect<const P: usize>(&mut self, connect: &Connect<'_, P>)
+        -> Result<(), ClientStateError>;
 
     /// Produce a packet to disconnect from server, update state
     fn disconnect<'b>(&mut self) -> Result<Disconnect<'b, 0>, ClientStateError>;
@@ -185,10 +181,10 @@ pub trait ClientState {
     /// action by the caller occurs, a [ClientStateReceiveEvent] is returned.
     /// Errors indicate an invalid packet was received, message_target errored,
     /// or the received packet was unexpected based on our state
-    fn receive<'a, 'b, const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    fn receive<'a, 'b, const P: usize, const S: usize>(
         &mut self,
-        packet: PacketGeneric<'a, PROPERTIES_N, REQUEST_N>,
-    ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError>;
+        packet: PacketGeneric<'a, P, S>,
+    ) -> Result<ClientStateReceiveEvent<'a, 'b, P>, ClientStateError>;
 
     /// Produce a packet to subscribe to a topic by name, update state
     fn subscribe<'b>(
@@ -299,9 +295,9 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn connect<const PROPERTIES_N: usize>(
+    fn connect<const P: usize>(
         &mut self,
-        connect: &Connect<'_, PROPERTIES_N>,
+        connect: &Connect<'_, P>,
     ) -> Result<(), ClientStateError> {
         match self {
             ClientStateNoQueue::Idle => {
@@ -435,10 +431,10 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn receive<'a, 'b, const PROPERTIES_N: usize, const REQUEST_N: usize>(
+    fn receive<'a, 'b, const P: usize, const S: usize>(
         &mut self,
-        packet: PacketGeneric<'a, PROPERTIES_N, REQUEST_N>,
-    ) -> Result<ClientStateReceiveEvent<'a, 'b, PROPERTIES_N>, ClientStateError> {
+        packet: PacketGeneric<'a, P, S>,
+    ) -> Result<ClientStateReceiveEvent<'a, 'b, P>, ClientStateError> {
         match self {
             // If we are connecting, we only expect a Connack packet
             // (server cannot disconnect before Connack [MQTT-3.14.0-1])

@@ -51,7 +51,7 @@ pub enum PacketReadError {
     /// Data contained a u8 value that was expected to be 0 (false) or 1 (true), but was some other value
     InvalidBooleanValue,
 
-    /// Data contained a list of properties longer than the `PROPERTIES_N` parameter of a packet,
+    /// Data contained a list of properties longer than the `P` parameter of a packet,
     /// and so overflowed a [heapless::Vec]
     TooManyProperties,
 
@@ -64,7 +64,7 @@ pub enum PacketReadError {
     /// see spec 3.1.2.1 and 3.1.2.2
     UnsupportedProtocolVersion,
 
-    /// Data contained a list of subscription requests (or suback reason codes) longer than the `REQUEST_N`
+    /// Data contained a list of subscription requests (or suback reason codes) longer than the `S`
     /// parameter of a packet, and so overflowed a [heapless::Vec]
     TooManyRequests,
 

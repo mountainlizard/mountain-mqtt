@@ -61,9 +61,9 @@ pub struct Message<'a> {
 #[allow(async_fn_in_trait)]
 pub trait Client<'a> {
     /// Connect to server
-    async fn connect<const PROPERTIES_N: usize>(
+    async fn connect<const P: usize>(
         &mut self,
-        connect: Connect<'_, PROPERTIES_N>,
+        connect: Connect<'_, P>,
     ) -> Result<(), ClientError>;
 
     /// Disconnect from server
@@ -201,9 +201,9 @@ where
     D: Delay,
     F: Fn(Message) -> Result<(), ClientError>,
 {
-    async fn connect<const PROPERTIES_N: usize>(
+    async fn connect<const P: usize>(
         &mut self,
-        packet: Connect<'_, PROPERTIES_N>,
+        packet: Connect<'_, P>,
     ) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
         self.send_wait_for_responses(packet).await

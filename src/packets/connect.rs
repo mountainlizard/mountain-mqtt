@@ -11,12 +11,12 @@ use crate::error::PacketReadError;
 use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
-pub struct Will<'a, const PROPERTIES_N: usize> {
+pub struct Will<'a, const P: usize> {
     qos: QualityOfService,
     retain: bool,
     topic_name: &'a str,
     payload: &'a [u8],
-    properties: Vec<WillProperty<'a>, PROPERTIES_N>,
+    properties: Vec<WillProperty<'a>, P>,
 }
 
 const CLEAN_START_BIT: u8 = 1 << 1;
@@ -28,14 +28,14 @@ const PASSWORD_PRESENT_BIT: u8 = 1 << 6;
 const USERNAME_PRESENT_BIT: u8 = 1 << 7;
 
 #[derive(Debug, PartialEq)]
-pub struct Connect<'a, const PROPERTIES_N: usize> {
+pub struct Connect<'a, const P: usize> {
     keep_alive: u16,
     username: Option<&'a str>,
     password: Option<&'a [u8]>,
     client_id: &'a str,
     clean_start: bool,
-    will: Option<Will<'a, PROPERTIES_N>>,
-    pub properties: Vec<ConnectProperty<'a>, PROPERTIES_N>,
+    will: Option<Will<'a, P>>,
+    pub properties: Vec<ConnectProperty<'a>, P>,
 }
 
 impl<'a> Connect<'a, 0> {
@@ -52,15 +52,15 @@ impl<'a> Connect<'a, 0> {
     }
 }
 
-impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
+impl<'a, const P: usize> Connect<'a, P> {
     pub fn new(
         keep_alive: u16,
         username: Option<&'a str>,
         password: Option<&'a [u8]>,
         client_id: &'a str,
         clean_start: bool,
-        will: Option<Will<'a, PROPERTIES_N>>,
-        properties: Vec<ConnectProperty<'a>, PROPERTIES_N>,
+        will: Option<Will<'a, P>>,
+        properties: Vec<ConnectProperty<'a>, P>,
     ) -> Self {
         Self {
             keep_alive,
@@ -104,13 +104,13 @@ impl<'a, const PROPERTIES_N: usize> Connect<'a, PROPERTIES_N> {
     }
 }
 
-impl<const PROPERTIES_N: usize> Packet for Connect<'_, PROPERTIES_N> {
+impl<const P: usize> Packet for Connect<'_, P> {
     fn packet_type(&self) -> PacketType {
         PacketType::Connect
     }
 }
 
-impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
+impl<const P: usize> PacketWrite for Connect<'_, P> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -151,7 +151,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Connect<'_, PROPERTIES_N> {
     }
 }
 
-impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N> {
+impl<'a, const P: usize> PacketRead<'a> for Connect<'a, P> {
     fn get_variable_header_and_payload<R: crate::codec::mqtt_reader::MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
@@ -552,16 +552,16 @@ mod tests {
         0x00, 0x03, 0x01, 0x02, 0x03,
     ];
 
-    fn encode_decode_and_check<const PROPERTIES_N: usize>(
-        packet: &Connect<'_, PROPERTIES_N>,
+    fn encode_decode_and_check<const P: usize>(
+        packet: &Connect<'_, P>,
         encoded: &[u8],
     ) {
         encode_and_check(packet, encoded);
         decode_and_check(packet, encoded);
     }
 
-    fn encode_and_check<const PROPERTIES_N: usize>(
-        packet: &Connect<'_, PROPERTIES_N>,
+    fn encode_and_check<const P: usize>(
+        packet: &Connect<'_, P>,
         encoded: &[u8],
     ) {
         let mut buf = [0u8; 1024];
@@ -573,12 +573,12 @@ mod tests {
         assert_eq!(&buf[0..len], encoded);
     }
 
-    fn decode_and_check<const PROPERTIES_N: usize>(
-        packet: &Connect<'_, PROPERTIES_N>,
+    fn decode_and_check<const P: usize>(
+        packet: &Connect<'_, P>,
         encoded: &[u8],
     ) {
         let mut r = MqttBufReader::new(encoded);
-        let read_packet: Connect<'_, PROPERTIES_N> = r.get().unwrap();
+        let read_packet: Connect<'_, P> = r.get().unwrap();
         assert_eq!(&read_packet, packet);
         assert_eq!(r.position(), encoded.len());
         assert_eq!(r.remaining(), 0);

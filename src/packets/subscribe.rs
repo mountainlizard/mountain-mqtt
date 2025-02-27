@@ -47,19 +47,19 @@ impl<'a> Read<'a> for SubscriptionRequest<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Subscribe<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> {
+pub struct Subscribe<'a, const P: usize, const S: usize> {
     packet_identifier: PacketIdentifier,
     first_request: SubscriptionRequest<'a>,
-    other_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
-    properties: Vec<SubscribeProperty<'a>, PROPERTIES_N>,
+    other_requests: Vec<SubscriptionRequest<'a>, S>,
+    properties: Vec<SubscribeProperty<'a>, P>,
 }
 
-impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Subscribe<'a, PROPERTIES_N, REQUEST_N> {
+impl<'a, const P: usize, const S: usize> Subscribe<'a, P, S> {
     pub fn new(
         packet_identifier: PacketIdentifier,
         first_request: SubscriptionRequest<'a>,
-        other_requests: Vec<SubscriptionRequest<'a>, REQUEST_N>,
-        properties: Vec<SubscribeProperty<'a>, PROPERTIES_N>,
+        other_requests: Vec<SubscriptionRequest<'a>, S>,
+        properties: Vec<SubscribeProperty<'a>, P>,
     ) -> Self {
         Self {
             packet_identifier,
@@ -70,17 +70,13 @@ impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> Subscribe<'a, PROPER
     }
 }
 
-impl<const PROPERTIES_N: usize, const REQUEST_N: usize> Packet
-    for Subscribe<'_, PROPERTIES_N, REQUEST_N>
-{
+impl<const P: usize, const S: usize> Packet for Subscribe<'_, P, S> {
     fn packet_type(&self) -> PacketType {
         PacketType::Subscribe
     }
 }
 
-impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
-    for Subscribe<'_, PROPERTIES_N, REQUEST_N>
-{
+impl<const P: usize, const S: usize> PacketWrite for Subscribe<'_, P, S> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -100,9 +96,7 @@ impl<const PROPERTIES_N: usize, const REQUEST_N: usize> PacketWrite
     }
 }
 
-impl<'a, const PROPERTIES_N: usize, const REQUEST_N: usize> PacketRead<'a>
-    for Subscribe<'a, PROPERTIES_N, REQUEST_N>
-{
+impl<'a, const P: usize, const S: usize> PacketRead<'a> for Subscribe<'a, P, S> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
