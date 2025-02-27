@@ -1,7 +1,7 @@
 use mountain_mqtt::{
-    client::{Client, ClientError},
+    client::{Client, ClientError, ConnectionSettings},
     data::quality_of_service::QualityOfService,
-    packets::{connect::Connect, publish::ApplicationMessage},
+    packets::publish::ApplicationMessage,
     tokio::client_tcp,
 };
 use tokio::sync::mpsc;
@@ -32,7 +32,7 @@ async fn main() -> Result<(), ClientError> {
         |message: ApplicationMessage<'_, 16>| {
             message_tx
                 .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                .map_err(|_| ClientError::MessageHandlerError)
+                .map_err(|_| ClientError::MessageHandler)
         },
     )
     .await;
@@ -41,7 +41,9 @@ async fn main() -> Result<(), ClientError> {
     // `unauthenticated` uses default settings and no username/password, see `Connect::new` for
     // available options (keep alive, will, authentication, additional properties etc.)
     client
-        .connect(Connect::unauthenticated("mountain-mqtt-example-client-id"))
+        .connect(ConnectionSettings::unauthenticated(
+            "mountain-mqtt-example-client-id",
+        ))
         .await?;
 
     let topic_name = "mountain-mqtt-example-topic";

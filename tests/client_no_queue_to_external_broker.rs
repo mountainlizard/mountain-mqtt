@@ -1,8 +1,7 @@
-use heapless::Vec;
 use mountain_mqtt::{
-    client::{Client, ClientNoQueue},
+    client::{Client, ClientNoQueue, ConnectionSettings},
     data::quality_of_service::QualityOfService,
-    packets::{connect::Connect, publish::ApplicationMessage},
+    packets::publish::ApplicationMessage,
     tokio::{ConnectionTcpStream, TokioDelay},
 };
 use tokio::{net::TcpStream, sync::mpsc};
@@ -43,8 +42,10 @@ async fn client_connect_subscribe_and_publish() {
     const PAYLOAD2: &[u8] =
         "mountain-mqtt-test-payload2-client_connect_subscribe_and_publish".as_bytes();
 
-    let connect: Connect<'_, 0> = Connect::new(60, None, None, CLIENT_ID, true, None, Vec::new());
-    client.connect(connect).await.unwrap();
+    client
+        .connect(ConnectionSettings::unauthenticated(CLIENT_ID))
+        .await
+        .unwrap();
 
     client
         .subscribe(TOPIC_NAME, QualityOfService::Qos0)
