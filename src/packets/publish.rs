@@ -69,9 +69,9 @@ impl<'a, const PROPERTIES_N: usize> Publish<'a, PROPERTIES_N> {
 
     pub fn qos(&self) -> QualityOfService {
         match &self.publish_packet_identifier {
-            PublishPacketIdentifier::None => QualityOfService::QoS0,
-            PublishPacketIdentifier::Qos1(_) => QualityOfService::QoS1,
-            PublishPacketIdentifier::Qos2(_) => QualityOfService::QoS2,
+            PublishPacketIdentifier::None => QualityOfService::Qos0,
+            PublishPacketIdentifier::Qos1(_) => QualityOfService::Qos1,
+            PublishPacketIdentifier::Qos2(_) => QualityOfService::Qos2,
         }
     }
 
@@ -111,7 +111,7 @@ impl<const PROPERTIES_N: usize> PacketWrite for Publish<'_, PROPERTIES_N> {
         // Write the fixed parts of the variable header
         writer.put_str(self.topic_name)?;
         match &self.publish_packet_identifier {
-            PublishPacketIdentifier::None => {} // QoS0, no packet identifier
+            PublishPacketIdentifier::None => {} // Qos0, no packet identifier
             PublishPacketIdentifier::Qos1(id) => writer.put_u16(id.0)?,
             PublishPacketIdentifier::Qos2(id) => writer.put_u16(id.0)?,
         }
@@ -148,10 +148,10 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Publish<'a, PROPERTIES_N>
 
         let topic_name = reader.get_str()?;
         let packet_identifier = match qos_value {
-            0 => PublishPacketIdentifier::None, // QoS0, no packet identifier
+            0 => PublishPacketIdentifier::None, // Qos0, no packet identifier
             1 => PublishPacketIdentifier::Qos1(PacketIdentifier(reader.get_u16()?)),
             2 => PublishPacketIdentifier::Qos1(PacketIdentifier(reader.get_u16()?)),
-            _ => return Err(PacketReadError::InvalidQoSValue),
+            _ => return Err(PacketReadError::InvalidQosValue),
         };
 
         let mut properties = Vec::new();

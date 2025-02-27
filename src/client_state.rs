@@ -31,8 +31,8 @@ pub enum ClientStateError {
     PacketRead(PacketReadError),
     NotIdle,
     AuthNotSupported,
-    QoS2NotSupported,
-    ReceivedQoS2PublishNotSupported,
+    Qos2NotSupported,
+    ReceivedQos2PublishNotSupported,
     ClientIsWaitingForResponse,
     NotConnected,
     ReceiveWhenNotConnectedOrConnecting,
@@ -61,9 +61,9 @@ impl Display for ClientStateError {
             Self::PacketRead(e) => write!(f, "PacketRead({})", e),
             Self::NotIdle => write!(f, "NotIdle"),
             Self::AuthNotSupported => write!(f, "AuthNotSupported"),
-            Self::QoS2NotSupported => write!(f, "QoS2NotSupported"),
-            Self::ReceivedQoS2PublishNotSupported => write!(f, "ReceivedQoS2PublishNotSupported"),
-            Self::ClientIsWaitingForResponse => write!(f, "QoS1MessagePending"),
+            Self::Qos2NotSupported => write!(f, "Qos2NotSupported"),
+            Self::ReceivedQos2PublishNotSupported => write!(f, "ReceivedQos2PublishNotSupported"),
+            Self::ClientIsWaitingForResponse => write!(f, "ClientIsWaitingForResponse"),
             Self::NotConnected => write!(f, "NotConnected"),
             Self::ReceiveWhenNotConnectedOrConnecting => {
                 write!(f, "ReceiveWhenNotConnectedOrConnecting")
@@ -118,7 +118,7 @@ pub enum ClientStateReceiveEvent<'a, 'b, const PROPERTIES_N: usize> {
     /// then the client could respond by showing an error to the user stating the
     /// server is incompatible, or possibly trying to unsubscribe and resubscribe,
     /// assuming this is expected to make any difference with the server(s) in use.
-    SubscriptionGrantedBelowMaximumQoS {
+    SubscriptionGrantedBelowMaximumQos {
         granted_qos: QualityOfService,
         maximum_qos: QualityOfService,
     },
@@ -335,14 +335,14 @@ impl ClientState for ClientStateNoQueue {
         match self {
             ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
                 let publish_packet_identifier = match qos {
-                    QualityOfService::QoS0 => Ok(PublishPacketIdentifier::None),
-                    QualityOfService::QoS1 if waiting.is_waiting() => {
+                    QualityOfService::Qos0 => Ok(PublishPacketIdentifier::None),
+                    QualityOfService::Qos1 if waiting.is_waiting() => {
                         Err(ClientStateError::ClientIsWaitingForResponse)
                     }
-                    QualityOfService::QoS1 => Ok(PublishPacketIdentifier::Qos1(
+                    QualityOfService::Qos1 => Ok(PublishPacketIdentifier::Qos1(
                         Self::PUBLISH_PACKET_IDENTIFIER,
                     )),
-                    QualityOfService::QoS2 => Err(ClientStateError::QoS2NotSupported),
+                    QualityOfService::Qos2 => Err(ClientStateError::Qos2NotSupported),
                 }?;
 
                 let publish: Publish<'_, 0> = Publish::new(
@@ -354,7 +354,7 @@ impl ClientState for ClientStateNoQueue {
                     Vec::new(),
                 );
 
-                if qos == QualityOfService::QoS1 {
+                if qos == QualityOfService::Qos1 {
                     *waiting = Waiting::ForPuback {
                         id: Self::PUBLISH_PACKET_IDENTIFIER,
                     };
@@ -375,8 +375,8 @@ impl ClientState for ClientStateNoQueue {
             ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
                 if waiting.is_waiting() {
                     Err(ClientStateError::ClientIsWaitingForResponse)
-                } else if maximum_qos == QualityOfService::QoS2 {
-                    Err(ClientStateError::QoS2NotSupported)
+                } else if maximum_qos == QualityOfService::Qos2 {
+                    Err(ClientStateError::Qos2NotSupported)
                 } else {
                     let first_request = SubscriptionRequest::new(topic_name, maximum_qos);
                     let subscribe: Subscribe<'_, 0, 0> = Subscribe::new(
@@ -495,7 +495,7 @@ impl ClientState for ClientStateNoQueue {
                         Ok(ClientStateReceiveEvent::PublishAndPuback { publish, puback })
                     }
                     PublishPacketIdentifier::Qos2(_) => {
-                        Err(ClientStateError::ReceivedQoS2PublishNotSupported)
+                        Err(ClientStateError::ReceivedQos2PublishNotSupported)
                     }
                 },
 
@@ -531,15 +531,15 @@ impl ClientState for ClientStateNoQueue {
 
                             let reason_code = suback.first_reason_code();
                             let granted_qos = match reason_code {
-                                SubscribeReasonCode::Success => QualityOfService::QoS0,
-                                SubscribeReasonCode::GrantedQoS1 => QualityOfService::QoS1,
-                                SubscribeReasonCode::GrantedQoS2 => QualityOfService::QoS2,
+                                SubscribeReasonCode::Success => QualityOfService::Qos0,
+                                SubscribeReasonCode::GrantedQos1 => QualityOfService::Qos1,
+                                SubscribeReasonCode::GrantedQos2 => QualityOfService::Qos2,
                                 err => return Err(ClientStateError::Subscribe(*err)),
                             };
 
                             if granted_qos != maximum_qos {
                                 Ok(
-                                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
+                                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQos {
                                         granted_qos,
                                         maximum_qos,
                                     },

@@ -13,9 +13,9 @@ pub enum PublishPacketIdentifier {
 impl PublishPacketIdentifier {
     pub fn qos(&self) -> QualityOfService {
         match self {
-            PublishPacketIdentifier::None => QualityOfService::QoS0,
-            PublishPacketIdentifier::Qos1(_id) => QualityOfService::QoS1,
-            PublishPacketIdentifier::Qos2(_id) => QualityOfService::QoS2,
+            PublishPacketIdentifier::None => QualityOfService::Qos0,
+            PublishPacketIdentifier::Qos1(_id) => QualityOfService::Qos1,
+            PublishPacketIdentifier::Qos2(_id) => QualityOfService::Qos2,
         }
     }
 }

@@ -202,10 +202,10 @@ mod tests {
     ];
 
     fn example_subscribe_packet<'a>() -> Subscribe<'a, 16, 16> {
-        let primary_request = SubscriptionRequest::new("test/topic", QualityOfService::QoS0);
+        let primary_request = SubscriptionRequest::new("test/topic", QualityOfService::Qos0);
         let mut additional_requests = Vec::new();
         additional_requests
-            .push(SubscriptionRequest::new("hehe/#", QualityOfService::QoS1))
+            .push(SubscriptionRequest::new("hehe/#", QualityOfService::Qos1))
             .unwrap();
         let mut properties = Vec::new();
         properties

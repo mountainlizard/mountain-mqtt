@@ -211,9 +211,9 @@ impl<'a, const PROPERTIES_N: usize> PacketRead<'a> for Connect<'a, PROPERTIES_N>
         } else {
             // If will flag is not set, we must have the following values, otherwise
             // this is an error
-            // QoS bits as 0 [MQTT-3.1.2-11]
+            // Quality of service bits as 0 [MQTT-3.1.2-11]
             if will_qos_value != 0 {
-                return Err(PacketReadError::WillQoSSpecifiedWithoutWill);
+                return Err(PacketReadError::WillQosSpecifiedWithoutWill);
             }
             // Retain bit as 0 [MQTT-3.1.2-13]
             if will_retain {
@@ -297,7 +297,7 @@ mod tests {
             .push(WillProperty::MessageExpiryInterval(12345.into()))
             .unwrap();
         let will = Will {
-            qos: QualityOfService::QoS2,
+            qos: QualityOfService::Qos2,
             retain: true,
             topic_name: "wt",
             payload: &[1, 2, 3],
@@ -319,7 +319,7 @@ mod tests {
         0x1F,
         // protocol name and version
         0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
-        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will QoS (2),
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will qos (2),
         // bit 5 will retain, bit 6 password, bit 7 username
         0b0011_0110,
         // Keep alive
@@ -349,7 +349,7 @@ mod tests {
         0x1F,
         // protocol name and version
         0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
-        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will QoS (3 - invalid value),
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will qos (3 - invalid value),
         // bit 5 will retain, bit 6 password, bit 7 username
         0b0011_1110,
         // Keep alive
@@ -377,7 +377,7 @@ mod tests {
             .push(WillProperty::MessageExpiryInterval(12345.into()))
             .unwrap();
         let will = Will {
-            qos: QualityOfService::QoS1,
+            qos: QualityOfService::Qos1,
             retain: false,
             topic_name: "tw",
             payload: &[3, 2, 1],
@@ -407,7 +407,7 @@ mod tests {
         0x2A,
         // protocol name and version
         0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
-        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will QoS (1),
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 has will, bit 3+4 will qos (1),
         // bit 5 will retain, bit 6 password, bit 7 username
         0b1100_1100,
         // Keep alive
@@ -500,7 +500,7 @@ mod tests {
         0x1F,
         // protocol name and version
         0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
-        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 clear so no will, bit 3+4 will QoS (2),
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 clear so no will, bit 3+4 will qos (2),
         // bit 5 will retain is clear, bit 6 password, bit 7 username
         0b0001_1010,
         // Keep alive
@@ -530,7 +530,7 @@ mod tests {
         0x1F,
         // protocol name and version
         0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x05,
-        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 clear so no will, bit 3+4 will QoS (0),
+        // Connect flags, bit 0 reserved as 0, bit 1 clean start, bit 2 clear so no will, bit 3+4 will qos (0),
         // bit 5 will retain is set, bit 6 password, bit 7 username
         0b0010_0010,
         // Keep alive
@@ -598,7 +598,7 @@ mod tests {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_QOS_WITHOUT_WILL_FLAG);
         assert_eq!(
             r.get::<Connect<'_, 16>>(),
-            Err(PacketReadError::WillQoSSpecifiedWithoutWill)
+            Err(PacketReadError::WillQosSpecifiedWithoutWill)
         );
     }
 
@@ -625,7 +625,7 @@ mod tests {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_INVALID_QOS);
         assert_eq!(
             r.get::<Connect<'_, 16>>(),
-            Err(PacketReadError::InvalidQoSValue)
+            Err(PacketReadError::InvalidQosValue)
         );
     }
 

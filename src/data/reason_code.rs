@@ -100,8 +100,8 @@ macro_rules! packet_reason_codes {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ReasonCode {
     Success = 0,
-    GrantedQoS1 = 1,
-    GrantedQoS2 = 2,
+    GrantedQos1 = 1,
+    GrantedQos2 = 2,
     DisconnectWithWillMessage = 4,
     NoMatchingSubscribers = 16,
     NoSubscriptionExisted = 17,
@@ -134,7 +134,7 @@ pub enum ReasonCode {
     AdministrativeAction = 152,
     PayloadFormatInvalid = 153,
     RetainNotSupported = 154,
-    QoSNotSupported = 155,
+    QosNotSupported = 155,
     UseAnotherServer = 156,
     ServerMoved = 157,
     SharedSubscriptionsNotSupported = 158,
@@ -171,7 +171,7 @@ packet_reason_codes!(
         QuotaExceeded,
         PayloadFormatInvalid,
         RetainNotSupported,
-        QoSNotSupported,
+        QosNotSupported,
         UseAnotherServer,
         ServerMoved,
         ConnectionRateExceeded
@@ -202,7 +202,7 @@ packet_reason_codes!(
         AdministrativeAction,
         PayloadFormatInvalid,
         RetainNotSupported,
-        QoSNotSupported,
+        QosNotSupported,
         UseAnotherServer,
         ServerMoved,
         SharedSubscriptionsNotSupported,
@@ -234,8 +234,8 @@ packet_reason_codes!(
     SubscribeReasonCode,
     [
         Success,
-        GrantedQoS1,
-        GrantedQoS2,
+        GrantedQos1,
+        GrantedQos2,
         UnspecifiedError,
         ImplementationSpecificError,
         NotAuthorized,

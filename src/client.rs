@@ -280,7 +280,7 @@ where
                     }
 
                     // Not an error, no handler for now
-                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQoS {
+                    ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQos {
                         granted_qos: _,
                         maximum_qos: _,
                     } => None,

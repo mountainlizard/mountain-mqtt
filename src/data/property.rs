@@ -318,7 +318,7 @@ property_str!(ReasonString, 0x1F);
 property_owned!(ReceiveMaximum, u16, 0x21);
 property_owned!(TopicAliasMaximum, u16, 0x22);
 property_owned!(TopicAlias, u16, 0x23);
-property_owned!(MaximumQoS, u8, 0x24);
+property_owned!(MaximumQos, u8, 0x24);
 property_owned!(RetainAvailable, u8, 0x25);
 property_string_pair!(UserProperty, 0x26);
 property_owned!(MaximumPacketSize, u32, 0x27);
@@ -353,7 +353,7 @@ packet_properties!(
         ReasonString,
         ReceiveMaximum,
         TopicAliasMaximum,
-        MaximumQoS,
+        MaximumQos,
         RetainAvailable,
         UserProperty,
         MaximumPacketSize,

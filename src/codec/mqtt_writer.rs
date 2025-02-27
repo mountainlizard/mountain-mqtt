@@ -830,7 +830,7 @@ mod tests {
         let codes = [
             ReasonCode::AdministrativeAction,
             ReasonCode::Banned,
-            ReasonCode::GrantedQoS1,
+            ReasonCode::GrantedQos1,
             ReasonCode::PayloadFormatInvalid,
             ReasonCode::Success,
             ReasonCode::UnspecifiedError,

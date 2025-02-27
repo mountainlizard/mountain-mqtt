@@ -12,16 +12,16 @@ pub enum PacketType {
     /// Publish message
     /// Client to Server or Server to Client
     Publish = 3,
-    /// Publish acknowledgment (QoS 1)
+    /// Publish acknowledgment (quality of service 1)
     /// Client to Server or Server to Client
     Puback = 4,
-    /// Publish received (QoS 2 delivery part 1)
+    /// Publish received (quality of service 2 delivery part 1)
     /// Client to Server or Server to Client
     Pubrec = 5,
-    /// Publish release (QoS 2 delivery part 2)
+    /// Publish release (quality of service 2 delivery part 2)
     /// Client to Server or Server to Client
     Pubrel = 6,
-    /// Publish complete (QoS 2 delivery part 3)
+    /// Publish complete (quality of service 2 delivery part 3)
     /// Client to Server or Server to Client
     Pubcomp = 7,
     /// Subscribe request

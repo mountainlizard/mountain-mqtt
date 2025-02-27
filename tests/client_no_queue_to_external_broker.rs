@@ -41,12 +41,12 @@ async fn client_connect_subscribe_and_publish() {
     client.connect(connect).await.unwrap();
 
     client
-        .subscribe(TOPIC_NAME, QualityOfService::QoS0)
+        .subscribe(TOPIC_NAME, QualityOfService::Qos0)
         .await
         .unwrap();
 
     client
-        .publish(TOPIC_NAME, PAYLOAD, QualityOfService::QoS0, false)
+        .publish(TOPIC_NAME, PAYLOAD, QualityOfService::Qos0, false)
         .await
         .unwrap();
 
@@ -57,7 +57,7 @@ async fn client_connect_subscribe_and_publish() {
 
     // Send another message
     client
-        .publish(TOPIC_NAME, PAYLOAD2, QualityOfService::QoS0, false)
+        .publish(TOPIC_NAME, PAYLOAD2, QualityOfService::Qos0, false)
         .await
         .unwrap();
     let received = client.poll(true).await.unwrap();
