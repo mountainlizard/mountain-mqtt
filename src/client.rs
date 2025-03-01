@@ -15,7 +15,7 @@ use crate::{
         connect::Connect,
         packet::{Packet, KEEP_ALIVE_DEFAULT},
         packet_generic::PacketGeneric,
-        publish::ApplicationMessage,
+        publish::{ApplicationMessage, Publish},
     },
 };
 
@@ -97,7 +97,7 @@ pub trait Client<'a> {
     async fn send_ping(&mut self) -> Result<(), ClientError>;
 
     /// Poll for and handle at most one event
-    /// This updates the state of the client, and calls the message_handler if
+    /// This updates the state of the client, and calls the event_handler if
     /// a message is received
     /// If wait is true, this will wait until an event is received, or the comms
     /// are disconnected. Otherwise an event will only be waited for if at least one
@@ -154,31 +154,82 @@ impl<'a> ConnectionSettings<'a> {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum ClientReceivedEvent<'a, const P: usize> {
+    /// Client received an application message published to a subscribed topic
+    ApplicationMessage(ApplicationMessage<'a, P>),
+
+    /// Client received an acknowledgement/response for a previous message sent
+    /// to the server (e.g. Connack, Puback, Suback, Unsuback, Pingresp)
+    /// This can be used to track whether the client is still connected to the
+    /// server - in particular, there will be an Ack event per ping response.
+    /// An approach is to call [Client::send_ping] at least every T seconds,
+    /// and consider the client to be still connected if there has been an
+    /// Ack within the last T+N seconds, for some multiple N depending on
+    /// how long a latency/interruption can be tolerated. To tolerate loss
+    /// of ping request/response packets, N should be increased so that T+N
+    /// is a multiple of T.
+    Ack,
+
+    /// A subscription was granted but was at lower qos than the maximum requested
+    /// This may or may not require action depending on client requirements -
+    /// it means that the given subscription will receive published messages at
+    /// only the granted qos - if the requested maximum qos was absolutely required
+    /// then the client could respond by showing an error to the user stating the
+    /// server is incompatible, or possibly trying to unsubscribe and resubscribe,
+    /// assuming this is expected to make any difference with the server(s) in use.
+    SubscriptionGrantedBelowMaximumQos {
+        granted_qos: QualityOfService,
+        maximum_qos: QualityOfService,
+    },
+
+    /// A published message was received at the server, but had no matching subscribers and
+    /// so did not reach any receivers
+    /// This may or may not require action depending on client requirements / expectations
+    /// E.g. if it was expected there would be subscribers, the client could try resending
+    /// the message later
+    PublishedMessageHadNoMatchingSubscribers,
+
+    // Server processed an unsubscribe request, but no such subscription existed on the server,
+    // so nothing changed.
+    /// This may or may not require action depending on client requirements / expectations
+    /// E.g. if it was expected there would be a subscription, the client could produce
+    /// an error, and the user of the client might try reconnecting to the server to set
+    /// up subscriptions again.
+    NoSubscriptionExisted,
+}
+
+impl<'a, const P: usize> From<Publish<'a, P>> for ClientReceivedEvent<'a, P> {
+    fn from(value: Publish<'a, P>) -> Self {
+        Self::ApplicationMessage(value.into())
+    }
+}
+
 pub struct ClientNoQueue<'a, C, D, F, const P: usize>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
 {
     packet_client: PacketClient<'a, C>,
     client_state: ClientStateNoQueue,
     delay: D,
     timeout_millis: u32,
-    message_handler: F,
+    event_handler: F,
 }
 
 impl<'a, C, D, F, const P: usize> ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
 {
     pub fn new(
         connection: C,
         buf: &'a mut [u8],
         delay: D,
         timeout_millis: u32,
-        message_handler: F,
+        event_handler: F,
     ) -> Self {
         let packet_client = PacketClient::new(connection, buf);
         let client_state = ClientStateNoQueue::default();
@@ -187,7 +238,7 @@ where
             client_state,
             delay,
             timeout_millis,
-            message_handler,
+            event_handler,
         }
     }
 
@@ -241,7 +292,7 @@ impl<'a, C, D, F, const P: usize> Client<'a> for ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
 {
     async fn connect(&mut self, settings: ConnectionSettings<'_>) -> Result<(), ClientError> {
         let mut properties = Vec::new();
@@ -320,33 +371,51 @@ where
                 let event = self.client_state.receive(packet)?;
 
                 match event {
-                    ClientStateReceiveEvent::Ack => None,
+                    ClientStateReceiveEvent::Ack => {
+                        (self.event_handler)(ClientReceivedEvent::Ack)?;
+                        None
+                    }
+
                     ClientStateReceiveEvent::Publish { publish } => {
                         if publish.topic_name().is_empty() {
                             return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
                         }
-                        (self.message_handler)(publish.into())?;
+                        (self.event_handler)(publish.into())?;
                         None
                     }
+
                     ClientStateReceiveEvent::PublishAndPuback { publish, puback } => {
                         if publish.topic_name().is_empty() {
                             return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
                         }
-                        (self.message_handler)(publish.into())?;
+                        (self.event_handler)(publish.into())?;
                         Some(puback)
                     }
 
-                    // Not an error, no handler for now
                     ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQos {
-                        granted_qos: _,
-                        maximum_qos: _,
-                    } => None,
+                        granted_qos,
+                        maximum_qos,
+                    } => {
+                        (self.event_handler)(
+                            ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
+                                granted_qos,
+                                maximum_qos,
+                            },
+                        )?;
+                        None
+                    }
 
-                    // Not an error, no handler for now
-                    ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => None,
+                    ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => {
+                        (self.event_handler)(
+                            ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers,
+                        )?;
+                        None
+                    }
 
-                    // Not an error, no handler for now
-                    ClientStateReceiveEvent::NoSubscriptionExisted => None,
+                    ClientStateReceiveEvent::NoSubscriptionExisted => {
+                        (self.event_handler)(ClientReceivedEvent::NoSubscriptionExisted)?;
+                        None
+                    }
 
                     ClientStateReceiveEvent::Disconnect { disconnect } => {
                         return Err(ClientError::Disconnected(*disconnect.reason_code()));

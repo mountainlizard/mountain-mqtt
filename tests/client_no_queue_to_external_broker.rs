@@ -1,7 +1,6 @@
 use mountain_mqtt::{
-    client::{Client, ClientNoQueue, ConnectionSettings},
+    client::{Client, ClientNoQueue, ClientReceivedEvent, ConnectionSettings},
     data::quality_of_service::QualityOfService,
-    packets::publish::ApplicationMessage,
     tokio::{ConnectionTcpStream, TokioDelay},
 };
 use tokio::{net::TcpStream, sync::mpsc};
@@ -27,10 +26,12 @@ async fn client_connect_subscribe_and_publish() {
         &mut buf,
         delay,
         5000,
-        |message: ApplicationMessage<'_, 16>| {
-            message_tx
-                .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                .unwrap();
+        |event: ClientReceivedEvent<'_, 16>| {
+            if let ClientReceivedEvent::ApplicationMessage(message) = event {
+                message_tx
+                    .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
+                    .unwrap();
+            }
             Ok(())
         },
     );
@@ -62,13 +63,18 @@ async fn client_connect_subscribe_and_publish() {
     let received = client.poll(true).await.unwrap();
     assert!(received);
 
-    // Send another message
+    // Send another message at qos1
     client
-        .publish(TOPIC_NAME, PAYLOAD2, QualityOfService::Qos0, false)
+        .publish(TOPIC_NAME, PAYLOAD2, QualityOfService::Qos1, false)
         .await
         .unwrap();
-    let received = client.poll(true).await.unwrap();
-    assert!(received);
+
+    // We may have already received the message publish while waiting for QoS1
+    // ack to be received, if not, poll for it
+    if message_rx.len() < 2 {
+        let received = client.poll(true).await.unwrap();
+        assert!(received);
+    }
 
     // Check we got the messages through
     assert_eq!(
