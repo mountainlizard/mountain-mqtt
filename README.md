@@ -67,9 +67,8 @@ See the `examples` directory for a simple example of using the basic client - tr
 
 ```rust
 use mountain_mqtt::{
-    client::{Client, ClientError},
+    client::{Client, ClientError, ClientReceivedEvent, ConnectionSettings},
     data::quality_of_service::QualityOfService,
-    packets::{connect::Connect, publish::ApplicationMessage},
     tokio::client_tcp,
 };
 use tokio::sync::mpsc;
@@ -90,17 +89,22 @@ async fn main() -> Result<(), ClientError> {
     let (message_tx, mut message_rx) = mpsc::channel(32);
 
     // Create a client.
-    // The message_handler closure is called whenever a published message is received.
+    // The event_handler closure is called whenever an event occurs, including when a
+    // published application message is received.
     // This sends copies of the message contents to our channel for later processing.
     let mut client = client_tcp(
         ip,
         port,
         timeout_millis,
         &mut buf,
-        |message: ApplicationMessage<'_, 16>| {
-            message_tx
-                .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                .map_err(|_| ClientError::MessageHandlerError)
+        |event: ClientReceivedEvent<'_, 16>| {
+            // Just handle application messages, other events aren't relevant here
+            if let ClientReceivedEvent::ApplicationMessage(message) = event {
+                message_tx
+                    .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
+                    .map_err(|_| ClientError::MessageHandler)?;
+            }
+            Ok(())
         },
     )
     .await;
@@ -109,13 +113,15 @@ async fn main() -> Result<(), ClientError> {
     // `unauthenticated` uses default settings and no username/password, see `Connect::new` for
     // available options (keep alive, will, authentication, additional properties etc.)
     client
-        .connect(Connect::unauthenticated("mountain-mqtt-example-client-id"))
+        .connect(ConnectionSettings::unauthenticated(
+            "mountain-mqtt-example-client-id",
+        ))
         .await?;
 
     let topic_name = "mountain-mqtt-example-topic";
     let retain = false;
 
-    client.subscribe(topic_name, QualityOfService::Qos0).await?;
+    client.subscribe(topic_name, QualityOfService::Qos1).await?;
 
     client
         .publish(

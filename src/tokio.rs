@@ -7,10 +7,9 @@ use tokio::{
 };
 
 use crate::{
-    client::{ClientError, ClientNoQueue, Delay},
+    client::{ClientError, ClientNoQueue, ClientReceivedEvent, Delay},
     error::{PacketReadError, PacketWriteError},
     packet_client::Connection,
-    packets::publish::ApplicationMessage,
 };
 
 #[derive(Clone)]
@@ -96,15 +95,15 @@ pub async fn client_tcp<F, const P: usize>(
     port: u16,
     timeout_millis: u32,
     buf: &mut [u8],
-    message_handler: F,
+    event_handler: F,
 ) -> ClientNoQueue<'_, ConnectionTcpStream, TokioDelay, F, P>
 where
-    F: Fn(ApplicationMessage<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
 {
     let addr = core::net::SocketAddr::new(ip.into(), port);
     let tcp_stream = TcpStream::connect(addr).await.unwrap();
     let connection = ConnectionTcpStream::new(tcp_stream);
 
     let delay = TokioDelay;
-    ClientNoQueue::new(connection, buf, delay, timeout_millis, message_handler)
+    ClientNoQueue::new(connection, buf, delay, timeout_millis, event_handler)
 }
