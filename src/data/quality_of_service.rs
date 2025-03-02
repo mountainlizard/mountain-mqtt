@@ -1,3 +1,5 @@
+use core::fmt::{Display, Formatter};
+
 use crate::error::PacketReadError;
 
 #[repr(u8)]
@@ -17,6 +19,27 @@ impl TryFrom<u8> for QualityOfService {
             1 => Ok(QualityOfService::Qos1),
             2 => Ok(QualityOfService::Qos2),
             _ => Err(PacketReadError::InvalidQosValue),
+        }
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for QualityOfService {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            QualityOfService::Qos0 => defmt::write!(f, "QoS0"),
+            QualityOfService::Qos1 => defmt::write!(f, "QoS1"),
+            QualityOfService::Qos2 => defmt::write!(f, "QoS2"),
+        }
+    }
+}
+
+impl Display for QualityOfService {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            QualityOfService::Qos0 => write!(f, "QoS0"),
+            QualityOfService::Qos1 => write!(f, "QoS1"),
+            QualityOfService::Qos2 => write!(f, "QoS2"),
         }
     }
 }
