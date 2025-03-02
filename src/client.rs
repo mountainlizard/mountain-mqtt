@@ -1,4 +1,7 @@
-use core::fmt::{Display, Formatter};
+use core::{
+    fmt::{Display, Formatter},
+    str::Utf8Error,
+};
 
 use heapless::Vec;
 
@@ -19,6 +22,114 @@ use crate::{
     },
 };
 
+/// Errors produced when a [ClientNoQueue] event handler cannot handle
+/// a [ClientReceivedEvent]. These errors propagate to the user of the
+/// client, and so are likely to cause the client to be disconnected.
+/// Alternatively, an event handler can use another method to propagate
+/// an error if it does not wish for the client to be disconnected, for
+/// example logging a warning, or using another target for the error,
+/// for example if an event handler uses a channel to send valid events
+/// onwards, it could also have a channel for errors.
+#[derive(Debug, PartialEq)]
+pub enum EventHandlerError {
+    /// Application Message payload contained invalid utf8 data, when
+    /// a utf8 string was expected
+    Utf8(Utf8Error),
+
+    /// The topic of an application message is not expected, for example
+    /// it doesn't match our expected subscriptions
+    UnexpectedApplicationMessageTopic,
+
+    /// The contents of an application message are invalid for the handler,
+    /// and can't be parsed.
+    /// For example if a json string is expected, and invalid json is received,
+    /// or if the json received does not match the expected schema.
+    InvalidApplicationMessage,
+
+    /// The contents of an application message can be parsed, but are unexpected,
+    /// e.g. if they are received out of sequence
+    UnexpectedApplicationMessage,
+
+    /// A valid, expected event was received, but could not be
+    /// handled due to an overflow. For example if the messages are sent onwards
+    /// to a channel, and that channel is at capacity.
+    Overflow,
+
+    /// The corresponding [ClientReceivedEvent] was received, and is an error
+    /// for this event handler
+    SubscriptionGrantedBelowMaximumQos {
+        granted_qos: QualityOfService,
+        maximum_qos: QualityOfService,
+    },
+
+    /// The corresponding [ClientReceivedEvent] was received, and is an error
+    /// for this event handler
+    PublishedMessageHadNoMatchingSubscribers,
+
+    /// The corresponding [ClientReceivedEvent] was received, and is an error
+    /// for this event handler
+    NoSubscriptionExisted,
+}
+#[cfg(feature = "defmt")]
+impl defmt::Format for EventHandlerError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Self::Utf8(_) => defmt::write!(f, "Utf8"),
+            Self::UnexpectedApplicationMessageTopic => {
+                defmt::write!(f, "UnexpectedApplicationMessageTopic")
+            }
+            Self::InvalidApplicationMessage => defmt::write!(f, "InvalidApplicationMessage"),
+            Self::UnexpectedApplicationMessage => defmt::write!(f, "UnexpectedApplicationMessage"),
+            Self::Overflow => defmt::write!(f, "Overflow"),
+            Self::SubscriptionGrantedBelowMaximumQos {
+                granted_qos,
+                maximum_qos,
+            } => defmt::write!(
+                f,
+                "SubscriptionGrantedBelowMaximumQos(granted_qos: {}, maximum_qos: {})",
+                granted_qos,
+                maximum_qos
+            ),
+            Self::PublishedMessageHadNoMatchingSubscribers => {
+                defmt::write!(f, "PublishedMessageHadNoMatchingSubscribers")
+            }
+            Self::NoSubscriptionExisted => defmt::write!(f, "NoSubscriptionExisted"),
+        }
+    }
+}
+
+impl From<Utf8Error> for EventHandlerError {
+    fn from(value: Utf8Error) -> Self {
+        Self::Utf8(value)
+    }
+}
+
+impl Display for EventHandlerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Utf8(e) => write!(f, "Utf8({})", e),
+            Self::UnexpectedApplicationMessageTopic => {
+                write!(f, "UnexpectedApplicationMessageTopic")
+            }
+            Self::InvalidApplicationMessage => write!(f, "InvalidApplicationMessage"),
+            Self::UnexpectedApplicationMessage => write!(f, "UnexpectedApplicationMessage"),
+            Self::Overflow => write!(f, "Overflow"),
+            Self::SubscriptionGrantedBelowMaximumQos {
+                granted_qos,
+                maximum_qos,
+            } => write!(
+                f,
+                "SubscriptionGrantedBelowMaximumQos(granted_qos: {}, maximum_qos: {})",
+                granted_qos, maximum_qos
+            ),
+            Self::PublishedMessageHadNoMatchingSubscribers => {
+                write!(f, "PublishedMessageHadNoMatchingSubscribers")
+            }
+            Self::NoSubscriptionExisted => write!(f, "NoSubscriptionExisted"),
+        }
+    }
+}
+
 /// [Client] error
 #[derive(Debug, PartialEq)]
 pub enum ClientError {
@@ -27,7 +138,7 @@ pub enum ClientError {
     ClientState(ClientStateError),
     TimeoutOnResponsePacket,
     Disconnected(DisconnectReasonCode),
-    MessageHandler,
+    EventHandler(EventHandlerError),
     /// Client received an empty topic name when it has disabled topic aliases
     /// This indicates a server error, client should disconnect, it may send
     /// a Disconnect with [DisconnectReasonCode::TopicAliasInvalid], on the assumption
@@ -44,7 +155,7 @@ impl defmt::Format for ClientError {
             Self::ClientState(e) => defmt::write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => defmt::write!(f, "TimeoutOnResponsePacket"),
             Self::Disconnected(r) => defmt::write!(f, "Disconnected({})", r),
-            Self::MessageHandler => defmt::write!(f, "MessageHandler"),
+            Self::EventHandler(e) => defmt::write!(f, "EventHandler({})", e),
             Self::EmptyTopicNameWithAliasesDisabled => {
                 defmt::write!(f, "EmptyTopicNameWithAliasesDisabled")
             }
@@ -70,6 +181,12 @@ impl From<PacketReadError> for ClientError {
     }
 }
 
+impl From<EventHandlerError> for ClientError {
+    fn from(value: EventHandlerError) -> Self {
+        ClientError::EventHandler(value)
+    }
+}
+
 impl Display for ClientError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -78,7 +195,7 @@ impl Display for ClientError {
             Self::ClientState(e) => write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => write!(f, "TimeoutOnResponsePacket"),
             Self::Disconnected(e) => write!(f, "Disconnected({})", e),
-            Self::MessageHandler => write!(f, "MessageHandlerError"),
+            Self::EventHandler(e) => write!(f, "EventHandler({})", e),
             Self::EmptyTopicNameWithAliasesDisabled => write!(f, "EmptyTopicWithAliasesDisabled"),
         }
     }
@@ -209,7 +326,7 @@ pub struct ClientNoQueue<'a, C, D, F, const P: usize>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
 {
     packet_client: PacketClient<'a, C>,
     client_state: ClientStateNoQueue,
@@ -222,7 +339,7 @@ impl<'a, C, D, F, const P: usize> ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
 {
     pub fn new(
         connection: C,
@@ -292,7 +409,7 @@ impl<'a, C, D, F, const P: usize> Client<'a> for ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
 {
     async fn connect(&mut self, settings: ConnectionSettings<'_>) -> Result<(), ClientError> {
         let mut properties = Vec::new();

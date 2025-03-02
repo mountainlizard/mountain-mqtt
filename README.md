@@ -67,7 +67,7 @@ See the `examples` directory for a simple example of using the basic client - tr
 
 ```rust
 use mountain_mqtt::{
-    client::{Client, ClientError, ClientReceivedEvent, ConnectionSettings},
+    client::{Client, ClientError, ClientReceivedEvent, ConnectionSettings, EventHandlerError},
     data::quality_of_service::QualityOfService,
     tokio::client_tcp,
 };
@@ -102,7 +102,7 @@ async fn main() -> Result<(), ClientError> {
             if let ClientReceivedEvent::ApplicationMessage(message) = event {
                 message_tx
                     .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                    .map_err(|_| ClientError::MessageHandler)?;
+                    .map_err(|_| EventHandlerError::Overflow)?;
             }
             Ok(())
         },
