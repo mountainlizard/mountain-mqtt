@@ -7,7 +7,7 @@ use tokio::{
 };
 
 use crate::{
-    client::{ClientError, ClientNoQueue, ClientReceivedEvent, Delay},
+    client::{ClientNoQueue, ClientReceivedEvent, Delay},
     error::{PacketReadError, PacketWriteError},
     packet_client::Connection,
 };
@@ -90,15 +90,15 @@ impl Connection for ConnectionTcpStream {
     }
 }
 
-pub async fn client_tcp<F, const P: usize>(
+pub async fn client_tcp<F, E, const P: usize>(
     ip: Ipv4Addr,
     port: u16,
     timeout_millis: u32,
     buf: &mut [u8],
     event_handler: F,
-) -> ClientNoQueue<'_, ConnectionTcpStream, TokioDelay, F, P>
+) -> ClientNoQueue<'_, ConnectionTcpStream, TokioDelay, F, E, P>
 where
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), E>,
 {
     let addr = core::net::SocketAddr::new(ip.into(), port);
     let tcp_stream = TcpStream::connect(addr).await.unwrap();

@@ -3,14 +3,16 @@ use mountain_mqtt::{
     data::quality_of_service::QualityOfService,
     tokio::client_tcp,
 };
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TrySendError};
+
+type SendError = TrySendError<(String, Vec<u8>)>;
 
 /// Connect to an MQTT server on 127.0.0.1:1883,
 /// server must accept connections with no username or password.
 /// Subscribe to a topic, send a message, check we receive it
 /// back, then unsubscribe and disconnect.
 #[tokio::main]
-async fn main() -> Result<(), ClientError> {
+async fn main() -> Result<(), ClientError<SendError>> {
     let ip = core::net::Ipv4Addr::new(127, 0, 0, 1);
     let port = 1883;
     let timeout_millis = 5000;
@@ -32,11 +34,11 @@ async fn main() -> Result<(), ClientError> {
         |event: ClientReceivedEvent<'_, 16>| {
             // Just handle application messages, other events aren't relevant here
             if let ClientReceivedEvent::ApplicationMessage(message) = event {
-                message_tx
-                    .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                    .map_err(|_| ClientError::MessageHandler)?;
+                message_tx.try_send((message.topic_name.to_owned(), message.payload.to_vec()))?;
+                Ok::<(), SendError>(())
+            } else {
+                Ok::<(), SendError>(())
             }
-            Ok(())
         },
     )
     .await;

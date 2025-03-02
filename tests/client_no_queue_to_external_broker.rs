@@ -32,7 +32,7 @@ async fn client_connect_subscribe_and_publish() {
                     .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
                     .unwrap();
             }
-            Ok(())
+            Ok::<(), ()>(())
         },
     );
 

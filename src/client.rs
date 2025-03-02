@@ -21,13 +21,13 @@ use crate::{
 
 /// [Client] error
 #[derive(Debug, PartialEq)]
-pub enum ClientError {
+pub enum ClientError<E> {
     PacketWrite(PacketWriteError),
     PacketRead(PacketReadError),
     ClientState(ClientStateError),
     TimeoutOnResponsePacket,
     Disconnected(DisconnectReasonCode),
-    MessageHandler,
+    MessageHandler(E),
     /// Client received an empty topic name when it has disabled topic aliases
     /// This indicates a server error, client should disconnect, it may send
     /// a Disconnect with [DisconnectReasonCode::TopicAliasInvalid], on the assumption
@@ -36,7 +36,7 @@ pub enum ClientError {
 }
 
 #[cfg(feature = "defmt")]
-impl defmt::Format for ClientError {
+impl<E> defmt::Format for ClientError<E> {
     fn format(&self, f: defmt::Formatter) {
         match self {
             Self::PacketWrite(e) => defmt::write!(f, "PacketWrite({})", e),
@@ -44,7 +44,7 @@ impl defmt::Format for ClientError {
             Self::ClientState(e) => defmt::write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => defmt::write!(f, "TimeoutOnResponsePacket"),
             Self::Disconnected(r) => defmt::write!(f, "Disconnected({})", r),
-            Self::MessageHandler => defmt::write!(f, "MessageHandler"),
+            Self::MessageHandler(_) => defmt::write!(f, "MessageHandler"),
             Self::EmptyTopicNameWithAliasesDisabled => {
                 defmt::write!(f, "EmptyTopicNameWithAliasesDisabled")
             }
@@ -52,25 +52,25 @@ impl defmt::Format for ClientError {
     }
 }
 
-impl From<ClientStateError> for ClientError {
+impl<E> From<ClientStateError> for ClientError<E> {
     fn from(value: ClientStateError) -> Self {
         ClientError::ClientState(value)
     }
 }
 
-impl From<PacketWriteError> for ClientError {
+impl<E> From<PacketWriteError> for ClientError<E> {
     fn from(value: PacketWriteError) -> Self {
         ClientError::PacketWrite(value)
     }
 }
 
-impl From<PacketReadError> for ClientError {
+impl<E> From<PacketReadError> for ClientError<E> {
     fn from(value: PacketReadError) -> Self {
         ClientError::PacketRead(value)
     }
 }
 
-impl Display for ClientError {
+impl<E> Display for ClientError<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::PacketWrite(e) => write!(f, "PacketWrite({})", e),
@@ -78,7 +78,7 @@ impl Display for ClientError {
             Self::ClientState(e) => write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => write!(f, "TimeoutOnResponsePacket"),
             Self::Disconnected(e) => write!(f, "Disconnected({})", e),
-            Self::MessageHandler => write!(f, "MessageHandlerError"),
+            Self::MessageHandler(_) => write!(f, "MessageHandlerError"),
             Self::EmptyTopicNameWithAliasesDisabled => write!(f, "EmptyTopicWithAliasesDisabled"),
         }
     }
@@ -86,15 +86,15 @@ impl Display for ClientError {
 
 /// A simple client interface for connecting to an MQTT server
 #[allow(async_fn_in_trait)]
-pub trait Client<'a> {
+pub trait Client<'a, E> {
     /// Connect to server
-    async fn connect(&mut self, settings: ConnectionSettings) -> Result<(), ClientError>;
+    async fn connect(&mut self, settings: ConnectionSettings) -> Result<(), ClientError<E>>;
 
     /// Disconnect from server
-    async fn disconnect(&mut self) -> Result<(), ClientError>;
+    async fn disconnect(&mut self) -> Result<(), ClientError<E>>;
 
     /// Send a ping message to broker
-    async fn send_ping(&mut self) -> Result<(), ClientError>;
+    async fn send_ping(&mut self) -> Result<(), ClientError<E>>;
 
     /// Poll for and handle at most one event
     /// This updates the state of the client, and calls the event_handler if
@@ -107,17 +107,17 @@ pub trait Client<'a> {
     /// Errors indicate an invalid packet was received, message_target errored,
     /// the received packet was unexpected based on our state, or the comms are
     /// disconnected.
-    async fn poll(&mut self, wait: bool) -> Result<bool, ClientError>;
+    async fn poll(&mut self, wait: bool) -> Result<bool, ClientError<E>>;
 
     /// Subscribe to a topic
     async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
-    ) -> Result<(), ClientError>;
+    ) -> Result<(), ClientError<E>>;
 
     /// Unsubscribe from a topic
-    async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError>;
+    async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError<E>>;
 
     /// Publish a message with given payload to a given topic
     async fn publish<'b>(
@@ -126,7 +126,7 @@ pub trait Client<'a> {
         payload: &'b [u8],
         qos: QualityOfService,
         retain: bool,
-    ) -> Result<(), ClientError>;
+    ) -> Result<(), ClientError<E>>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -205,11 +205,11 @@ impl<'a, const P: usize> From<Publish<'a, P>> for ClientReceivedEvent<'a, P> {
     }
 }
 
-pub struct ClientNoQueue<'a, C, D, F, const P: usize>
+pub struct ClientNoQueue<'a, C, D, F, E, const P: usize>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), E>,
 {
     packet_client: PacketClient<'a, C>,
     client_state: ClientStateNoQueue,
@@ -218,11 +218,11 @@ where
     event_handler: F,
 }
 
-impl<'a, C, D, F, const P: usize> ClientNoQueue<'a, C, D, F, P>
+impl<'a, C, D, F, E, const P: usize> ClientNoQueue<'a, C, D, F, E, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), E>,
 {
     pub fn new(
         connection: C,
@@ -242,7 +242,7 @@ where
         }
     }
 
-    async fn wait_for_responses(&mut self, timeout_millis: u32) -> Result<(), ClientError> {
+    async fn wait_for_responses(&mut self, timeout_millis: u32) -> Result<(), ClientError<E>> {
         let mut elapsed = 0;
         let mut waiting = self.client_state.waiting_for_responses();
         while waiting && elapsed <= timeout_millis {
@@ -259,7 +259,7 @@ where
         }
     }
 
-    async fn send_wait_for_responses<PW>(&mut self, packet: PW) -> Result<(), ClientError>
+    async fn send_wait_for_responses<PW>(&mut self, packet: PW) -> Result<(), ClientError<E>>
     where
         PW: Packet + write::Write,
     {
@@ -275,7 +275,7 @@ where
         }
     }
 
-    async fn send<PW>(&mut self, packet: PW) -> Result<(), ClientError>
+    async fn send<PW>(&mut self, packet: PW) -> Result<(), ClientError<E>>
     where
         PW: Packet + write::Write,
     {
@@ -288,13 +288,13 @@ where
     }
 }
 
-impl<'a, C, D, F, const P: usize> Client<'a> for ClientNoQueue<'a, C, D, F, P>
+impl<'a, C, D, F, E, const P: usize> Client<'a, E> for ClientNoQueue<'a, C, D, F, E, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), ClientError>,
+    F: Fn(ClientReceivedEvent<P>) -> Result<(), E>,
 {
-    async fn connect(&mut self, settings: ConnectionSettings<'_>) -> Result<(), ClientError> {
+    async fn connect(&mut self, settings: ConnectionSettings<'_>) -> Result<(), ClientError<E>> {
         let mut properties = Vec::new();
         // By setting maximum topic alias to 0, we prevent the server
         // trying to use aliases, which we don't support. They are optional
@@ -317,7 +317,7 @@ where
         self.send_wait_for_responses(packet).await
     }
 
-    async fn disconnect(&mut self) -> Result<(), ClientError> {
+    async fn disconnect(&mut self) -> Result<(), ClientError<E>> {
         let packet = self.client_state.disconnect()?;
         self.send(packet).await
     }
@@ -328,7 +328,7 @@ where
         message: &'b [u8],
         qos: QualityOfService,
         retain: bool,
-    ) -> Result<(), ClientError> {
+    ) -> Result<(), ClientError<E>> {
         let packet = self
             .client_state
             .publish(topic_name, message, qos, retain)?;
@@ -339,22 +339,22 @@ where
         &'b mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
-    ) -> Result<(), ClientError> {
+    ) -> Result<(), ClientError<E>> {
         let packet = self.client_state.subscribe(topic_name, maximum_qos)?;
         self.send_wait_for_responses(packet).await
     }
 
-    async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError> {
+    async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError<E>> {
         let packet = self.client_state.unsubscribe(topic_name)?;
         self.send_wait_for_responses(packet).await
     }
 
-    async fn send_ping(&mut self) -> Result<(), ClientError> {
+    async fn send_ping(&mut self) -> Result<(), ClientError<E>> {
         let packet = self.client_state.send_ping()?;
         self.send(packet).await
     }
 
-    async fn poll(&mut self, wait: bool) -> Result<bool, ClientError> {
+    async fn poll(&mut self, wait: bool) -> Result<bool, ClientError<E>> {
         // We need to wrap up like this so we can drop the mutable reference to
         // self.packet_client needed to receive data - this reference needs to live
         // as long as the returned data from the client, so we need to drop everything
@@ -372,7 +372,8 @@ where
 
                 match event {
                     ClientStateReceiveEvent::Ack => {
-                        (self.event_handler)(ClientReceivedEvent::Ack)?;
+                        (self.event_handler)(ClientReceivedEvent::Ack)
+                            .map_err(|e| ClientError::MessageHandler(e))?;
                         None
                     }
 
@@ -380,7 +381,8 @@ where
                         if publish.topic_name().is_empty() {
                             return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
                         }
-                        (self.event_handler)(publish.into())?;
+                        (self.event_handler)(publish.into())
+                            .map_err(|e| ClientError::MessageHandler(e))?;
                         None
                     }
 
@@ -388,7 +390,8 @@ where
                         if publish.topic_name().is_empty() {
                             return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
                         }
-                        (self.event_handler)(publish.into())?;
+                        (self.event_handler)(publish.into())
+                            .map_err(|e| ClientError::MessageHandler(e))?;
                         Some(puback)
                     }
 
@@ -401,19 +404,22 @@ where
                                 granted_qos,
                                 maximum_qos,
                             },
-                        )?;
+                        )
+                        .map_err(|e| ClientError::MessageHandler(e))?;
                         None
                     }
 
                     ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => {
                         (self.event_handler)(
                             ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers,
-                        )?;
+                        )
+                        .map_err(|e| ClientError::MessageHandler(e))?;
                         None
                     }
 
                     ClientStateReceiveEvent::NoSubscriptionExisted => {
-                        (self.event_handler)(ClientReceivedEvent::NoSubscriptionExisted)?;
+                        (self.event_handler)(ClientReceivedEvent::NoSubscriptionExisted)
+                            .map_err(|e| ClientError::MessageHandler(e))?;
                         None
                     }
 
