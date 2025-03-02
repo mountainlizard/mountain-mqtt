@@ -44,7 +44,7 @@ async fn client_connect_subscribe_and_publish() {
         "mountain-mqtt-test-payload2-client_connect_subscribe_and_publish".as_bytes();
 
     client
-        .connect(ConnectionSettings::unauthenticated(CLIENT_ID))
+        .connect(&ConnectionSettings::unauthenticated(CLIENT_ID))
         .await
         .unwrap();
 
