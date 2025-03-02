@@ -113,7 +113,7 @@ async fn main() -> Result<(), ClientError> {
     // `unauthenticated` uses default settings and no username/password, see `Connect::new` for
     // available options (keep alive, will, authentication, additional properties etc.)
     client
-        .connect(ConnectionSettings::unauthenticated(
+        .connect(&ConnectionSettings::unauthenticated(
             "mountain-mqtt-example-client-id",
         ))
         .await?;

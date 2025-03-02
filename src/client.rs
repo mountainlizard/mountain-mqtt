@@ -205,7 +205,7 @@ impl Display for ClientError {
 #[allow(async_fn_in_trait)]
 pub trait Client<'a> {
     /// Connect to server
-    async fn connect(&mut self, settings: ConnectionSettings) -> Result<(), ClientError>;
+    async fn connect(&mut self, settings: &ConnectionSettings) -> Result<(), ClientError>;
 
     /// Disconnect from server
     async fn disconnect(&mut self) -> Result<(), ClientError>;
@@ -411,7 +411,7 @@ where
     D: Delay,
     F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
 {
-    async fn connect(&mut self, settings: ConnectionSettings<'_>) -> Result<(), ClientError> {
+    async fn connect(&mut self, settings: &ConnectionSettings<'_>) -> Result<(), ClientError> {
         let mut properties = Vec::new();
         // By setting maximum topic alias to 0, we prevent the server
         // trying to use aliases, which we don't support. They are optional
