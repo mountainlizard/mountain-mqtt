@@ -494,7 +494,7 @@ where
     ) -> Result<(), ClientError> {
         let packet = self
             .client_state
-            .publish(topic_name, payload, qos, retain, properties)?;
+            .publish_with_properties(topic_name, payload, qos, retain, properties)?;
         self.send_wait_for_responses(packet).await
     }
 

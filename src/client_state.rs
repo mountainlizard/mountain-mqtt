@@ -249,7 +249,18 @@ pub trait ClientState {
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError>;
 
     /// Produce a packet to publish to a given topic, update state, with no properties
-    fn publish<'b, const P: usize>(
+    fn publish<'b>(
+        &mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+    ) -> Result<Publish<'b, 0>, ClientStateError> {
+        self.publish_with_properties(topic_name, payload, qos, retain, Vec::new())
+    }
+
+    /// Produce a packet to publish to a given topic, update state, with properties
+    fn publish_with_properties<'b, const P: usize>(
         &mut self,
         topic_name: &'b str,
         payload: &'b [u8],
@@ -371,7 +382,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn publish<'b, const P: usize>(
+    fn publish_with_properties<'b, const P: usize>(
         &mut self,
         topic_name: &'b str,
         payload: &'b [u8],
