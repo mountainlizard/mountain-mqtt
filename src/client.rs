@@ -314,6 +314,9 @@ impl<'a> ConnectionSettings<'a> {
             client_id,
         }
     }
+    pub fn client_id(&self) -> &'a str {
+        self.client_id
+    }
 }
 
 #[derive(Debug, PartialEq)]
