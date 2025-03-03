@@ -28,10 +28,10 @@ pub fn is_valid_publish_first_header_byte(encoded: u8) -> bool {
 /// Contains the parts of a [Publish] packet relevant to the application.
 #[derive(Debug, PartialEq)]
 pub struct ApplicationMessage<'a, const P: usize> {
-    pub retain: bool,
     pub topic_name: &'a str,
-    pub qos: QualityOfService,
     pub payload: &'a [u8],
+    pub qos: QualityOfService,
+    pub retain: bool,
     pub properties: Vec<PublishProperty<'a>, P>,
 }
 

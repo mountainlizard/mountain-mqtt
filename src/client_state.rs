@@ -5,7 +5,7 @@ use heapless::Vec;
 use crate::{
     data::{
         packet_identifier::{PacketIdentifier, PublishPacketIdentifier},
-        property::{ConnackProperty, Property},
+        property::{ConnackProperty, Property, PublishProperty},
         quality_of_service::QualityOfService,
         reason_code::{
             ConnectReasonCode, PublishReasonCode, SubscribeReasonCode, UnsubscribeReasonCode,
@@ -248,14 +248,15 @@ pub trait ClientState {
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError>;
 
-    /// Produce a packet to publish to a given topic, update state
-    fn publish<'b>(
+    /// Produce a packet to publish to a given topic, update state, with no properties
+    fn publish<'b, const P: usize>(
         &mut self,
         topic_name: &'b str,
-        message: &'b [u8],
+        payload: &'b [u8],
         qos: QualityOfService,
         retain: bool,
-    ) -> Result<Publish<'b, 0>, ClientStateError>;
+        properties: Vec<PublishProperty<'b>, P>,
+    ) -> Result<Publish<'b, P>, ClientStateError>;
 
     /// Move to errored state, no further operations are possible
     /// This must be called if the user of the client state cannot successfully send
@@ -370,13 +371,14 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn publish<'b>(
+    fn publish<'b, const P: usize>(
         &mut self,
         topic_name: &'b str,
-        message: &'b [u8],
+        payload: &'b [u8],
         qos: QualityOfService,
         retain: bool,
-    ) -> Result<Publish<'b, 0>, ClientStateError> {
+        properties: Vec<PublishProperty<'b>, P>,
+    ) -> Result<Publish<'b, P>, ClientStateError> {
         match self {
             ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
                 let publish_packet_identifier = match qos {
@@ -390,13 +392,13 @@ impl ClientState for ClientStateNoQueue {
                     QualityOfService::Qos2 => Err(ClientStateError::Qos2NotSupported),
                 }?;
 
-                let publish: Publish<'_, 0> = Publish::new(
+                let publish = Publish::new(
                     false,
                     retain,
                     topic_name,
                     publish_packet_identifier,
-                    message,
-                    Vec::new(),
+                    payload,
+                    properties,
                 );
 
                 if qos == QualityOfService::Qos1 {
