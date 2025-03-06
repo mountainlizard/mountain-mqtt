@@ -1,9 +1,32 @@
 use mountain_mqtt::{
-    client::{Client, ClientError, ClientReceivedEvent, ConnectionSettings, EventHandlerError},
+    client::{
+        Client, ClientError, ClientReceivedEvent, ConnectionSettings, EventHandler,
+        EventHandlerError,
+    },
     data::quality_of_service::QualityOfService,
     tokio::client_tcp,
 };
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Sender};
+
+/// Sends application message events onwards to a [Sender]
+pub struct SenderEventHandler {
+    sender: Sender<(String, Vec<u8>)>,
+}
+
+impl<const P: usize> EventHandler<P> for SenderEventHandler {
+    async fn handle_event(
+        &mut self,
+        event: ClientReceivedEvent<'_, P>,
+    ) -> Result<(), EventHandlerError> {
+        if let ClientReceivedEvent::ApplicationMessage(message) = event {
+            self.sender
+                .send((message.topic_name.to_owned(), message.payload.to_vec()))
+                .await
+                .map_err(|_| EventHandlerError::Overflow)?;
+        }
+        Ok(())
+    }
+}
 
 /// Connect to an MQTT server on 127.0.0.1:1883,
 /// server must accept connections with no username or password.
@@ -20,26 +43,14 @@ async fn main() -> Result<(), ClientError> {
     // them in another task, here we'll just read them back at the end of the example
     let (message_tx, mut message_rx) = mpsc::channel(32);
 
+    let handler = SenderEventHandler { sender: message_tx };
+
     // Create a client.
     // The event_handler closure is called whenever an event occurs, including when a
     // published application message is received.
     // This sends copies of the message contents to our channel for later processing.
-    let mut client = client_tcp(
-        ip,
-        port,
-        timeout_millis,
-        &mut buf,
-        |event: ClientReceivedEvent<'_, 16>| {
-            // Just handle application messages, other events aren't relevant here
-            if let ClientReceivedEvent::ApplicationMessage(message) = event {
-                message_tx
-                    .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                    .map_err(|_| EventHandlerError::Overflow)?;
-            }
-            Ok(())
-        },
-    )
-    .await;
+    let mut client =
+        client_tcp::<SenderEventHandler, 16>(ip, port, timeout_millis, &mut buf, handler).await;
 
     // Send a Connect packet to connect to the server.
     // `unauthenticated` uses default settings and no username/password, see `Connect::new` for

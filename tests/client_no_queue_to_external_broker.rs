@@ -1,9 +1,29 @@
 use mountain_mqtt::{
-    client::{Client, ClientNoQueue, ClientReceivedEvent, ConnectionSettings},
+    client::{Client, ClientReceivedEvent, ConnectionSettings, EventHandler, EventHandlerError},
     data::quality_of_service::QualityOfService,
-    tokio::{ConnectionTcpStream, TokioDelay},
+    tokio::client_tcp,
 };
-use tokio::{net::TcpStream, sync::mpsc};
+use tokio::sync::mpsc::{self, Sender};
+
+/// Sends application message events onwards to a [Sender]
+pub struct SenderEventHandler {
+    sender: Sender<(String, Vec<u8>)>,
+}
+
+impl<const P: usize> EventHandler<P> for SenderEventHandler {
+    async fn handle_event(
+        &mut self,
+        event: ClientReceivedEvent<'_, P>,
+    ) -> Result<(), EventHandlerError> {
+        if let ClientReceivedEvent::ApplicationMessage(message) = event {
+            self.sender
+                .send((message.topic_name.to_owned(), message.payload.to_vec()))
+                .await
+                .map_err(|_| EventHandlerError::Overflow)?;
+        }
+        Ok(())
+    }
+}
 
 /// Expects tp connect to an MQTT server on 127.0.0.1:1883,
 /// server must accept connections with no username or password
@@ -11,30 +31,15 @@ use tokio::{net::TcpStream, sync::mpsc};
 async fn client_connect_subscribe_and_publish() {
     let ip = core::net::Ipv4Addr::new(127, 0, 0, 1);
     let port = 1883;
-
-    let addr = core::net::SocketAddr::new(ip.into(), port);
-    let tcp_stream = TcpStream::connect(addr).await.unwrap();
-    let connection = ConnectionTcpStream::new(tcp_stream);
-
-    let delay = TokioDelay;
+    let timeout_millis = 5000;
+    let mut buf = [0; 1024];
 
     let (message_tx, mut message_rx) = mpsc::channel(32);
 
-    let mut buf = [0; 1024];
-    let mut client = ClientNoQueue::new(
-        connection,
-        &mut buf,
-        delay,
-        5000,
-        |event: ClientReceivedEvent<'_, 16>| {
-            if let ClientReceivedEvent::ApplicationMessage(message) = event {
-                message_tx
-                    .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                    .unwrap();
-            }
-            Ok(())
-        },
-    );
+    let handler = SenderEventHandler { sender: message_tx };
+
+    let mut client =
+        client_tcp::<SenderEventHandler, 16>(ip, port, timeout_millis, &mut buf, handler).await;
 
     const CLIENT_ID: &str = "mountain-mqtt-test-client-client_connect_subscribe_and_publish";
     const TOPIC_NAME: &str = "mountain-mqtt-test-topic-client_connect_subscribe_and_publish";
