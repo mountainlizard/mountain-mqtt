@@ -56,6 +56,11 @@ pub enum EventHandlerError {
     /// to a channel, and that channel is at capacity.
     Overflow,
 
+    /// A valid, expected event was received, but could not be
+    /// handled due to the destination for events being closed. For example if the messages are sent onwards
+    /// to a channel, and that channel is closed.
+    Closed,
+
     /// The corresponding [ClientReceivedEvent] was received, and is an error
     /// for this event handler
     SubscriptionGrantedBelowMaximumQos {
@@ -95,6 +100,7 @@ impl defmt::Format for EventHandlerError {
                 defmt::write!(f, "PublishedMessageHadNoMatchingSubscribers")
             }
             Self::NoSubscriptionExisted => defmt::write!(f, "NoSubscriptionExisted"),
+            Self::Closed => defmt::write!(f, "Closed"),
         }
     }
 }
@@ -127,6 +133,7 @@ impl Display for EventHandlerError {
                 write!(f, "PublishedMessageHadNoMatchingSubscribers")
             }
             Self::NoSubscriptionExisted => write!(f, "NoSubscriptionExisted"),
+            Self::Closed => write!(f, "Closed"),
         }
     }
 }
@@ -370,11 +377,19 @@ impl<'a, const P: usize> From<Publish<'a, P>> for ClientReceivedEvent<'a, P> {
     }
 }
 
+#[allow(async_fn_in_trait)]
+pub trait EventHandler<const P: usize> {
+    async fn handle_event(
+        &mut self,
+        event: ClientReceivedEvent<P>,
+    ) -> Result<(), EventHandlerError>;
+}
+
 pub struct ClientNoQueue<'a, C, D, F, const P: usize>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
+    F: EventHandler<P>,
 {
     packet_client: PacketClient<'a, C>,
     client_state: ClientStateNoQueue,
@@ -387,7 +402,7 @@ impl<'a, C, D, F, const P: usize> ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
+    F: EventHandler<P>,
 {
     pub fn new(
         connection: C,
@@ -457,7 +472,7 @@ impl<'a, C, D, F, const P: usize> Client<'a> for ClientNoQueue<'a, C, D, F, P>
 where
     C: Connection,
     D: Delay,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
+    F: EventHandler<P>,
 {
     async fn connect(&mut self, settings: &ConnectionSettings<'_>) -> Result<(), ClientError> {
         let mut properties = Vec::new();
@@ -538,7 +553,9 @@ where
 
                 match event {
                     ClientStateReceiveEvent::Ack => {
-                        (self.event_handler)(ClientReceivedEvent::Ack)?;
+                        self.event_handler
+                            .handle_event(ClientReceivedEvent::Ack)
+                            .await?;
                         None
                     }
 
@@ -546,7 +563,7 @@ where
                         if publish.topic_name().is_empty() {
                             return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
                         }
-                        (self.event_handler)(publish.into())?;
+                        self.event_handler.handle_event(publish.into()).await?;
                         None
                     }
 
@@ -554,7 +571,7 @@ where
                         if publish.topic_name().is_empty() {
                             return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
                         }
-                        (self.event_handler)(publish.into())?;
+                        self.event_handler.handle_event(publish.into()).await?;
                         Some(puback)
                     }
 
@@ -562,24 +579,28 @@ where
                         granted_qos,
                         maximum_qos,
                     } => {
-                        (self.event_handler)(
-                            ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
+                        self.event_handler
+                            .handle_event(ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
                                 granted_qos,
                                 maximum_qos,
-                            },
-                        )?;
+                            })
+                            .await?;
                         None
                     }
 
                     ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => {
-                        (self.event_handler)(
-                            ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers,
-                        )?;
+                        self.event_handler
+                            .handle_event(
+                                ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers,
+                            )
+                            .await?;
                         None
                     }
 
                     ClientStateReceiveEvent::NoSubscriptionExisted => {
-                        (self.event_handler)(ClientReceivedEvent::NoSubscriptionExisted)?;
+                        self.event_handler
+                            .handle_event(ClientReceivedEvent::NoSubscriptionExisted)
+                            .await?;
                         None
                     }
 
