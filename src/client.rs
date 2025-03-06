@@ -31,7 +31,7 @@ use crate::{
 /// example logging a warning, or using another target for the error,
 /// for example if an event handler uses a channel to send valid events
 /// onwards, it could also have a channel for errors.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum EventHandlerError {
     /// Application Message payload contained invalid utf8 data, when
     /// a utf8 string was expected
@@ -132,7 +132,7 @@ impl Display for EventHandlerError {
 }
 
 /// [Client] error
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ClientError {
     PacketWrite(PacketWriteError),
     PacketRead(PacketReadError),

@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// [ClientState] error
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ClientStateError {
     PacketWrite(PacketWriteError),
     PacketRead(PacketReadError),
