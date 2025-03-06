@@ -9,7 +9,8 @@ use crate::{
     client_state::{ClientState, ClientStateError, ClientStateNoQueue, ClientStateReceiveEvent},
     codec::write,
     data::{
-        property::ConnectProperty, quality_of_service::QualityOfService,
+        property::{ConnectProperty, PublishProperty},
+        quality_of_service::QualityOfService,
         reason_code::DisconnectReasonCode,
     },
     error::{PacketReadError, PacketWriteError},
@@ -30,7 +31,7 @@ use crate::{
 /// example logging a warning, or using another target for the error,
 /// for example if an event handler uses a channel to send valid events
 /// onwards, it could also have a channel for errors.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum EventHandlerError {
     /// Application Message payload contained invalid utf8 data, when
     /// a utf8 string was expected
@@ -131,7 +132,7 @@ impl Display for EventHandlerError {
 }
 
 /// [Client] error
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ClientError {
     PacketWrite(PacketWriteError),
     PacketRead(PacketReadError),
@@ -236,14 +237,58 @@ pub trait Client<'a> {
     /// Unsubscribe from a topic
     async fn unsubscribe<'b>(&'b mut self, topic_name: &'b str) -> Result<(), ClientError>;
 
-    /// Publish a message with given payload to a given topic
+    /// Publish a message with given payload to a given topic, with no properties
     async fn publish<'b>(
         &'b mut self,
         topic_name: &'b str,
         payload: &'b [u8],
         qos: QualityOfService,
         retain: bool,
+    ) -> Result<(), ClientError> {
+        self.publish_with_properties::<0>(topic_name, payload, qos, retain, Vec::new())
+            .await
+    }
+
+    /// Publish a message with given payload to a given topic, with properties
+    async fn publish_with_properties<'b, const P: usize>(
+        &'b mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+        properties: Vec<PublishProperty<'b>, P>,
     ) -> Result<(), ClientError>;
+
+    /// Perform an action (this replicates the functionality of
+    /// [Client::subscribe], [Client::unsubscribe] and [Client::publish])
+    /// but using an enum to represent the action.
+    async fn perform<'b, const P: usize>(
+        &'b mut self,
+        action: ClientAction<'b, P>,
+    ) -> Result<(), ClientError>;
+}
+
+pub enum ClientAction<'a, const P: usize> {
+    Subscribe {
+        topic_name: &'a str,
+        maximum_qos: QualityOfService,
+    },
+    Unsubscribe {
+        topic_name: &'a str,
+    },
+    Publish {
+        topic_name: &'a str,
+        payload: &'a [u8],
+        qos: QualityOfService,
+        retain: bool,
+    },
+    PublishWithProperties {
+        topic_name: &'a str,
+        payload: &'a [u8],
+        qos: QualityOfService,
+        retain: bool,
+        properties: Vec<PublishProperty<'a>, P>,
+    },
 }
 
 #[allow(async_fn_in_trait)]
@@ -268,6 +313,9 @@ impl<'a> ConnectionSettings<'a> {
             password: None,
             client_id,
         }
+    }
+    pub fn client_id(&self) -> &'a str {
+        self.client_id
     }
 }
 
@@ -439,16 +487,17 @@ where
         self.send(packet).await
     }
 
-    async fn publish<'b>(
+    async fn publish_with_properties<'b, const PP: usize>(
         &'b mut self,
         topic_name: &'b str,
-        message: &'b [u8],
+        payload: &'b [u8],
         qos: QualityOfService,
         retain: bool,
+        properties: Vec<PublishProperty<'b>, PP>,
     ) -> Result<(), ClientError> {
         let packet = self
             .client_state
-            .publish(topic_name, message, qos, retain)?;
+            .publish_with_properties(topic_name, payload, qos, retain, properties)?;
         self.send_wait_for_responses(packet).await
     }
 
@@ -549,5 +598,34 @@ where
         }
 
         Ok(true)
+    }
+
+    async fn perform<'b, const PP: usize>(
+        &'b mut self,
+        action: ClientAction<'b, PP>,
+    ) -> Result<(), ClientError> {
+        match action {
+            ClientAction::Subscribe {
+                topic_name,
+                maximum_qos,
+            } => self.subscribe(topic_name, maximum_qos).await,
+            ClientAction::Unsubscribe { topic_name } => self.unsubscribe(topic_name).await,
+            ClientAction::Publish {
+                topic_name,
+                payload,
+                qos,
+                retain,
+            } => self.publish(topic_name, payload, qos, retain).await,
+            ClientAction::PublishWithProperties {
+                topic_name,
+                payload,
+                qos,
+                retain,
+                properties,
+            } => {
+                self.publish_with_properties(topic_name, payload, qos, retain, properties)
+                    .await
+            }
+        }
     }
 }
