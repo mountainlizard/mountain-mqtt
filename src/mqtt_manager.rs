@@ -3,7 +3,14 @@ use crate::client::{Client, ClientError};
 /// Identifier for a particular connection. This changes when a reconnection
 /// is completed (e.g. if server is unresponsive)
 #[derive(Debug, PartialEq, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ConnectionId(u32);
+
+impl ConnectionId {
+    pub fn new(id: u32) -> ConnectionId {
+        ConnectionId(id)
+    }
+}
 
 /// [MqttOperations] can be performed on an MQTT [Client].
 /// Application specific actions must implement this to be used
