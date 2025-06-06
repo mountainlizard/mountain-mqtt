@@ -12,11 +12,11 @@ use heapless::Vec;
 
 #[derive(Debug, PartialEq)]
 pub struct Will<'a, const P: usize> {
-    qos: QualityOfService,
-    retain: bool,
-    topic_name: &'a str,
-    payload: &'a [u8],
-    properties: Vec<WillProperty<'a>, P>,
+    pub qos: QualityOfService,
+    pub retain: bool,
+    pub topic_name: &'a str,
+    pub payload: &'a [u8],
+    pub properties: Vec<WillProperty<'a>, P>,
 }
 
 const CLEAN_START_BIT: u8 = 1 << 1;
