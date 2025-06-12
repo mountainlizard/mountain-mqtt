@@ -19,6 +19,24 @@ pub struct Will<'a, const P: usize> {
     properties: Vec<WillProperty<'a>, P>,
 }
 
+impl<'a, const P: usize> Will<'a, P> {
+    pub fn new(
+        qos: QualityOfService,
+        retain: bool,
+        topic_name: &'a str,
+        payload: &'a [u8],
+        properties: Vec<WillProperty<'a>, P>,
+    ) -> Self {
+        Self {
+            qos,
+            retain,
+            topic_name,
+            payload,
+            properties,
+        }
+    }
+}
+
 const CLEAN_START_BIT: u8 = 1 << 1;
 const WILL_PRESENT_BIT: u8 = 1 << 2;
 const WILL_QOS_SHIFT: i32 = 3;
@@ -552,18 +570,12 @@ mod tests {
         0x00, 0x03, 0x01, 0x02, 0x03,
     ];
 
-    fn encode_decode_and_check<const P: usize>(
-        packet: &Connect<'_, P>,
-        encoded: &[u8],
-    ) {
+    fn encode_decode_and_check<const P: usize>(packet: &Connect<'_, P>, encoded: &[u8]) {
         encode_and_check(packet, encoded);
         decode_and_check(packet, encoded);
     }
 
-    fn encode_and_check<const P: usize>(
-        packet: &Connect<'_, P>,
-        encoded: &[u8],
-    ) {
+    fn encode_and_check<const P: usize>(packet: &Connect<'_, P>, encoded: &[u8]) {
         let mut buf = [0u8; 1024];
         let len = {
             let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
@@ -573,10 +585,7 @@ mod tests {
         assert_eq!(&buf[0..len], encoded);
     }
 
-    fn decode_and_check<const P: usize>(
-        packet: &Connect<'_, P>,
-        encoded: &[u8],
-    ) {
+    fn decode_and_check<const P: usize>(packet: &Connect<'_, P>, encoded: &[u8]) {
         let mut r = MqttBufReader::new(encoded);
         let read_packet: Connect<'_, P> = r.get().unwrap();
         assert_eq!(&read_packet, packet);
