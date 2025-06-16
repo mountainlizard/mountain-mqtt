@@ -48,11 +48,12 @@ async fn tokio_localhost_client_connected<'a>(
 ) -> PacketClient<'a, ConnectionTcpStream> {
     let mut client = tokio_localhost_client(buf).await;
 
-    let connect: Connect<'_, 0> = Connect::new(120, None, None, client_id, true, None, Vec::new());
+    let connect: Connect<'_, 0, 0> =
+        Connect::new(120, None, None, client_id, true, None, Vec::new());
     client.send(connect).await.unwrap();
 
     {
-        let maybe_connack: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
+        let maybe_connack: PacketGeneric<'_, 16, 16, 16> = client.receive().await.unwrap();
 
         if let PacketGeneric::Connack(connack) = maybe_connack {
             assert!(!connack.session_present());
@@ -106,7 +107,7 @@ async fn connect_subscribe_and_publish() {
         Subscribe::new(PACKET_IDENTIFIER, primary_request, Vec::new(), Vec::new());
     client.send(subscribe).await.unwrap();
     {
-        let maybe_suback: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
+        let maybe_suback: PacketGeneric<'_, 16, 16, 16> = client.receive().await.unwrap();
         assert_eq!(
             maybe_suback,
             PacketGeneric::Suback(Suback::new(
@@ -129,7 +130,7 @@ async fn connect_subscribe_and_publish() {
     client.send(publish).await.unwrap();
 
     {
-        let maybe_publish: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
+        let maybe_publish: PacketGeneric<'_, 16, 16, 16> = client.receive().await.unwrap();
 
         assert_eq!(
             maybe_publish,
@@ -148,7 +149,7 @@ async fn connect_subscribe_and_publish() {
         Unsubscribe::new(PACKET_IDENTIFIER, TOPIC_NAME, Vec::new(), Vec::new());
     client.send(unsubscribe).await.unwrap();
     {
-        let maybe_unsuback: PacketGeneric<'_, 16, 16> = client.receive().await.unwrap();
+        let maybe_unsuback: PacketGeneric<'_, 16, 16, 16> = client.receive().await.unwrap();
 
         assert_eq!(
             maybe_unsuback,

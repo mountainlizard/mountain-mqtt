@@ -19,6 +19,24 @@ pub struct Will<'a, const P: usize> {
     properties: Vec<WillProperty<'a>, P>,
 }
 
+impl<'a, const P: usize> Will<'a, P> {
+    pub fn new(
+        qos: QualityOfService,
+        retain: bool,
+        topic_name: &'a str,
+        payload: &'a [u8],
+        properties: Vec<WillProperty<'a>, P>,
+    ) -> Self {
+        Self {
+            qos,
+            retain,
+            topic_name,
+            payload,
+            properties,
+        }
+    }
+}
+
 const CLEAN_START_BIT: u8 = 1 << 1;
 const WILL_PRESENT_BIT: u8 = 1 << 2;
 const WILL_QOS_SHIFT: i32 = 3;
@@ -28,18 +46,18 @@ const PASSWORD_PRESENT_BIT: u8 = 1 << 6;
 const USERNAME_PRESENT_BIT: u8 = 1 << 7;
 
 #[derive(Debug, PartialEq)]
-pub struct Connect<'a, const P: usize> {
+pub struct Connect<'a, const P: usize, const W: usize> {
     keep_alive: u16,
     username: Option<&'a str>,
     password: Option<&'a [u8]>,
     client_id: &'a str,
     clean_start: bool,
-    will: Option<Will<'a, P>>,
+    will: Option<Will<'a, W>>,
     pub properties: Vec<ConnectProperty<'a>, P>,
 }
 
-impl<'a> Connect<'a, 0> {
-    pub fn unauthenticated(client_id: &'a str) -> Connect<'a, 0> {
+impl<'a> Connect<'a, 0, 0> {
+    pub fn unauthenticated(client_id: &'a str) -> Connect<'a, 0, 0> {
         Self {
             keep_alive: KEEP_ALIVE_DEFAULT,
             username: None,
@@ -52,14 +70,14 @@ impl<'a> Connect<'a, 0> {
     }
 }
 
-impl<'a, const P: usize> Connect<'a, P> {
+impl<'a, const P: usize, const W: usize> Connect<'a, P, W> {
     pub fn new(
         keep_alive: u16,
         username: Option<&'a str>,
         password: Option<&'a [u8]>,
         client_id: &'a str,
         clean_start: bool,
-        will: Option<Will<'a, P>>,
+        will: Option<Will<'a, W>>,
         properties: Vec<ConnectProperty<'a>, P>,
     ) -> Self {
         Self {
@@ -104,16 +122,16 @@ impl<'a, const P: usize> Connect<'a, P> {
     }
 }
 
-impl<const P: usize> Packet for Connect<'_, P> {
+impl<const P: usize, const W: usize> Packet for Connect<'_, P, W> {
     fn packet_type(&self) -> PacketType {
         PacketType::Connect
     }
 }
 
-impl<const P: usize> PacketWrite for Connect<'_, P> {
-    fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
+impl<const P: usize, const W: usize> PacketWrite for Connect<'_, P, W> {
+    fn put_variable_header_and_payload<'w, Writer: MqttWriter<'w>>(
         &self,
-        writer: &mut W,
+        writer: &mut Writer,
     ) -> mqtt_writer::Result<()> {
         // Variable header:
 
@@ -151,7 +169,7 @@ impl<const P: usize> PacketWrite for Connect<'_, P> {
     }
 }
 
-impl<'a, const P: usize> PacketRead<'a> for Connect<'a, P> {
+impl<'a, const P: usize, const W: usize> PacketRead<'a> for Connect<'a, P, W> {
     fn get_variable_header_and_payload<R: crate::codec::mqtt_reader::MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
@@ -261,7 +279,7 @@ mod tests {
 
     use super::*;
 
-    fn example_packet<'a>() -> Connect<'a, 1> {
+    fn example_packet<'a>() -> Connect<'a, 1, 0> {
         let mut packet = Connect::new(60, None, None, "", true, None, Vec::new());
         packet
             .properties
@@ -291,7 +309,7 @@ mod tests {
         0x00, 0x3c, 0x03, 0x21, 0x00, 0x14, 0x00, 0x00,
     ];
 
-    fn example_packet_will<'a>() -> Connect<'a, 1> {
+    fn example_packet_will<'a>() -> Connect<'a, 1, 1> {
         let mut will_properties = Vec::new();
         will_properties
             .push(WillProperty::MessageExpiryInterval(12345.into()))
@@ -371,7 +389,7 @@ mod tests {
         0x00, 0x03, 0x01, 0x02, 0x03,
     ];
 
-    fn example_packet_will2<'a>() -> Connect<'a, 1> {
+    fn example_packet_will2<'a>() -> Connect<'a, 1, 1> {
         let mut will_properties = Vec::new();
         will_properties
             .push(WillProperty::MessageExpiryInterval(12345.into()))
@@ -433,7 +451,7 @@ mod tests {
         0x00, 0x02, 0x42,0x84
     ];
 
-    fn example_packet_username<'a>() -> Connect<'a, 1> {
+    fn example_packet_username<'a>() -> Connect<'a, 1, 0> {
         let mut packet = Connect::new(60, Some("user"), None, "", true, None, Vec::new());
         packet
             .properties
@@ -447,7 +465,7 @@ mod tests {
         0x14, 0x00, 0x00, 0x00, 0x04, 0x75, 0x73, 0x65, 0x72,
     ];
 
-    fn example_packet_username_password<'a>() -> Connect<'a, 1> {
+    fn example_packet_username_password<'a>() -> Connect<'a, 1, 0> {
         let mut packet = Connect::new(
             60,
             Some("user"),
@@ -469,7 +487,7 @@ mod tests {
         0x14, 0x00, 0x00, 0x00, 0x04, 0x75, 0x73, 0x65, 0x72, 0x00, 0x04, 0x70, 0x61, 0x73, 0x73,
     ];
 
-    fn example_packet_clientid_username_password<'a>() -> Connect<'a, 1> {
+    fn example_packet_clientid_username_password<'a>() -> Connect<'a, 1, 0> {
         let mut packet = Connect::new(
             60,
             Some("user"),
@@ -552,16 +570,16 @@ mod tests {
         0x00, 0x03, 0x01, 0x02, 0x03,
     ];
 
-    fn encode_decode_and_check<const P: usize>(
-        packet: &Connect<'_, P>,
+    fn encode_decode_and_check<const P: usize, const W: usize>(
+        packet: &Connect<'_, P, W>,
         encoded: &[u8],
     ) {
         encode_and_check(packet, encoded);
         decode_and_check(packet, encoded);
     }
 
-    fn encode_and_check<const P: usize>(
-        packet: &Connect<'_, P>,
+    fn encode_and_check<const P: usize, const W: usize>(
+        packet: &Connect<'_, P, W>,
         encoded: &[u8],
     ) {
         let mut buf = [0u8; 1024];
@@ -573,12 +591,12 @@ mod tests {
         assert_eq!(&buf[0..len], encoded);
     }
 
-    fn decode_and_check<const P: usize>(
-        packet: &Connect<'_, P>,
+    fn decode_and_check<const P: usize, const W: usize>(
+        packet: &Connect<'_, P, W>,
         encoded: &[u8],
     ) {
         let mut r = MqttBufReader::new(encoded);
-        let read_packet: Connect<'_, P> = r.get().unwrap();
+        let read_packet: Connect<'_, P, W> = r.get().unwrap();
         assert_eq!(&read_packet, packet);
         assert_eq!(r.position(), encoded.len());
         assert_eq!(r.remaining(), 0);
@@ -588,7 +606,7 @@ mod tests {
     fn error_on_decoding_data_with_incorrect_packet_length() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_INCORRECT_PACKET_LENGTH);
         assert_eq!(
-            r.get::<Connect<'_, 16>>(),
+            r.get::<Connect<'_, 16, 16>>(),
             Err(PacketReadError::IncorrectPacketLength)
         );
     }
@@ -597,7 +615,7 @@ mod tests {
     fn error_on_decoding_data_with_will_qos_not_zero_but_no_will_flag() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_QOS_WITHOUT_WILL_FLAG);
         assert_eq!(
-            r.get::<Connect<'_, 16>>(),
+            r.get::<Connect<'_, 16, 16>>(),
             Err(PacketReadError::WillQosSpecifiedWithoutWill)
         );
     }
@@ -606,7 +624,7 @@ mod tests {
     fn error_on_decoding_data_with_will_retain_set_but_no_will_flag() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_RETAIN_WITHOUT_WILL_FLAG);
         assert_eq!(
-            r.get::<Connect<'_, 16>>(),
+            r.get::<Connect<'_, 16, 16>>(),
             Err(PacketReadError::WillRetainSpecifiedWithoutWill)
         );
     }
@@ -615,7 +633,7 @@ mod tests {
     fn error_on_decoding_invalid_connect_flags_with_bit0_set() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_INVALID_CONNECT_FLAGS_BIT0_SET);
         assert_eq!(
-            r.get::<Connect<'_, 16>>(),
+            r.get::<Connect<'_, 16, 16>>(),
             Err(PacketReadError::InvalidConnectFlags)
         );
     }
@@ -624,7 +642,7 @@ mod tests {
     fn error_on_decoding_invalid_connect_flags_with_invalid_will_qos() {
         let mut r = MqttBufReader::new(&EXAMPLE_DATA_WILL_INVALID_QOS);
         assert_eq!(
-            r.get::<Connect<'_, 16>>(),
+            r.get::<Connect<'_, 16, 16>>(),
             Err(PacketReadError::InvalidQosValue)
         );
     }

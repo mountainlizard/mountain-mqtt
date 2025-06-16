@@ -68,9 +68,9 @@ where
         self.connection.send(&self.buf[0..len]).await
     }
 
-    pub async fn receive<const P: usize, const S: usize>(
+    pub async fn receive<const P: usize, const W: usize, const S: usize>(
         &mut self,
-    ) -> Result<PacketGeneric<'_, P, S>, PacketReadError> {
+    ) -> Result<PacketGeneric<'_, P, W, S>, PacketReadError> {
         // First, try to read one byte with blocking
         self.connection.receive(&mut self.buf[0..1]).await?;
 
@@ -78,9 +78,9 @@ where
         self.receive_rest_of_packet().await
     }
 
-    pub async fn receive_if_ready<const P: usize, const S: usize>(
+    pub async fn receive_if_ready<const P: usize, const W: usize, const S: usize>(
         &mut self,
-    ) -> Result<Option<PacketGeneric<'_, P, S>>, PacketReadError> {
+    ) -> Result<Option<PacketGeneric<'_, P, W, S>>, PacketReadError> {
         // First, try to read one byte without blocking - if this returns false, no packet is ready
         // and we can return immediately to avoid blocking
         let packet_started = self
@@ -97,9 +97,9 @@ where
         Ok(Some(packet))
     }
 
-    async fn receive_rest_of_packet<const P: usize, const S: usize>(
+    async fn receive_rest_of_packet<const P: usize, const W: usize, const S: usize>(
         &mut self,
-    ) -> Result<PacketGeneric<'_, P, S>, PacketReadError> {
+    ) -> Result<PacketGeneric<'_, P, W, S>, PacketReadError> {
         let mut position: usize = 1;
 
         // Check first header byte is valid, if not we can error early without
@@ -221,7 +221,7 @@ mod tests {
         packet
     }
 
-    fn example_connect_packet<'a>() -> Connect<'a, 16> {
+    fn example_connect_packet<'a>() -> Connect<'a, 16, 16> {
         let mut packet = Connect::new(60, None, None, "", true, None, Vec::new());
         packet
             .properties
@@ -261,14 +261,15 @@ mod tests {
         }
     }
 
-    async fn decode(data: &[u8], packet_generic: PacketGeneric<'_, 16, 16>) {
+    async fn decode(data: &[u8], packet_generic: PacketGeneric<'_, 16, 16, 16>) {
         let mut write_buf = [];
         let connection = BufferConnection::new(data, &mut write_buf);
 
         let mut buf = [0; 1024];
         let mut client = PacketClient::new(connection, &mut buf);
 
-        let packet: Option<PacketGeneric<'_, 16, 16>> = client.receive_if_ready().await.unwrap();
+        let packet: Option<PacketGeneric<'_, 16, 16, 16>> =
+            client.receive_if_ready().await.unwrap();
 
         assert_eq!(packet, Some(packet_generic));
     }
@@ -295,7 +296,7 @@ mod tests {
         let mut buf = [0; 1024];
         let mut client = PacketClient::new(connection, &mut buf);
 
-        let packet: Result<Option<PacketGeneric<'_, 16, 16>>, PacketReadError> =
+        let packet: Result<Option<PacketGeneric<'_, 16, 16, 16>>, PacketReadError> =
             client.receive_if_ready().await;
         assert_eq!(packet, Err(PacketReadError::IncorrectPacketLength));
     }
@@ -349,7 +350,7 @@ mod tests {
         let mut client = PacketClient::new(connection, &mut buf);
 
         assert_eq!(
-            client.receive_if_ready::<16, 16>().await,
+            client.receive_if_ready::<16, 16, 16>().await,
             Err(PacketReadError::InvalidPacketType)
         );
     }
@@ -363,7 +364,7 @@ mod tests {
         let mut client = PacketClient::new(connection, &mut buf);
 
         assert_eq!(
-            client.receive_if_ready::<16, 16>().await,
+            client.receive_if_ready::<16, 16, 16>().await,
             Err(PacketReadError::InvalidVariableByteIntegerEncoding)
         );
     }
@@ -377,7 +378,7 @@ mod tests {
         let mut client = PacketClient::new(connection, &mut buf);
 
         assert_eq!(
-            client.receive_if_ready::<16, 16>().await,
+            client.receive_if_ready::<16, 16, 16>().await,
             Err(PacketReadError::PacketTooLargeForBuffer)
         );
     }
