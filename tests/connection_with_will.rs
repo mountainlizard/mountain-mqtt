@@ -3,7 +3,7 @@ use mountain_mqtt::packets::connect::{Connect, Will};
 
 #[test]
 fn create_connect_packet_with_will() {
-    Connect::<0>::new(
+    Connect::<0, 0>::new(
         60,
         Some("user"),
         Some("password".as_bytes()),

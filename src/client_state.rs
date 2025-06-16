@@ -216,8 +216,10 @@ pub trait ClientState {
 
     /// Update state based on a packet used to connect to server
     /// Call this after connect packet has been successfully sent.
-    fn connect<const P: usize>(&mut self, connect: &Connect<'_, P>)
-        -> Result<(), ClientStateError>;
+    fn connect<const P: usize, const W: usize>(
+        &mut self,
+        connect: &Connect<'_, P, W>,
+    ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to disconnect from server, update state
     fn disconnect<'b>(&mut self) -> Result<Disconnect<'b, 0>, ClientStateError>;
@@ -230,9 +232,9 @@ pub trait ClientState {
     /// action by the caller occurs, a [ClientStateReceiveEvent] is returned.
     /// Errors indicate an invalid packet was received, message_target errored,
     /// or the received packet was unexpected based on our state
-    fn receive<'a, 'b, const P: usize, const S: usize>(
+    fn receive<'a, 'b, const P: usize, const W: usize, const S: usize>(
         &mut self,
-        packet: PacketGeneric<'a, P, S>,
+        packet: PacketGeneric<'a, P, W, S>,
     ) -> Result<ClientStateReceiveEvent<'a, 'b, P>, ClientStateError>;
 
     /// Produce a packet to subscribe to a topic by name, update state
@@ -356,9 +358,9 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn connect<const P: usize>(
+    fn connect<const P: usize, const W: usize>(
         &mut self,
-        connect: &Connect<'_, P>,
+        connect: &Connect<'_, P, W>,
     ) -> Result<(), ClientStateError> {
         match self {
             ClientStateNoQueue::Idle => {
@@ -493,9 +495,9 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn receive<'a, 'b, const P: usize, const S: usize>(
+    fn receive<'a, 'b, const P: usize, const W: usize, const S: usize>(
         &mut self,
-        packet: PacketGeneric<'a, P, S>,
+        packet: PacketGeneric<'a, P, W, S>,
     ) -> Result<ClientStateReceiveEvent<'a, 'b, P>, ClientStateError> {
         match self {
             // If we are connecting, we only expect a Connack packet
