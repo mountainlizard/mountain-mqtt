@@ -27,11 +27,12 @@ use super::{
 /// Allows for e.g. decoding data of an unknown packet type, we can
 /// then match to handle the different cases.
 /// `P` is the maximum number of properties in a packet.
+/// `W` is the maximum number of properties in a will packet.
 /// `S` is the maximum number of _additional_ subscription requests
 /// after the mandatory request.
 #[derive(Debug, PartialEq)]
-pub enum PacketGeneric<'a, const P: usize, const S: usize> {
-    Connect(Connect<'a, P>),
+pub enum PacketGeneric<'a, const P: usize, const W: usize, const S: usize> {
+    Connect(Connect<'a, P, W>),
     Connack(Connack<'a, P>),
     Publish(Publish<'a, P>),
     Puback(Puback<'a, P>),
@@ -48,7 +49,7 @@ pub enum PacketGeneric<'a, const P: usize, const S: usize> {
     Auth(Auth<'a, P>),
 }
 
-impl<'a, const P: usize, const S: usize> Read<'a> for PacketGeneric<'a, P, S> {
+impl<'a, const P: usize, const W: usize, const S: usize> Read<'a> for PacketGeneric<'a, P, W, S> {
     fn read<R: crate::codec::mqtt_reader::MqttReader<'a>>(
         reader: &mut R,
     ) -> mqtt_reader::Result<Self>
@@ -150,7 +151,7 @@ impl<'a, const P: usize, const S: usize> Read<'a> for PacketGeneric<'a, P, S> {
     }
 }
 
-impl<const P: usize, const S: usize> Packet for PacketGeneric<'_, P, S> {
+impl<const P: usize, const W: usize, const S: usize> Packet for PacketGeneric<'_, P, W, S> {
     fn packet_type(&self) -> PacketType {
         match self {
             PacketGeneric::Connect(_) => PacketType::Connect,

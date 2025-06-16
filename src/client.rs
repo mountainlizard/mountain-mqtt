@@ -16,7 +16,7 @@ use crate::{
     error::{PacketReadError, PacketWriteError},
     packet_client::{Connection, PacketClient},
     packets::{
-        connect::Connect,
+        connect::{Connect, Will},
         packet::{Packet, KEEP_ALIVE_DEFAULT},
         packet_generic::PacketGeneric,
         publish::{ApplicationMessage, Publish},
@@ -214,6 +214,13 @@ impl Display for ClientError {
 pub trait Client<'a> {
     /// Connect to server
     async fn connect(&mut self, settings: &ConnectionSettings) -> Result<(), ClientError>;
+
+    /// Connect to server with a will
+    async fn connect_with_will<const W: usize>(
+        &mut self,
+        settings: &ConnectionSettings,
+        will: Option<Will<'_, W>>,
+    ) -> Result<(), ClientError>;
 
     /// Disconnect from server
     async fn disconnect(&mut self) -> Result<(), ClientError>;
@@ -474,7 +481,11 @@ where
     D: Delay,
     F: EventHandler<P>,
 {
-    async fn connect(&mut self, settings: &ConnectionSettings<'_>) -> Result<(), ClientError> {
+    async fn connect_with_will<const W: usize>(
+        &mut self,
+        settings: &ConnectionSettings<'_>,
+        will: Option<Will<'_, W>>,
+    ) -> Result<(), ClientError> {
         let mut properties = Vec::new();
         // By setting maximum topic alias to 0, we prevent the server
         // trying to use aliases, which we don't support. They are optional
@@ -484,17 +495,20 @@ where
         properties
             .push(ConnectProperty::TopicAliasMaximum(0.into()))
             .unwrap();
-        let packet: Connect<'_, 1> = Connect::new(
+        let packet: Connect<'_, 1, W> = Connect::new(
             settings.keep_alive,
             settings.username,
             settings.password,
             settings.client_id,
             true,
-            None,
+            will,
             properties,
         );
         self.client_state.connect(&packet)?;
         self.send_wait_for_responses(packet).await
+    }
+    async fn connect(&mut self, settings: &ConnectionSettings<'_>) -> Result<(), ClientError> {
+        self.connect_with_will::<0>(settings, None).await
     }
 
     async fn disconnect(&mut self) -> Result<(), ClientError> {
@@ -541,8 +555,10 @@ where
         // as long as the returned data from the client, so we need to drop everything
         // but the packet we need to send, in order to be able to mutably borrow
         // packet_client again to actually do the send.
+        // Note we allow 0 will properties and additional subscriptions, since we
+        // shouldn't receive any messages using these, since we are a client.
         let to_send = {
-            let packet: Option<PacketGeneric<'_, P, 0>> = if wait {
+            let packet: Option<PacketGeneric<'_, P, 0, 0>> = if wait {
                 Some(self.packet_client.receive().await?)
             } else {
                 self.packet_client.receive_if_ready().await?
