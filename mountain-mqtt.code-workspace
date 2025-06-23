@@ -7,7 +7,7 @@
 			"path": "mountain-mqtt-embassy"
 		},
 		{
-			"path": "embassy-example"
+			"path": "embassy-example-rp2040w"
 		},
 		{
 			"path": ".", "name": "/"
@@ -17,7 +17,7 @@
 		"files.exclude": {
 			"mountain-mqtt": true,
 			"mountain-mqtt-embassy": true,
-			"embassy-example": true,
+			"embassy-example-rp2040w": true,
 		},
 	}
 }
