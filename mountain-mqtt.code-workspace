@@ -7,6 +7,9 @@
 			"path": "mountain-mqtt-embassy"
 		},
 		{
+			"path": "embassy-example"
+		},
+		{
 			"path": ".", "name": "/"
 		}
 	],
@@ -14,6 +17,7 @@
 		"files.exclude": {
 			"mountain-mqtt": true,
 			"mountain-mqtt-embassy": true,
+			"embassy-example": true,
 		},
 	}
 }
