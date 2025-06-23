@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "mountain-mqtt"
+		},
+		{
+			"path": "mountain-mqtt-embassy"
+		},
+		{
+			"path": ".", "name": "/"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"mountain-mqtt": true,
+			"mountain-mqtt-embassy": true,
+		},
+	}
+}
