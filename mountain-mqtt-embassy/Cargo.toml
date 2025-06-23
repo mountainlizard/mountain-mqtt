@@ -45,6 +45,7 @@ mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features 
 default = ["defmt"]
 defmt = ["dep:defmt"]
 
-[patch.crates-io]
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
+# [patch.crates-io]
+# embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
+# embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
+# embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
