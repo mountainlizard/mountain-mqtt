@@ -4,6 +4,15 @@ name = "embassy-example-rp2040w"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
+# We can't run tests etc. on embedded, so specifically skip them to avoid spurious rust-analyzer errors.
+# This is a more precise solution than adding `"rust-analyzer.cargo.allTargets": false` to vs code settings, since it only
+# disables tests for embedded main, leaving them enabled for non-embedded crates so we can still see errors in test code there.
+[[bin]]
+name = "embassy-example-rp2040w"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 embassy-embedded-hal = { version = "0.3.0", features = ["defmt"] }
 embassy-sync = { version = "0.6.2", features = ["defmt"] }
@@ -73,7 +82,7 @@ embedded-storage = { version = "0.3" }
 static_cell = "2.1"
 portable-atomic = { version = "1.5", features = ["critical-section"] }
 log = "0.4"
-rand = { version = "0.9.0", default-features = false }
+rand = { version = "0.8.5", default-features = false }
 embedded-sdmmc = "0.7.0"
 
 mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
