@@ -35,7 +35,7 @@ embassy-time = { version = "0.4.0", features = [
 
 defmt = { version = "1.0", optional = true }
 
-mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
+mountain-mqtt = { version = "0.2.0", path = "../mountain-mqtt", default-features = false, features = [
   "embedded-io-async",
   "embedded-hal-async",
   "defmt",
