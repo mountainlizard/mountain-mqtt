@@ -1,0 +1,13 @@
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+runner = "probe-rs run --chip RP2040"
+
+[build]
+target = "thumbv6m-none-eabi" # Cortex-M0 and Cortex-M0+
+
+[env]
+DEFMT_LOG = "info"
+SMOLTCP_DNS_MAX_SERVER_COUNT = "8"
+WIFI_NETWORK = "WIFI_NETWORK"
+WIFI_PASSWORD = "WIFI_PASSWORD"
+MQTT_HOST = "192.168.0.200"
+MQTT_PORT = "1883"

@@ -1,164 +1,63 @@
 # mountain-mqtt
 
-A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client.
+This is a monorepo of crates for a `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client.
 
-Note that this is in very early development. It is functional but not yet stable or feature complete. The API will almost certainly change over time.
+Each folder is a separate rust crate (e.g. `mountain-mqtt` contains the main library crate). This is NOT a cargo workspace, it's just a set of crates that live alongside each other in the repo. This has been done for flexibility, in particular to allow for different targets to be used for each crate if needed - this in turn allows for example projects to build for embedded targets.
 
-Please see `CONTRIBUTING.md` if you wish to contribute to the project.
+Note there are also `README.md` files in each crate folder, covering the respective crate.
 
-## Features
+For development, crates reference each other via relative paths, each crate is also published to `crates.io`.
 
-1. Compatible with [`embedded-hal`](https://github.com/rust-embedded/embedded-hal). Provides adapters to use [`embedded-hal-async`](https://crates.io/crates/embedded-hal-async) and [`embedded-io-async`](https://crates.io/crates/embedded-io-async) traits (`Read`, `Write` and `ReadReady`) for network connection, e.g. using [`embassy-net`](https://crates.io/crates/embassy-net) for TCP.
-2. Compatible with [`tokio`](https://tokio.rs). Provides adapters to use [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html) `TcpStream`.
-3. Layered design to allow reuse in different environments.
-4. Fairly thorough tests for `data`, `codec` and `packet` modules against the [MQTT v5 specification](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html).
-5. Provides a basic client trait/implementation for connecting, disconnecting, subscribing and unsubscribing, publishing messages and receiving pubished messages from the server. Supports Quality of Service levels 0 and 1.
-6. Can run without allocation, using only `core` on `no_std`.
+## Projects
 
-## Adding to your project
+- `mountain-mqtt` - A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client. Designed to be independent of async implementation, networking etc., this provides encoding/decoding of MQTT packets, and an approximately sans-io approach to modelling the MQTT protocol using a state machine and a connection abstraction. Also contains implementations of connection for [`tokio`](https://tokio.rs) and [`embedded-hal`](https://github.com/rust-embedded/embedded-hal), and a simple client example using `tokio`.
 
-There is not yet a published crate, so check out the project sources (alongside the project where you want to use mountain-mqtt) and then reference via path from your `Cargo.toml`.
+- `mountain-mqtt-embassy` - A higher-level interface using `embassy` channels to provide an `mqtt_manager` that will handle reconnecting to the server.
 
-1. For embedded-hal applications:
+- `embassy-example-rp2040w` - An example application using `embassy` to demonstrate MQTT on a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) board. The README also has a detailed explanation of an approach to using `mountain-mqtt-embassy`.
 
-   ```toml
-   [dependencies]
-   mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
-   "embedded-io-async",
-   "embedded-hal-async",
-   "defmt"
-   ] }
-   ```
+## Editing with VS Code
 
-   `defmt` is not required, but provides some `defmt::Format` implementations, e.g. for errors.
+There are two approaches:
 
-2. For tokio applications (this requires `std`):
+1. Open an individual crate as a project, and see just that crate in the VS Code window, or
+2. Open the provided `mountain-mqtt.code-workspace` file as a VS Code workspace. This will open each crate as a separate root in the workspace, so they can all be edited together. Rust Analyzer will run on each crate. The contents of the root of the workspace (including this file) are displayed under the `/` entry in the explorer.
 
-   ```toml
-   [dependencies]
-   mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
-   "tokio",
-   ] }
-   ```
+## How is the VS Code workspace configured?
 
-## Todo
+This is an interesting one, since we want to be able to see each of the crates as a separate project, and at the same time show the root directory itself.
 
-1. Support for Quality of Service level 2 in `Client`. The relevant MQTT v5 packets are implemented, but not the state management for handling them in the client.
-2. More sophisticated client implementation(s) - the current `Client` implementation `ClientNoQueue` only supports a single pending acknowledgement at a time, and waits for this before returning when sending packets, by polling for data ready. The concurrency model is not ideal, but allows support for embedded and tokio networking with the same relatively simple code and no allocation. A better model should be achievable, maybe using different approaches for tokio (where we can use std) and embedded/no_std.
-3. Improve and add integration tests for `packet_client` and `client` modules.
-4. Publish as a crate.
+This is done in the `.code-workspace` file by adding a folder for each crate, then a folder for the root (we can give this a name, we've used `/` for simplicity). This would by default also show the crate folders within the root folder - we can prevent this by specifying file exclusions for each crate:
 
-## Non-goals
-
-The following goals are not planned, but may be considered later:
-
-1. MQTT v3 support.
-2. Server support. Note that the `data` and `codec` modules support the packets needed for this if anyone wants to implement one :)
-
-## Layers
-
-1. `data` module - provides basic data types used in MQTT packets.
-2. `codec` module - provides simple reader and writer traits, and implementations using a `buf: &'a [u8]` and position. `Read` and `Write` traits for data items.
-3. `packets` module - provides traits for describing MQTT v5 packets, and a struct for each packet type, with `Read` and `Write` implementations.
-4. `packet_client` module - provides a basic low-level client for reading and writing packets directly, using a `Connection` trait with implementations for tokio `TcpStream` and embedded-hal-async `Read + Write + ReadyReady`.
-5. `client` module - provides a higher-level basic client that manages connection state, waiting for acknowledgement etc.
-
-## Example code
-
-See the `examples` directory for a simple example of using the basic client - try it out with `cargo run --example client_example`:
-
-```rust
-use mountain_mqtt::{
-    client::{Client, ClientError, ClientReceivedEvent, ConnectionSettings, EventHandlerError},
-    data::quality_of_service::QualityOfService,
-    tokio::client_tcp,
-};
-use tokio::sync::mpsc;
-
-/// Connect to an MQTT server on 127.0.0.1:1883,
-/// server must accept connections with no username or password.
-/// Subscribe to a topic, send a message, check we receive it
-/// back, then unsubscribe and disconnect.
-#[tokio::main]
-async fn main() -> Result<(), ClientError> {
-    let ip = core::net::Ipv4Addr::new(127, 0, 0, 1);
-    let port = 1883;
-    let timeout_millis = 5000;
-    let mut buf = [0; 1024];
-
-    // We'll use a channel to handle incoming messages, this would allow us to receive
-    // them in another task, here we'll just read them back at the end of the example
-    let (message_tx, mut message_rx) = mpsc::channel(32);
-
-    // Create a client.
-    // The event_handler closure is called whenever an event occurs, including when a
-    // published application message is received.
-    // This sends copies of the message contents to our channel for later processing.
-    let mut client = client_tcp(
-        ip,
-        port,
-        timeout_millis,
-        &mut buf,
-        |event: ClientReceivedEvent<'_, 16>| {
-            // Just handle application messages, other events aren't relevant here
-            if let ClientReceivedEvent::ApplicationMessage(message) = event {
-                message_tx
-                    .try_send((message.topic_name.to_owned(), message.payload.to_vec()))
-                    .map_err(|_| EventHandlerError::Overflow)?;
-            }
-            Ok(())
-        },
-    )
-    .await;
-
-    // Send a Connect packet to connect to the server.
-    // `unauthenticated` uses default settings and no username/password, see `Connect::new` for
-    // available options (keep alive, will, authentication, additional properties etc.)
-    client
-        .connect(&ConnectionSettings::unauthenticated(
-            "mountain-mqtt-example-client-id",
-        ))
-        .await?;
-
-    let topic_name = "mountain-mqtt-example-topic";
-    let retain = false;
-
-    client.subscribe(topic_name, QualityOfService::Qos1).await?;
-
-    client
-        .publish(
-            topic_name,
-            "Hello MQTT!".as_bytes(),
-            QualityOfService::Qos0,
-            retain,
-        )
-        .await?;
-
-    // We are expecting one packet from the server, so just poll once with wait = true.
-    // The normal way to use this would be to poll in a loop with wait = false, calling
-    // any other required method between polling (e.g. to publish messages, send pings etc.)
-    client.poll(true).await?;
-
-    // Check we got the message back
-    let (topic, payload) = message_rx.try_recv().unwrap();
-    println!(
-        "Received from '{}': '{}'",
-        topic,
-        String::from_utf8_lossy(&payload)
-    );
-
-    client.unsubscribe(topic_name).await?;
-    client.disconnect().await?;
-
-    Ok(())
+```json
+{
+  "folders": [
+    {
+      "path": "crate-a"
+    },
+    {
+      "path": "crate-b"
+    },
+    {
+      "path": ".",
+      "name": "/"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "crate-a": true,
+      "crate-b": true
+    }
+  }
 }
 ```
 
-## Miscellaneous
+You will need to add any new crates to both the `folders` array, and the `files.exclude` setting.
 
-The shortening "QoS" for "Quality of Service" occurs a lot in the code (and MQTT specification) - this is confusing to adapt to code, we use these forms:
+This approach of keeping crates as separate projects without a cargo workspace, and opening them as multiple roots in a VS Code workspace, is [suggested here](https://www.reddit.com/r/rust/comments/14x9q0p/comment/jrm96d4/).The general approach to excluding the crate folders is covered in [this comment on a VS Code issue](https://github.com/microsoft/vscode/issues/82145#issuecomment-859550844).
 
-1. For "UpperCamelCase", we use "Qos" - e.g. `SubscriptionGrantedBelowMaximumQos` or `Qos1`. This treats "QoS" as an acronym/contraction and so follows the [Rust naming convention](https://rust-lang.github.io/api-guidelines/naming.html) that this counts as one word for capitalisation.
-2. For "SCREAMING_SNAKE_CASE" we use "QOS" - e.g. `QOS_MASK`
+## Why not a Cargo workspace?
 
-This applies to `ReasonCode` names as well, even where these use `QoS` in the spec, e.g. "Granted QoS 1" becomes `GrantedQos1`.
+A Cargo workspace currently applies the same target to all projects/crates, and we require general-purpose crates like `mountain-mqtt` to run on either the host PC or embedded.
+
+It sounds like there may be future additions to Cargo and/or [Rust Analyzer](https://github.com/rust-lang/rust-analyzer/issues/13529) to allow for different settings in different projects, but this didn't seem to cover our use case when the project was set up.
