@@ -12,14 +12,6 @@ impl<const P: usize> FromApplicationMessage<P> for Event {
     fn from_application_message(
         message: &ApplicationMessage<P>,
     ) -> Result<Self, EventHandlerError> {
-        message.try_into()
-    }
-}
-
-impl<const P: usize> TryFrom<&ApplicationMessage<'_, P>> for Event {
-    type Error = EventHandlerError;
-
-    fn try_from(message: &ApplicationMessage<P>) -> Result<Self, Self::Error> {
         let received = match message.topic_name {
             TOPIC_LED => {
                 let state = parse_led(message.payload)?;
