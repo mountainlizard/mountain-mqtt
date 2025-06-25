@@ -1,6 +1,6 @@
 [package]
 name = "mountain-mqtt-embassy"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["mqtt", "embassy"]
@@ -44,8 +44,3 @@ mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features 
 [features]
 default = ["defmt"]
 defmt = ["dep:defmt"]
-
-# [patch.crates-io]
-# embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
-# embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
-# embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "2bb9c0f10dd66f3fcc058897ade0e60415067449" }
