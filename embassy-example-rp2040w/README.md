@@ -6,7 +6,9 @@ A simple MQTT example to run on an Raspberry Pi Pico W (or other compatible RP20
 
 You will need the wireless-equipped version of a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) board. The example should also be relatively simple to adapt to the [Raspberry Pi Pico 2](https://www.raspberrypi.com/products/raspberry-pi-pico-2/).
 
-Before running the example, make sure your Pico board is connected to power, and connect a [Raspberry Pi Debug Probe](https://www.raspberrypi.com/documentation/microcontrollers/debug-probe.html) to the Pico debug port and via USB to your development PC. The example also reads a button connected to GPIO pin 12 - this isn't required, but if you want to try it then connect a push-to-close momentary switch between GPIO pin 12 and ground (or just use a wire connected to GPIO pin 12 that you can connect and disconnect from ground).
+Before running the example, make sure your Pico board is connected to power, and connect a [Raspberry Pi Debug Probe](https://www.raspberrypi.com/documentation/microcontrollers/debug-probe.html) to the Pico debug port and via USB to your development PC. You may also need to you may need to [install probe-rs](https://probe.rs/docs/getting-started/installation/). A debug probe is strongly recommended, but you can also [try this approach to run without one](https://embassy.dev/book/#_how_to_deploy_to_rp2040_or_rp235x_without_a_debugging_probe).
+
+The example also reads a button connected to GPIO pin 12 - this isn't required, but if you want to try it then connect a push-to-close momentary switch between GPIO pin 12 and ground (or just use a wire connected to GPIO pin 12 that you can connect and disconnect from ground).
 
 The example will attempt to connect to a WiFi network, and then to an MQTT server. The example has been tested with a Mosquitto server running in Docker - note that the example does not use an MQTT username or password, so your server will need to be configured to accept unauthenticated connections.
 
@@ -18,7 +20,7 @@ MQTT_HOST='192.168.0.201' MQTT_PORT='1883' WIFI_NETWORK='YOUR_SSID' WIFI_PASSWOR
 
 If you have trouble running the example after changing the environment variables, try running `cargo clean` and then run the command above again.
 
-If this works you will see the example build, and `probe-rs` (you may need to [install it](https://probe.rs/docs/getting-started/installation/)) will be used to flash the Pico and start running - you should then see output showing the WiFi and MQTT connection process:
+If this works you will see the example build, and `probe-rs` will be used to flash the Pico and start running - you should then see output showing the WiFi and MQTT connection process:
 
 ```bash
 ❯ MQTT_HOST='192.168.0.201' MQTT_PORT='1883' WIFI_NETWORK='mint' WIFI_PASSWORD='PXgu17wAIcPM' cargo run --release
