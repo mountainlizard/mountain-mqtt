@@ -18,7 +18,7 @@ MQTT_HOST='192.168.0.201' MQTT_PORT='1883' WIFI_NETWORK='YOUR_SSID' WIFI_PASSWOR
 
 If you have trouble running the example after changing the environment variables, try running `cargo clean` and then run the command above again.
 
-If this works you will see the example build, and `probe-rs` will be used to flash the Pico and start running - you should then see output showing the WiFi and MQTT connection process:
+If this works you will see the example build, and `probe-rs` (you may need to [install it](https://probe.rs/docs/getting-started/installation/)) will be used to flash the Pico and start running - you should then see output showing the WiFi and MQTT connection process:
 
 ```bash
 ❯ MQTT_HOST='192.168.0.201' MQTT_PORT='1883' WIFI_NETWORK='mint' WIFI_PASSWORD='PXgu17wAIcPM' cargo run --release
