@@ -15,6 +15,8 @@ use mountain_mqtt_embassy::mqtt_manager::{self, MqttEvent, Settings};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";
+
 #[derive(Clone)]
 pub enum MqttAction {
     AnnounceAndSubscribe { connection_id: ConnectionId },
@@ -36,7 +38,14 @@ impl MqttOperations for MqttAction {
             // Specific to one connection, not retried
             Self::AnnounceAndSubscribe { connection_id } => {
                 if connection_id == &current_connection_id && !is_retry {
-                    // TODO: add in a publish for "announce"
+                    client
+                        .publish(
+                            TOPIC_ANNOUNCE,
+                            "true".as_bytes(),
+                            QualityOfService::Qos1,
+                            false,
+                        )
+                        .await?;
                     client.subscribe(TOPIC_LED, QualityOfService::Qos1).await?;
                 }
             }
@@ -75,21 +84,21 @@ async fn mqtt_channel_task(
 
 #[embassy_executor::task]
 async fn mqtt_task(
-    action_sender: Sender<'static, NoopRawMutex, MqttAction, 32>,
-    event_receiver: Receiver<'static, NoopRawMutex, MqttEvent<Event>, 32>,
-    event_pub: EventPub,
-    mut action_sub: ActionSub,
+    mut actions_in: ActionSub,
+    actions_out: Sender<'static, NoopRawMutex, MqttAction, 32>,
+    events_in: Receiver<'static, NoopRawMutex, MqttEvent<Event>, 32>,
+    events_out: EventPub,
 ) -> ! {
     loop {
-        let next = select::select(action_sub.next_message_pure(), event_receiver.receive()).await;
+        let next = select::select(actions_in.next_message_pure(), events_in.receive()).await;
         match next {
             Either::First(action) => {
                 // Always leave space free for sending AnnounceAndSubscribe actions
                 // in response to connecting - if we don't send these, we won't subscribe, and
                 // the MQTT connection won't work as expected
                 // If we have to drop outgoing actions, do so rather than blocking
-                if action_sender.free_capacity() > 8 {
-                    let _ = action_sender.try_send(MqttAction::Action(action));
+                if actions_out.free_capacity() > 8 {
+                    let _ = actions_out.try_send(MqttAction::Action(action));
                 }
             }
             Either::Second(event) => match event {
@@ -97,10 +106,10 @@ async fn mqtt_task(
                     connection_id: _,
                     event,
                 } => {
-                    event_pub.publish_immediate(event);
+                    events_out.publish_immediate(event);
                 }
                 MqttEvent::Connected { connection_id } => {
-                    action_sender
+                    actions_out
                         .send(MqttAction::AnnounceAndSubscribe { connection_id })
                         .await
                 }
@@ -117,7 +126,6 @@ async fn mqtt_task(
 static EVENT_CHANNEL: StaticCell<Channel<NoopRawMutex, MqttAction, 32>> = StaticCell::new();
 static ACTION_CHANNEL: StaticCell<Channel<NoopRawMutex, MqttEvent<Event>, 32>> = StaticCell::new();
 
-#[allow(clippy::too_many_arguments)]
 pub async fn init(
     spawner: &Spawner,
     stack: Stack<'static>,
@@ -127,22 +135,23 @@ pub async fn init(
     host: Ipv4Address,
     port: u16,
 ) {
-    let action_channel = EVENT_CHANNEL.init(Channel::<NoopRawMutex, MqttAction, 32>::new());
-    let event_channel = ACTION_CHANNEL.init(Channel::<NoopRawMutex, MqttEvent<Event>, 32>::new());
+    let mqtt_action_channel = EVENT_CHANNEL.init(Channel::<NoopRawMutex, MqttAction, 32>::new());
+    let mqtt_event_channel =
+        ACTION_CHANNEL.init(Channel::<NoopRawMutex, MqttEvent<Event>, 32>::new());
 
     unwrap!(spawner.spawn(mqtt_channel_task(
         stack,
         uid,
-        event_channel.sender(),
-        action_channel.receiver(),
+        mqtt_event_channel.sender(),
+        mqtt_action_channel.receiver(),
         host,
         port
     )));
 
     unwrap!(spawner.spawn(mqtt_task(
-        action_channel.sender(),
-        event_channel.receiver(),
-        event_pub,
         action_sub,
+        mqtt_action_channel.sender(),
+        mqtt_event_channel.receiver(),
+        event_pub,
     )));
 }
