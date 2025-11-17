@@ -11,15 +11,18 @@ mod event;
 mod example_mqtt_manager;
 mod ui;
 
-use crate::action::Action;
-use crate::channels::{ActionChannel, EventChannel};
-use crate::event::Event;
-use crate::ui::ui_task;
-use core::fmt::Write;
+// use crate::action::Action;
+// use crate::channels::{ActionChannel, EventChannel};
+// use crate::event::Event;
+// use crate::ui::ui_task;
+use core::fmt::Write as _;
 use cyw43::JoinOptions;
 use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_futures::join::join3;
+use embassy_futures::select::{self, select, Either};
+use embassy_net::tcp::TcpSocket;
 use embassy_net::Ipv4Address;
 use embassy_net::{Config, StackResources};
 use embassy_rp::bind_interrupts;
@@ -28,14 +31,26 @@ use embassy_rp::flash::Async;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex};
+use embassy_sync::channel::Channel;
 use embassy_sync::pubsub::PubSubChannel;
-use embassy_time::{Duration, Timer};
+// use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+// use embassy_sync::pubsub::PubSubChannel;
+// use embassy_time::{Delay, Duration, Timer};
+use embassy_time::{with_timeout, Delay, Duration, Timer};
+use embedded_hal_async::delay::DelayNs;
+use embedded_io_async::Read;
+use embedded_io_async::Write;
 use heapless::String;
+// use mountain_mqtt::client::{Client, ClientNoQueue, ConnectionSettings};
+// use mountain_mqtt::client_state::ClientStateNoQueue;
+// use mountain_mqtt::embedded_hal_async::DelayEmbedded;
+// use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
+// use mountain_mqtt::packet_client::PacketClient;
+use mountain_mqtt_embassy::mqtt_manager::Settings;
 use rand::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
-
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
 });
@@ -52,8 +67,8 @@ const MQTT_PORT: &str = env!("MQTT_PORT");
 
 static UID: StaticCell<String<64>> = StaticCell::new();
 static CHIP_ID: StaticCell<String<64>> = StaticCell::new();
-static EVENT_CHANNEL: StaticCell<EventChannel> = StaticCell::new();
-static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
+// static EVENT_CHANNEL: StaticCell<EventChannel> = StaticCell::new();
+// static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
 
 #[embassy_executor::task]
 async fn cyw43_task(
@@ -182,32 +197,172 @@ async fn main(spawner: Spawner) {
     stack.wait_config_up().await;
     info!("Stack is up!");
 
-    let event_channel = EVENT_CHANNEL.init(PubSubChannel::<NoopRawMutex, Event, 16, 4, 2>::new());
-    let event_pub_mqtt = event_channel.publisher().unwrap();
-    let event_sub_ui = event_channel.subscriber().unwrap();
+    const B: usize = 1024;
 
-    let action_channel =
-        ACTION_CHANNEL.init(PubSubChannel::<NoopRawMutex, Action, 16, 4, 4>::new());
-    let action_pub_ui = action_channel.publisher().unwrap();
-    let action_sub = action_channel.subscriber().unwrap();
+    let mut rx_buffer = [0; B];
+    let mut tx_buffer = [0; B];
+    // let mut mqtt_buffer = [0; B];
+
+    // let mut connection_index = 0u32;
 
     let host = MQTT_HOST.parse::<Ipv4Address>().unwrap();
     let port = MQTT_PORT.parse::<u16>().unwrap();
 
-    unwrap!(spawner.spawn(ui_task(event_sub_ui, action_pub_ui, p.PIN_12, control)));
-
-    example_mqtt_manager::init(
-        &spawner,
-        stack,
-        uid_handle,
-        event_pub_mqtt,
-        action_sub,
-        host,
-        port,
-    )
-    .await;
+    let settings = Settings::new(host, port);
 
     loop {
-        Timer::after(Duration::from_secs(5)).await;
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+
+        socket.set_timeout(None);
+
+        let remote_endpoint = (settings.address, settings.port);
+        info!("MQTT socket connecting to {:?}...", remote_endpoint);
+        if let Err(e) = socket.connect(remote_endpoint).await {
+            warn!("MQTT socket connect error, will retry: {:?}", e);
+            // Wait a while to try reconnecting
+            Timer::after(settings.reconnection_delay).await;
+            continue;
+        }
+        info!("MQTT socket connected!");
+
+        // let connection = ConnectionEmbedded::new(socket);
+
+        let rx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
+        let rx_channel_sender = rx_channel.sender();
+        let rx_channel_receiver = rx_channel.receiver();
+
+        let cancel_pubsub = PubSubChannel::<NoopRawMutex, bool, 1, 3, 3>::new();
+        let mut rx_cancel_pub = cancel_pubsub.publisher().expect("rx_cancel_pub");
+        let mut tx_cancel_pub = cancel_pubsub.publisher().expect("tx_cancel_pub");
+        let mut poll_cancel_pub = cancel_pubsub.publisher().expect("poll_cancel_pub");
+
+        let mut rx_cancel_sub = cancel_pubsub.subscriber().expect("rx_cancel_sub");
+        let mut tx_cancel_sub = cancel_pubsub.subscriber().expect("tx_cancel_sub");
+        let mut poll_cancel_sub = cancel_pubsub.subscriber().expect("poll_cancel_sub");
+
+        let (mut rx, mut tx) = socket.split();
+
+        let rx_fut = async {
+            let mut buf = [0; 8];
+            info!("rx future starting");
+
+            loop {
+                info!("Reading 8 bytes (or cancelling)...");
+                match select(rx.read_exact(&mut buf), rx_cancel_sub.next_message_pure()).await {
+                    Either::First(read) => match read {
+                        Ok(_) => {
+                            info!("Read data {:?}, sending to channel", &buf);
+                            rx_channel_sender.send(buf).await;
+                            info!("Sent data {:?} to channel", &buf)
+                        }
+                        Err(e) => {
+                            info!("Read error {}, stopping reading", e);
+                            break;
+                        }
+                    },
+                    Either::Second(_) => {
+                        info!("rx_fut cancelled, stopping reading");
+                        break;
+                    }
+                }
+
+                // match rx.read_exact(&mut buf).await {
+                //     Ok(_) => {
+                //         info!("Read data {:?}, sending to channel", &buf);
+                //         rx_channel_sender.send(buf).await;
+                //         info!("Sent data {:?} to channel", &buf)
+                //     }
+                //     Err(e) => {
+                //         info!("Read error {}, stopping reading", e);
+                //         break;
+                //     }
+                // }
+            }
+        };
+
+        let tx_fut = async {
+            let mut index: u64 = 0;
+            info!("tx future starting");
+            loop {
+                // buf[0] = index & 0xff;
+                info!("About to send data ({}){:?}", &index, &index.to_ne_bytes());
+
+                match tx.write_all(&index.to_ne_bytes()).await {
+                    Ok(_) => {
+                        info!("...Sent data ({}){:?}", &index, &index.to_ne_bytes());
+                        index += 1;
+                        Delay.delay_ms(500).await;
+                    }
+                    Err(e) => {
+                        info!("Write error {}, stopping writing", e);
+                        break;
+                    }
+                }
+            }
+        };
+
+        let poll_fut = async {
+            loop {
+                match with_timeout(Duration::from_millis(100), rx_channel_receiver.receive()).await
+                {
+                    Ok(buf) => info!("Polled data {:?} from channel", &buf),
+                    Err(_) => info!("!!! timeout"),
+                }
+            }
+        };
+
+        info!("About to start tcp futures");
+
+        join3(rx_fut, tx_fut, poll_fut).await;
+
+        info!("rx and tx futures finished");
+
+        // let delay = DelayEmbedded::new(Delay);
+        // let timeout_millis = 5000; //settings.response_timeout.as_millis() as u32;
+
+        // let packet_client = PacketClient::new(connection, &mut mqtt_buffer);
+        // let client_state = ClientStateNoQueue::default();
+
+        // let mut client = ClientNoQueue::new(
+        //     connection,
+        //     &mut mqtt_buffer,
+        //     delay,
+        //     timeout_millis,
+        //     event_handler,
+        // );
+
+        // let connection_settings = ConnectionSettings::unauthenticated("poll-test-client");
+        // client.connect(&settings).await;
     }
+
+    // let client = ClientNoQueue::new(connection, buf, delay, timeout_millis, event_handler);
+
+    // let event_channel = EVENT_CHANNEL.init(PubSubChannel::<NoopRawMutex, Event, 16, 4, 2>::new());
+    // let event_pub_mqtt = event_channel.publisher().unwrap();
+    // let event_sub_ui = event_channel.subscriber().unwrap();
+
+    // let action_channel =
+    //     ACTION_CHANNEL.init(PubSubChannel::<NoopRawMutex, Action, 16, 4, 4>::new());
+    // let action_pub_ui = action_channel.publisher().unwrap();
+    // let action_sub = action_channel.subscriber().unwrap();
+
+    // let host = MQTT_HOST.parse::<Ipv4Address>().unwrap();
+    // let port = MQTT_PORT.parse::<u16>().unwrap();
+
+    // unwrap!(spawner.spawn(ui_task(event_sub_ui, action_pub_ui, p.PIN_12, control)));
+
+    // example_mqtt_manager::init(
+    //     &spawner,
+    //     stack,
+    //     uid_handle,
+    //     event_pub_mqtt,
+    //     action_sub,
+    //     host,
+    //     port,
+    // )
+    // .await;
+
+    // loop {
+    //     Timer::after(Duration::from_secs(5)).await;
+    // }
 }
