@@ -21,7 +21,7 @@ use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join3;
-use embassy_futures::select::{self, select, Either};
+use embassy_futures::select::{select, Either};
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Ipv4Address;
 use embassy_net::{Config, StackResources};
@@ -231,9 +231,13 @@ async fn main(spawner: Spawner) {
         let rx_channel_sender = rx_channel.sender();
         let rx_channel_receiver = rx_channel.receiver();
 
+        let tx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
+        let tx_channel_sender = rx_channel.sender();
+        let tx_channel_receiver = rx_channel.receiver();
+
         let cancel_pubsub = PubSubChannel::<NoopRawMutex, bool, 1, 3, 3>::new();
-        let mut rx_cancel_pub = cancel_pubsub.publisher().expect("rx_cancel_pub");
-        let mut tx_cancel_pub = cancel_pubsub.publisher().expect("tx_cancel_pub");
+        let rx_cancel_pub = cancel_pubsub.publisher().expect("rx_cancel_pub");
+        let tx_cancel_pub = cancel_pubsub.publisher().expect("tx_cancel_pub");
         let mut poll_cancel_pub = cancel_pubsub.publisher().expect("poll_cancel_pub");
 
         let mut rx_cancel_sub = cancel_pubsub.subscriber().expect("rx_cancel_sub");
@@ -252,11 +256,18 @@ async fn main(spawner: Spawner) {
                     Either::First(read) => match read {
                         Ok(_) => {
                             info!("Read data {:?}, sending to channel", &buf);
+                            // FIXME: this should select on the cancel channel as well,
+                            // so we can cancel while waiting for a slot to put the message
                             rx_channel_sender.send(buf).await;
                             info!("Sent data {:?} to channel", &buf)
                         }
                         Err(e) => {
                             info!("Read error {}, stopping reading", e);
+                            if let Err(e) = rx_cancel_pub.try_publish(true) {
+                                info!("rx_fut failed to cancel - already cancelled '{}'", e);
+                            } else {
+                                info!("rx_fut cancelled");
+                            }
                             break;
                         }
                     },
@@ -265,18 +276,6 @@ async fn main(spawner: Spawner) {
                         break;
                     }
                 }
-
-                // match rx.read_exact(&mut buf).await {
-                //     Ok(_) => {
-                //         info!("Read data {:?}, sending to channel", &buf);
-                //         rx_channel_sender.send(buf).await;
-                //         info!("Sent data {:?} to channel", &buf)
-                //     }
-                //     Err(e) => {
-                //         info!("Read error {}, stopping reading", e);
-                //         break;
-                //     }
-                // }
             }
         };
 
@@ -284,17 +283,32 @@ async fn main(spawner: Spawner) {
             let mut index: u64 = 0;
             info!("tx future starting");
             loop {
-                // buf[0] = index & 0xff;
                 info!("About to send data ({}){:?}", &index, &index.to_ne_bytes());
 
-                match tx.write_all(&index.to_ne_bytes()).await {
-                    Ok(_) => {
-                        info!("...Sent data ({}){:?}", &index, &index.to_ne_bytes());
-                        index += 1;
-                        Delay.delay_ms(500).await;
-                    }
-                    Err(e) => {
-                        info!("Write error {}, stopping writing", e);
+                match select(
+                    tx_channel_receiver.receive(),
+                    tx_cancel_sub.next_message_pure(),
+                )
+                .await
+                {
+                    Either::First(write) => match write {
+                        Ok(_) => {
+                            info!("...Sent data ({}){:?}", &index, &index.to_ne_bytes());
+                            index += 1;
+                            Delay.delay_ms(500).await;
+                        }
+                        Err(e) => {
+                            info!("Write error {}, stopping writing", e);
+                            if let Err(e) = tx_cancel_pub.try_publish(true) {
+                                info!("tx_fut failed to cancel - already cancelled '{}'", e);
+                            } else {
+                                info!("tx_fut cancelled");
+                            }
+                            break;
+                        }
+                    },
+                    Either::Second(_) => {
+                        info!("tx_fut cancelled, stopping writing");
                         break;
                     }
                 }
@@ -303,7 +317,7 @@ async fn main(spawner: Spawner) {
 
         let poll_fut = async {
             loop {
-                match with_timeout(Duration::from_millis(100), rx_channel_receiver.receive()).await
+                match with_timeout(Duration::from_millis(5000), rx_channel_receiver.receive()).await
                 {
                     Ok(buf) => info!("Polled data {:?} from channel", &buf),
                     Err(_) => info!("!!! timeout"),
