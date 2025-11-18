@@ -31,14 +31,13 @@ use embassy_rp::flash::Async;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, ThreadModeRawMutex};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::pubsub::PubSubChannel;
 // use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 // use embassy_sync::pubsub::PubSubChannel;
 // use embassy_time::{Delay, Duration, Timer};
-use embassy_time::{with_timeout, Delay, Duration, Timer};
-use embedded_hal_async::delay::DelayNs;
+use embassy_time::{Delay, Timer};
 use embedded_io_async::Read;
 use embedded_io_async::Write;
 use heapless::String;
@@ -47,10 +46,12 @@ use heapless::String;
 // use mountain_mqtt::embedded_hal_async::DelayEmbedded;
 // use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
 // use mountain_mqtt::packet_client::PacketClient;
+use embedded_hal_async::delay::DelayNs;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
 use rand::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
 });
@@ -233,8 +234,8 @@ async fn main(spawner: Spawner) {
         let rx_channel_receiver = rx_channel.receiver();
 
         let tx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
-        let tx_channel_sender = rx_channel.sender();
-        let tx_channel_receiver = rx_channel.receiver();
+        let tx_channel_sender = tx_channel.sender();
+        let tx_channel_receiver = tx_channel.receiver();
 
         let cancel_pubsub = PubSubChannel::<NoopRawMutex, bool, 1, 3, 3>::new();
         let rx_cancel_pub = cancel_pubsub.publisher().expect("rx_cancel_pub");
@@ -249,31 +250,31 @@ async fn main(spawner: Spawner) {
 
         let rx_fut = async {
             let mut buf = [0; 8];
-            info!("rx future starting");
+            info!("rx_fut: Starting");
 
             loop {
-                info!("Reading 8 bytes (or cancelling)...");
+                info!("rx_fut: Select");
                 match select(rx.read_exact(&mut buf), rx_cancel_sub.next_message_pure()).await {
                     Either::First(read) => match read {
                         Ok(_) => {
-                            info!("Read data {:?}, sending to channel", &buf);
+                            info!("rx_fut: Read data {:?}, sending to channel", &buf);
                             // FIXME: this should select on the cancel channel as well,
                             // so we can cancel while waiting for a slot to put the message
                             rx_channel_sender.send(buf).await;
-                            info!("Sent data {:?} to channel", &buf)
+                            info!("rx_fut: Sent data {:?} to channel", &buf)
                         }
                         Err(e) => {
-                            info!("Read error {}, stopping reading", e);
+                            info!("rx_fut: Read error {}, stopping reading", e);
                             if let Err(e) = rx_cancel_pub.try_publish(true) {
-                                info!("rx_fut failed to cancel - already cancelled '{}'", e);
+                                info!("rx_fut: failed to cancel - already cancelled '{}'", e);
                             } else {
-                                info!("rx_fut cancelled");
+                                info!("rx_fut: cancelled");
                             }
                             break;
                         }
                     },
                     Either::Second(_) => {
-                        info!("rx_fut cancelled, stopping reading");
+                        info!("rx_fut: received cancellation, will exit");
                         break;
                     }
                 }
@@ -281,10 +282,9 @@ async fn main(spawner: Spawner) {
         };
 
         let tx_fut = async {
-            let mut index: u64 = 0;
-            info!("tx future starting");
+            info!("tx_fut: Starting");
             loop {
-                info!("About to send data ({}){:?}", &index, &index.to_ne_bytes());
+                info!("tx_fut: Select message");
 
                 match select(
                     tx_channel_receiver.receive(),
@@ -292,24 +292,27 @@ async fn main(spawner: Spawner) {
                 )
                 .await
                 {
-                    Either::First(write) => match write {
-                        Ok(_) => {
-                            info!("...Sent data ({}){:?}", &index, &index.to_ne_bytes());
-                            index += 1;
-                            Delay.delay_ms(500).await;
-                        }
-                        Err(e) => {
-                            info!("Write error {}, stopping writing", e);
-                            if let Err(e) = tx_cancel_pub.try_publish(true) {
-                                info!("tx_fut failed to cancel - already cancelled '{}'", e);
-                            } else {
-                                info!("tx_fut cancelled");
+                    Either::First(write) => {
+                        info!("tx_fut: Will write {:?}", &write);
+                        // FIXME: this should select on the cancel channel as well,
+                        // so we can cancel while waiting for data to send (in case it gets stuck)
+                        match tx.write_all(&write).await {
+                            Ok(_) => {
+                                info!("txfut:...wrote data {:?}", &write);
                             }
-                            break;
+                            Err(e) => {
+                                info!("txfut:...write error {}, stopping writing", e);
+                                if let Err(e) = tx_cancel_pub.try_publish(true) {
+                                    info!("tx_fut: failed to cancel - already cancelled '{}'", e);
+                                } else {
+                                    info!("tx_fut: cancelled");
+                                }
+                                break;
+                            }
                         }
-                    },
+                    }
                     Either::Second(_) => {
-                        info!("tx_fut cancelled, stopping writing");
+                        info!("tx_fut: received cancellation, will exit");
                         break;
                     }
                 }
@@ -317,12 +320,26 @@ async fn main(spawner: Spawner) {
         };
 
         let poll_fut = async {
+            let mut index: u64 = 0;
             loop {
-                match with_timeout(Duration::from_millis(5000), rx_channel_receiver.receive()).await
-                {
-                    Ok(buf) => info!("Polled data {:?} from channel", &buf),
-                    Err(_) => info!("!!! timeout"),
-                }
+                info!(
+                    "poll_fut: About to send data ({}){:?}",
+                    &index,
+                    &index.to_ne_bytes()
+                );
+                tx_channel_sender.send(index.to_ne_bytes()).await;
+                info!("poll_fut: About to receive data");
+                let received = rx_channel_receiver.receive().await;
+                info!("poll_fut: Received data {:?} from channel", &received);
+
+                Delay.delay_ms(1000).await;
+
+                index += 1;
+                // match with_timeout(Duration::from_millis(5000), rx_channel_receiver.receive()).await
+                // {
+                //     Ok(buf) => info!("Polled data {:?} from channel", &buf),
+                //     Err(_) => info!("!!! timeout"),
+                // }
             }
         };
 
