@@ -228,7 +228,8 @@ async fn main(spawner: Spawner) {
         // let connection = ConnectionEmbedded::new(socket);
 
         let rx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
-        let rx_channel_sender = rx_channel.sender();
+        let rx_channel_sender: embassy_sync::channel::Sender<'_, NoopRawMutex, [u8; 8], 1> =
+            rx_channel.sender();
         let rx_channel_receiver = rx_channel.receiver();
 
         let tx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
