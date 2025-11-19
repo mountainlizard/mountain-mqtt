@@ -205,12 +205,6 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
                     }
                     break;
                 }
-
-                // match with_timeout(Duration::from_millis(5000), rx_channel_receiver.receive()).await
-                // {
-                //     Ok(buf) => info!("Polled data {:?} from channel", &buf),
-                //     Err(_) => info!("!!! timeout"),
-                // }
             }
         };
 
@@ -221,22 +215,5 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
         info!("rx and tx futures finished");
 
         info!("Finished network comms, will reconnect");
-
-        // let delay = DelayEmbedded::new(Delay);
-        // let timeout_millis = 5000; //settings.response_timeout.as_millis() as u32;
-
-        // let packet_client = PacketClient::new(connection, &mut mqtt_buffer);
-        // let client_state = ClientStateNoQueue::default();
-
-        // let mut client = ClientNoQueue::new(
-        //     connection,
-        //     &mut mqtt_buffer,
-        //     delay,
-        //     timeout_millis,
-        //     event_handler,
-        // );
-
-        // let connection_settings = ConnectionSettings::unauthenticated("poll-test-client");
-        // client.connect(&settings).await;
     }
 }
