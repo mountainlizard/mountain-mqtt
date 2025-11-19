@@ -28,7 +28,43 @@ impl<'a> Client<'a> {
     }
 }
 
-pub async fn run(settings: Settings, stack: Stack<'static>) {
+pub async fn demo_poll(client: &mut Client<'_>) {
+    let mut index: u64 = 0;
+    loop {
+        info!(
+            "demo_poll: About to send data ({}){:?} (or cancel)",
+            &index,
+            &index.to_ne_bytes()
+        );
+
+        client.send(index.to_ne_bytes()).await;
+        info!(
+            "demo_poll: Sent data ({}){:?}",
+            &index,
+            &index.to_ne_bytes()
+        );
+
+        info!("demo_poll: About to receive data (or cancel)");
+
+        let received = client.receive().await;
+        info!("demo_poll: Received data {:?} from channel", &received);
+
+        Delay.delay_ms(1000).await;
+
+        index += 1;
+
+        if index >= 10 {
+            info!("demo_poll: Enough data sent, ending...");
+            return;
+        }
+    }
+}
+
+pub async fn run_with_demo_poll(settings: Settings, stack: Stack<'static>) {
+    run(settings, stack, demo_poll).await
+}
+
+pub async fn run(settings: Settings, stack: Stack<'static>, f: impl AsyncFn(&mut Client)) {
     const B: usize = 1024;
 
     let mut rx_buffer = [0; B];
@@ -87,37 +123,9 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
             receiver: rx_channel.receiver(),
         };
 
-        let poll_fut = async {
-            let mut index: u64 = 0;
-            loop {
-                info!(
-                    "poll_fut: About to send data ({}){:?} (or cancel)",
-                    &index,
-                    &index.to_ne_bytes()
-                );
-
-                client.send(index.to_ne_bytes()).await;
-                info!("poll_fut: Sent data ({}){:?}", &index, &index.to_ne_bytes());
-
-                info!("poll_fut: About to receive data (or cancel)");
-
-                let received = client.receive().await;
-                info!("poll_fut: Received data {:?} from channel", &received);
-
-                Delay.delay_ms(1000).await;
-
-                index += 1;
-
-                if index >= 10 {
-                    info!("poll_fut: Enough data sent, ending...");
-                    return;
-                }
-            }
-        };
-
         info!("About to start tcp futures");
 
-        match select3(rx_fut, tx_fut, poll_fut).await {
+        match select3(rx_fut, tx_fut, f(&mut client)).await {
             Either3::First(e) => info!("Finished network comms with read error {:?}", e),
             Either3::Second(e) => info!("Finished network comms with write error {:?}", e),
             Either3::Third(_) => info!("Finished network comms by polling completing"),

@@ -203,7 +203,7 @@ async fn main(spawner: Spawner) {
 
     let settings = Settings::new(host, port);
 
-    byte_data_proto::run(settings, stack).await;
+    byte_data_proto::run_with_demo_poll(settings, stack).await;
 
     // let client = ClientNoQueue::new(connection, buf, delay, timeout_millis, event_handler);
 
