@@ -77,6 +77,7 @@ pub async fn run(settings: Settings, stack: Stack<'static>, f: impl AsyncFn(&mut
 
         let remote_endpoint = (settings.address, settings.port);
         info!("MQTT socket connecting to {:?}...", remote_endpoint);
+        // TODO: This should just return directly, to let caller decide whether to retry
         if let Err(e) = socket.connect(remote_endpoint).await {
             warn!("MQTT socket connect error, will retry: {:?}", e);
             // Wait a while to try reconnecting
@@ -85,15 +86,11 @@ pub async fn run(settings: Settings, stack: Stack<'static>, f: impl AsyncFn(&mut
         }
         info!("MQTT socket connected!");
 
-        // let connection = ConnectionEmbedded::new(socket);
-
         let rx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
         let rx_channel_sender: embassy_sync::channel::Sender<'_, NoopRawMutex, [u8; 8], 1> =
             rx_channel.sender();
-        // let rx_channel_receiver = rx_channel.receiver();
 
         let tx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
-        // let tx_channel_sender = tx_channel.sender();
         let tx_channel_receiver = tx_channel.receiver();
 
         let (mut rx, mut tx) = socket.split();
