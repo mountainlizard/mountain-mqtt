@@ -4,12 +4,29 @@ use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::channel::Receiver;
+use embassy_sync::channel::Sender;
 use embassy_time::{Delay, Timer};
 use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Read;
 use embedded_io_async::Write;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
 use {defmt_rtt as _, panic_probe as _};
+
+pub struct Client<'a> {
+    sender: Sender<'a, NoopRawMutex, [u8; 8], 1>,
+    receiver: Receiver<'a, NoopRawMutex, [u8; 8], 1>,
+}
+
+impl<'a> Client<'a> {
+    pub async fn send(&mut self, message: [u8; 8]) {
+        self.sender.send(message).await
+    }
+
+    pub async fn receive(&mut self) -> [u8; 8] {
+        self.receiver.receive().await
+    }
+}
 
 pub async fn run(settings: Settings, stack: Stack<'static>) {
     const B: usize = 1024;
@@ -37,52 +54,37 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
         let rx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
         let rx_channel_sender: embassy_sync::channel::Sender<'_, NoopRawMutex, [u8; 8], 1> =
             rx_channel.sender();
-        let rx_channel_receiver = rx_channel.receiver();
+        // let rx_channel_receiver = rx_channel.receiver();
 
         let tx_channel: Channel<NoopRawMutex, [u8; 8], 1> = Channel::new();
-        let tx_channel_sender = tx_channel.sender();
+        // let tx_channel_sender = tx_channel.sender();
         let tx_channel_receiver = tx_channel.receiver();
 
         let (mut rx, mut tx) = socket.split();
 
         let rx_fut = async {
             let mut buf = [0; 8];
-            info!("rx_fut: Starting");
 
             loop {
-                info!("rx_fut: read_exact");
-                match rx.read_exact(&mut buf).await {
-                    Ok(_) => {
-                        info!("rx_fut: Have read data {:?}, select on send/cancel", &buf);
-                        rx_channel_sender.send(buf).await;
-                        info!("rx_fut: Sent data {:?} to channel", &buf)
-                    }
-                    Err(e) => {
-                        info!("rx_fut: Read error {}, stopping reading", e);
-                        return e;
-                    }
+                if let Err(e) = rx.read_exact(&mut buf).await {
+                    return e;
                 }
+                rx_channel_sender.send(buf).await
             }
         };
 
         let tx_fut = async {
-            info!("tx_fut: Starting");
             loop {
-                info!("tx_fut: receive message");
-
                 let write = tx_channel_receiver.receive().await;
-                info!("tx_fut: Will write {:?}", &write);
-
-                match tx.write_all(&write).await {
-                    Ok(_) => {
-                        info!("txfut:...wrote data {:?}", &write);
-                    }
-                    Err(e) => {
-                        info!("txfut:...write error {}, stopping writing", e);
-                        return e;
-                    }
+                if let Err(e) = tx.write_all(&write).await {
+                    return e;
                 }
             }
+        };
+
+        let mut client = Client {
+            sender: tx_channel.sender(),
+            receiver: rx_channel.receiver(),
         };
 
         let poll_fut = async {
@@ -94,12 +96,12 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
                     &index.to_ne_bytes()
                 );
 
-                tx_channel_sender.send(index.to_ne_bytes()).await;
+                client.send(index.to_ne_bytes()).await;
                 info!("poll_fut: Sent data ({}){:?}", &index, &index.to_ne_bytes());
 
                 info!("poll_fut: About to receive data (or cancel)");
 
-                let received = rx_channel_receiver.receive().await;
+                let received = client.receive().await;
                 info!("poll_fut: Received data {:?} from channel", &received);
 
                 Delay.delay_ms(1000).await;
