@@ -1,11 +1,9 @@
 use defmt::*;
-use embassy_futures::join::join3;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select3, Either3};
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::{Delay, Timer};
 use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Read;
@@ -45,15 +43,6 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
         let tx_channel_sender = tx_channel.sender();
         let tx_channel_receiver = tx_channel.receiver();
 
-        let cancel_pubsub = PubSubChannel::<NoopRawMutex, bool, 1, 3, 3>::new();
-        let rx_cancel_pub = cancel_pubsub.publisher().expect("rx_cancel_pub");
-        let tx_cancel_pub = cancel_pubsub.publisher().expect("tx_cancel_pub");
-        let poll_cancel_pub = cancel_pubsub.publisher().expect("poll_cancel_pub");
-
-        let mut rx_cancel_sub = cancel_pubsub.subscriber().expect("rx_cancel_sub");
-        let mut tx_cancel_sub = cancel_pubsub.subscriber().expect("tx_cancel_sub");
-        let mut poll_cancel_sub = cancel_pubsub.subscriber().expect("poll_cancel_sub");
-
         let (mut rx, mut tx) = socket.split();
 
         let rx_fut = async {
@@ -61,41 +50,16 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
             info!("rx_fut: Starting");
 
             loop {
-                info!("rx_fut: Select on read_exact/cancel");
-                match select(rx.read_exact(&mut buf), rx_cancel_sub.next_message_pure()).await {
-                    Either::First(read) => match read {
-                        Ok(_) => {
-                            info!("rx_fut: Have read data {:?}, select on send/cancel", &buf);
-                            match select(
-                                rx_channel_sender.send(buf),
-                                rx_cancel_sub.next_message_pure(),
-                            )
-                            .await
-                            {
-                                Either::First(_) => {
-                                    info!("rx_fut: Sent data {:?} to channel", &buf)
-                                }
-                                Either::Second(_) => {
-                                    info!("rx_fut: received cancellation (while sending to channel), will exit");
-                                    break;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            info!("rx_fut: Read error {}, stopping reading", e);
-                            if let Err(e) = rx_cancel_pub.try_publish(true) {
-                                info!("rx_fut: failed to cancel - already cancelled '{}'", e);
-                            } else {
-                                info!("rx_fut: cancelled");
-                            }
-                            break;
-                        }
-                    },
-                    Either::Second(_) => {
-                        info!(
-                            "rx_fut: received cancellation (while reading from network), will exit"
-                        );
-                        break;
+                info!("rx_fut: read_exact");
+                match rx.read_exact(&mut buf).await {
+                    Ok(_) => {
+                        info!("rx_fut: Have read data {:?}, select on send/cancel", &buf);
+                        rx_channel_sender.send(buf).await;
+                        info!("rx_fut: Sent data {:?} to channel", &buf)
+                    }
+                    Err(e) => {
+                        info!("rx_fut: Read error {}, stopping reading", e);
+                        return e;
                     }
                 }
             }
@@ -104,46 +68,18 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
         let tx_fut = async {
             info!("tx_fut: Starting");
             loop {
-                info!("tx_fut: Select message");
+                info!("tx_fut: receive message");
 
-                match select(
-                    tx_channel_receiver.receive(),
-                    tx_cancel_sub.next_message_pure(),
-                )
-                .await
-                {
-                    Either::First(write) => {
-                        info!("tx_fut: Will write {:?}", &write);
-                        match select(tx.write_all(&write), tx_cancel_sub.next_message_pure()).await
-                        {
-                            Either::First(write) => match write {
-                                Ok(_) => {
-                                    info!("txfut:...wrote data {:?}", &write);
-                                }
-                                Err(e) => {
-                                    info!("txfut:...write error {}, stopping writing", e);
-                                    if let Err(e) = tx_cancel_pub.try_publish(true) {
-                                        info!(
-                                            "tx_fut: failed to cancel - already cancelled '{}'",
-                                            e
-                                        );
-                                    } else {
-                                        info!("tx_fut: cancelled");
-                                    }
-                                    break;
-                                }
-                            },
-                            Either::Second(_) => {
-                                info!(
-                                    "tx_fut: received cancellation (during write_all), will exit"
-                                );
-                                break;
-                            }
-                        }
+                let write = tx_channel_receiver.receive().await;
+                info!("tx_fut: Will write {:?}", &write);
+
+                match tx.write_all(&write).await {
+                    Ok(_) => {
+                        info!("txfut:...wrote data {:?}", &write);
                     }
-                    Either::Second(_) => {
-                        info!("tx_fut: received cancellation (during channel receive), will exit");
-                        break;
+                    Err(e) => {
+                        info!("txfut:...write error {}, stopping writing", e);
+                        return e;
                     }
                 }
             }
@@ -158,61 +94,32 @@ pub async fn run(settings: Settings, stack: Stack<'static>) {
                     &index.to_ne_bytes()
                 );
 
-                match select(
-                    tx_channel_sender.send(index.to_ne_bytes()),
-                    poll_cancel_sub.next_message_pure(),
-                )
-                .await
-                {
-                    Either::First(_) => {
-                        info!("poll_fut: Sent data ({}){:?}", &index, &index.to_ne_bytes());
-                    }
-                    Either::Second(_) => {
-                        info!("poll_fut: received cancellation (during sending data), will break");
-                        break;
-                    }
-                }
+                tx_channel_sender.send(index.to_ne_bytes()).await;
+                info!("poll_fut: Sent data ({}){:?}", &index, &index.to_ne_bytes());
 
                 info!("poll_fut: About to receive data (or cancel)");
 
-                match select(
-                    rx_channel_receiver.receive(),
-                    poll_cancel_sub.next_message_pure(),
-                )
-                .await
-                {
-                    Either::First(received) => {
-                        info!("poll_fut: Received data {:?} from channel", &received);
-                    }
-                    Either::Second(_) => {
-                        info!(
-                            "poll_fut: received cancellation (during receiving data), will break"
-                        );
-                        break;
-                    }
-                }
+                let received = rx_channel_receiver.receive().await;
+                info!("poll_fut: Received data {:?} from channel", &received);
 
                 Delay.delay_ms(1000).await;
 
                 index += 1;
 
                 if index >= 10 {
-                    info!("poll_fut: Enough data sent, cancelling...");
-                    if let Err(e) = poll_cancel_pub.try_publish(true) {
-                        info!("poll_fut: failed to cancel - already cancelled '{}'", e);
-                    } else {
-                        info!("poll_fut: cancelled");
-                    }
-                    break;
+                    info!("poll_fut: Enough data sent, ending...");
+                    return;
                 }
             }
         };
 
         info!("About to start tcp futures");
 
-        join3(rx_fut, tx_fut, poll_fut).await;
-
-        info!("rx and tx futures finished");
+        match select3(rx_fut, tx_fut, poll_fut).await {
+            Either3::First(e) => info!("Finished network comms with read error {:?}", e),
+            Either3::Second(e) => info!("Finished network comms with write error {:?}", e),
+            Either3::Third(_) => info!("Finished network comms by polling completing"),
+        }
 
         info!("Finished network comms, will reconnect");
     }
