@@ -387,6 +387,17 @@ async fn main(spawner: Spawner) {
                 Delay.delay_ms(1000).await;
 
                 index += 1;
+
+                if index >= 10 {
+                    info!("poll_fut: Enough data sent, cancelling...");
+                    if let Err(e) = poll_cancel_pub.try_publish(true) {
+                        info!("poll_fut: failed to cancel - already cancelled '{}'", e);
+                    } else {
+                        info!("poll_fut: cancelled");
+                    }
+                    break;
+                }
+
                 // match with_timeout(Duration::from_millis(5000), rx_channel_receiver.receive()).await
                 // {
                 //     Ok(buf) => info!("Polled data {:?} from channel", &buf),
