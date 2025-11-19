@@ -64,6 +64,8 @@ pub async fn run_with_demo_poll(settings: Settings, stack: Stack<'static>) {
     run(settings, stack, demo_poll).await
 }
 
+// TODO: Move to accepting a trait impl rather than AsyncFn, so it's easier to package up say some
+// queues and provide an async method to run with them?
 pub async fn run(settings: Settings, stack: Stack<'static>, f: impl AsyncFn(&mut Client)) {
     const B: usize = 1024;
 
