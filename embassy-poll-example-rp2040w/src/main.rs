@@ -240,7 +240,7 @@ async fn main(spawner: Spawner) {
         let cancel_pubsub = PubSubChannel::<NoopRawMutex, bool, 1, 3, 3>::new();
         let rx_cancel_pub = cancel_pubsub.publisher().expect("rx_cancel_pub");
         let tx_cancel_pub = cancel_pubsub.publisher().expect("tx_cancel_pub");
-        let mut poll_cancel_pub = cancel_pubsub.publisher().expect("poll_cancel_pub");
+        let poll_cancel_pub = cancel_pubsub.publisher().expect("poll_cancel_pub");
 
         let mut rx_cancel_sub = cancel_pubsub.subscriber().expect("rx_cancel_sub");
         let mut tx_cancel_sub = cancel_pubsub.subscriber().expect("tx_cancel_sub");
