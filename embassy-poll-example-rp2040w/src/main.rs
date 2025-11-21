@@ -11,6 +11,7 @@ mod channels;
 mod event;
 mod example_mqtt_manager;
 mod message_proto;
+mod msg_bin_proto;
 mod ui;
 
 // use crate::action::Action;
@@ -204,7 +205,9 @@ async fn main(spawner: Spawner) {
 
     let settings = Settings::new(host, port);
 
-    byte_data_proto::run_with_demo_poll(settings, stack).await;
+    // byte_data_proto::run_with_demo_poll(settings, stack).await;
+    // message_proto::run_with_demo_poll(settings, stack).await;
+    msg_bin_proto::run_with_demo_poll(settings, stack).await;
 
     // let client = ClientNoQueue::new(connection, buf, delay, timeout_millis, event_handler);
 
