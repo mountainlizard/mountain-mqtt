@@ -10,6 +10,7 @@ mod byte_data_proto;
 mod channels;
 mod event;
 mod example_mqtt_manager;
+mod message_io;
 mod message_proto;
 mod msg_bin_proto;
 mod ui;
