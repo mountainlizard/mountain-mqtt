@@ -39,8 +39,19 @@ pub async fn receive_packet_bin<R, const N: usize>(read: &mut R) -> Result<Packe
 where
     R: Read,
 {
-    let mut position: usize = 0;
     let mut buf = [0; N];
+    let n = receive_packet_buf(read, &mut buf).await?;
+    PacketBin::new(&buf[0..n])
+}
+
+pub async fn receive_packet_buf<R, const N: usize>(
+    read: &mut R,
+    buf: &mut [u8; N],
+) -> Result<usize, Error>
+where
+    R: Read,
+{
+    let mut position: usize = 0;
 
     read.read_exact(&mut buf[0..1])
         .await
@@ -97,7 +108,7 @@ where
         .map_err(|_| Error::ReadExact)?;
     position += remaining_length;
 
-    PacketBin::new(&buf[0..position])
+    Ok(position)
 }
 
 // pub fn receive_message<R, const P: usize, const W: usize, const S: usize>(
