@@ -10,9 +10,9 @@ mod byte_data_proto;
 mod channels;
 mod event;
 mod example_mqtt_manager;
-mod message_io;
 mod message_proto;
-mod msg_bin_proto;
+mod packet_bin_proto;
+mod packet_io;
 mod ui;
 
 // use crate::action::Action;
@@ -208,7 +208,7 @@ async fn main(spawner: Spawner) {
 
     // byte_data_proto::run_with_demo_poll(settings, stack).await;
     // message_proto::run_with_demo_poll(settings, stack).await;
-    msg_bin_proto::run_with_demo_poll(settings, stack).await;
+    packet_bin_proto::run_with_demo_poll(settings, stack).await;
 
     // let client = ClientNoQueue::new(connection, buf, delay, timeout_millis, event_handler);
 

@@ -1,3 +1,5 @@
+use crate::packet_io;
+use crate::packet_io::PacketBin;
 use defmt::*;
 use embassy_futures::select::{select3, Either3};
 use embassy_net::tcp::TcpSocket;
@@ -8,72 +10,63 @@ use embassy_sync::channel::Receiver;
 use embassy_sync::channel::Sender;
 use embassy_time::{Delay, Timer};
 use embedded_hal_async::delay::DelayNs;
-use embedded_io_async::Read;
 use embedded_io_async::Write;
+use mountain_mqtt::codec::mqtt_writer::{MqttBufWriter, MqttWriter};
+use mountain_mqtt::codec::write;
+use mountain_mqtt::error::PacketWriteError;
+use mountain_mqtt::packets::connect::Connect;
+use mountain_mqtt::packets::packet::Packet;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
+
 use {defmt_rtt as _, panic_probe as _};
 
-#[derive(Clone, Copy)]
-pub struct MsgBin<const N: usize> {
-    buf: [u8; N],
-    len: usize,
-}
-
-impl<const N: usize> MsgBin<N> {
-    pub fn new(msg_data: &[u8]) -> Result<Self, ()> {
-        let len = msg_data.len();
-        if len > N {
-            Err(())
-        } else {
-            // TODO: Is it worth doing this without initialising the array where we are just going
-            // to overwrite it?
-            let mut buf = [0; N];
-            buf[0..len].clone_from_slice(msg_data);
-            Ok(Self { buf, len })
-        }
-    }
-
-    pub fn msg_data(&self) -> &[u8] {
-        &self.buf[0..self.len]
-    }
-}
-
 pub struct Client<'a, const N: usize> {
-    sender: Sender<'a, NoopRawMutex, MsgBin<N>, 1>,
-    receiver: Receiver<'a, NoopRawMutex, MsgBin<N>, 1>,
+    sender: Sender<'a, NoopRawMutex, PacketBin<N>, 1>,
+    receiver: Receiver<'a, NoopRawMutex, PacketBin<N>, 1>,
 }
 
 impl<'a, const N: usize> Client<'a, N> {
-    pub async fn send(&mut self, message: MsgBin<N>) {
+    pub async fn send_bin(&mut self, message: PacketBin<N>) {
         self.sender.send(message).await
     }
 
-    pub async fn receive(&mut self) -> MsgBin<N> {
+    pub async fn receive_bin(&mut self) -> PacketBin<N> {
         self.receiver.receive().await
+    }
+
+    pub async fn send<P>(&mut self, packet: P) -> Result<(), PacketWriteError>
+    where
+        P: Packet + write::Write,
+    {
+        let mut buf = [0; N];
+        let len = {
+            let mut r = MqttBufWriter::new(&mut buf);
+            r.put(&packet)?;
+            r.position()
+        };
+        let packet = PacketBin { buf, len };
+        buf[0] = 1;
+        self.send_bin(packet).await;
+        Ok(())
     }
 }
 
-pub async fn demo_poll(client: &mut Client<'_, 8>) {
+pub async fn demo_poll(client: &mut Client<'_, 1024>) {
     let mut index: u64 = 0;
     loop {
-        info!(
-            "demo_poll: About to send data ({}){:?} (or cancel)",
-            &index,
-            &index.to_ne_bytes()
-        );
+        info!("demo_poll: About to send packet {}", &index,);
 
-        client
-            .send(MsgBin::new(&index.to_ne_bytes()).unwrap())
-            .await;
-        info!(
-            "demo_poll: Sent data ({}){:?}",
-            &index,
-            &index.to_ne_bytes()
-        );
+        let packet = Connect::unauthenticated_no_topic_aliases("packet_bin_proto");
+
+        if let Err(e) = client.send(packet).await {
+            info!("demo_poll: Failed to send connect packet {:?}", e);
+        } else {
+            info!("demo_poll: Sent connect packet");
+        }
 
         info!("demo_poll: About to receive data (or cancel)");
 
-        let received = client.receive().await;
+        let received = client.receive_bin().await;
         info!(
             "demo_poll: Received data {:?} from channel",
             &received.msg_data()
@@ -101,10 +94,8 @@ pub async fn run<const N: usize>(
     stack: Stack<'static>,
     f: impl AsyncFn(&mut Client<N>),
 ) {
-    const B: usize = 1024;
-
-    let mut rx_buffer = [0; B];
-    let mut tx_buffer = [0; B];
+    let mut rx_buffer = [0; N];
+    let mut tx_buffer = [0; N];
 
     loop {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
@@ -122,27 +113,32 @@ pub async fn run<const N: usize>(
         }
         info!("MQTT socket connected!");
 
-        let rx_channel: Channel<NoopRawMutex, MsgBin<N>, 1> = Channel::new();
+        let rx_channel: Channel<NoopRawMutex, PacketBin<N>, 1> = Channel::new();
         let rx_channel_sender = rx_channel.sender();
 
-        let tx_channel: Channel<NoopRawMutex, MsgBin<N>, 1> = Channel::new();
+        let tx_channel: Channel<NoopRawMutex, PacketBin<N>, 1> = Channel::new();
         let tx_channel_receiver = tx_channel.receiver();
 
         let (mut rx, mut tx) = socket.split();
 
         let rx_fut = async {
-            let mut buf = [0; N];
+            // let mut buf = [0; N];
 
             loop {
-                if let Err(e) = rx.read_exact(&mut buf).await {
-                    return e;
+                match packet_io::receive_packet_bin(&mut rx).await {
+                    Ok(packet_bin) => rx_channel_sender.send(packet_bin).await,
+                    Err(e) => return e,
                 }
-                rx_channel_sender
-                    .send(
-                        MsgBin::new(&buf)
-                            .expect("MsgBin size mismatch in rx_fut, should not occur"),
-                    )
-                    .await
+
+                // if let Err(e) = rx.read_exact(&mut buf).await {
+                //     return e;
+                // }
+                // rx_channel_sender
+                //     .send(
+                //         PacketBin::new(&buf)
+                //             .expect("PacketBin size mismatch in rx_fut, should not occur"),
+                //     )
+                //     .await
             }
         };
 

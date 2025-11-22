@@ -1,0 +1,11 @@
+[package]
+name = "test-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+
+mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
+  "tokio",
+] }

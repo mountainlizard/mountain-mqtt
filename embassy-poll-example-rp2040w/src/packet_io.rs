@@ -1,3 +1,4 @@
+use defmt::Formatter;
 use embedded_io_async::Read;
 use mountain_mqtt::{
     codec::mqtt_reader::{MqttBufReader, MqttReader},
@@ -6,8 +7,8 @@ use mountain_mqtt::{
 };
 #[derive(Clone, Copy)]
 pub struct PacketBin<const N: usize> {
-    buf: [u8; N],
-    len: usize,
+    pub buf: [u8; N],
+    pub len: usize,
 }
 
 impl<const N: usize> PacketBin<N> {
@@ -29,10 +30,23 @@ impl<const N: usize> PacketBin<N> {
     }
 }
 
+#[derive(Debug)]
 pub enum Error {
     ReadExact,
     PacketBinTooLarge,
     PacketRead(PacketReadError),
+}
+
+impl defmt::Format for Error {
+    fn format(&self, fmt: Formatter) {
+        match self {
+            Error::ReadExact => defmt::write!(fmt, "ReadExact"),
+            Error::PacketBinTooLarge => defmt::write!(fmt, "PacketBinTooLarge"),
+            Error::PacketRead(packet_read_error) => {
+                defmt::write!(fmt, "PacketRead({:?})", packet_read_error)
+            }
+        }
+    }
 }
 
 pub async fn receive_packet_bin<R, const N: usize>(read: &mut R) -> Result<PacketBin<N>, Error>

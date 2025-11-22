@@ -105,7 +105,6 @@ pub async fn run(settings: Settings, stack: Stack<'static>, f: impl AsyncFn(&mut
         let rx_fut = async {
             loop {
                 let mut buf = [0; 8];
-                rx.re
                 if let Err(e) = rx.read_exact(&mut buf).await {
                     return e;
                 }

@@ -13,6 +13,9 @@
 			"path": "embassy-poll-example-rp2040w"
 		},
 		{
+			"path": "test-server"
+		},
+		{
 			"path": ".", "name": "/"
 		}
 	],
@@ -22,6 +25,7 @@
 			"mountain-mqtt-embassy": true,
 			"embassy-example-rp2040w": true,
 			"embassy-poll-example-rp2040w": true,
+			"test-server": true,
 		},
 	}
 }
