@@ -115,3 +115,26 @@ impl TryFrom<u8> for PacketType {
         }
     }
 }
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for PacketType {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            PacketType::Connect => defmt::write!(f, "Connect"),
+            PacketType::Connack => defmt::write!(f, "Connack"),
+            PacketType::Publish => defmt::write!(f, "Publish"),
+            PacketType::Puback => defmt::write!(f, "Puback"),
+            PacketType::Pubrec => defmt::write!(f, "Pubrec"),
+            PacketType::Pubrel => defmt::write!(f, "Pubrel"),
+            PacketType::Pubcomp => defmt::write!(f, "Pubcomp"),
+            PacketType::Subscribe => defmt::write!(f, "Subscribe"),
+            PacketType::Suback => defmt::write!(f, "Suback"),
+            PacketType::Unsubscribe => defmt::write!(f, "Unsubscribe"),
+            PacketType::Unsuback => defmt::write!(f, "Unsuback"),
+            PacketType::Pingreq => defmt::write!(f, "Pingreq"),
+            PacketType::Pingresp => defmt::write!(f, "Pingresp"),
+            PacketType::Disconnect => defmt::write!(f, "Disconnect"),
+            PacketType::Auth => defmt::write!(f, "Auth"),
+        }
+    }
+}

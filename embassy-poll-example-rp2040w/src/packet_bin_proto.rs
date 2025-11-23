@@ -67,10 +67,22 @@ pub async fn demo_poll(client: &mut Client<'_, 1024>) {
         info!("demo_poll: About to receive data (or cancel)");
 
         let received = client.receive_bin().await;
-        info!(
-            "demo_poll: Received data {:?} from channel",
-            &received.msg_data()
-        );
+        match received.as_packet_generic::<16, 16, 16>() {
+            Ok(packet) => {
+                let packet_type = packet.packet_type();
+                info!(
+                    "demo_poll: Received packet type {:?} from channel",
+                    packet_type
+                );
+            }
+            Err(e) => {
+                info!(
+                    "demo_poll: Failed to decode packet from data ({}), ending...",
+                    e
+                );
+                return;
+            }
+        }
 
         Delay.delay_ms(1000).await;
 

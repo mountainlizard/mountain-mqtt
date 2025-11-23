@@ -4,6 +4,7 @@ use mountain_mqtt::{
     codec::mqtt_reader::{MqttBufReader, MqttReader},
     data::packet_type::PacketType,
     error::PacketReadError,
+    packets::packet_generic::PacketGeneric,
 };
 #[derive(Clone, Copy)]
 pub struct PacketBin<const N: usize> {
@@ -27,6 +28,13 @@ impl<const N: usize> PacketBin<N> {
 
     pub fn msg_data(&self) -> &[u8] {
         &self.buf[0..self.len]
+    }
+
+    pub fn as_packet_generic<const P: usize, const W: usize, const S: usize>(
+        &self,
+    ) -> Result<PacketGeneric<'_, P, W, S>, PacketReadError> {
+        let mut packet_reader = MqttBufReader::new(self.msg_data());
+        packet_reader.get()
     }
 }
 
