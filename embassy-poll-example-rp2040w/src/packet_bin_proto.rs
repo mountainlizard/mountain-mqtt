@@ -1,95 +1,24 @@
 use crate::packet_bin;
 use crate::packet_bin::PacketBin;
+use crate::poll_client::PollClient;
 use defmt::*;
 use embassy_futures::select::{select3, Either3};
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_sync::channel::Receiver;
-use embassy_sync::channel::Sender;
 use embassy_time::Delay;
 use embassy_time::Timer;
 use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
-use heapless::Vec;
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
-use mountain_mqtt::client_state::ClientState;
-use mountain_mqtt::client_state::ClientStateNoQueue;
-use mountain_mqtt::codec::mqtt_writer::{MqttBufWriter, MqttWriter};
-use mountain_mqtt::codec::write;
-use mountain_mqtt::data::property::ConnectProperty;
-use mountain_mqtt::packets::connect::Connect;
-use mountain_mqtt::packets::connect::Will;
-use mountain_mqtt::packets::packet::Packet;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
 use {defmt_rtt as _, panic_probe as _};
 
-pub struct Client<'a, const N: usize> {
-    client_state: ClientStateNoQueue,
-    sender: Sender<'a, NoopRawMutex, PacketBin<N>, 1>,
-    receiver: Receiver<'a, NoopRawMutex, PacketBin<N>, 1>,
-}
-
-impl<'a, const N: usize> Client<'a, N> {
-    pub async fn send_bin(&mut self, message: PacketBin<N>) {
-        self.sender.send(message).await
-    }
-
-    pub async fn receive_bin(&mut self) -> PacketBin<N> {
-        self.receiver.receive().await
-    }
-
-    pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
-    where
-        P: Packet + write::Write,
-    {
-        let mut buf = [0; N];
-        let len = {
-            let mut r = MqttBufWriter::new(&mut buf);
-            r.put(&packet)?;
-            r.position()
-        };
-        let packet = PacketBin { buf, len };
-        buf[0] = 1;
-        self.send_bin(packet).await;
-        Ok(())
-    }
-
-    pub async fn connect_with_will<const W: usize>(
-        &mut self,
-        settings: &ConnectionSettings<'_>,
-        will: Option<Will<'_, W>>,
-    ) -> Result<(), ClientError> {
-        let mut properties = Vec::new();
-        // By setting maximum topic alias to 0, we prevent the server
-        // trying to use aliases, which we don't support. They are optional
-        // and only provide for reduced packet size, but would require storing
-        // topic names from the server for the length of the connection,
-        // which might be awkward without alloc.
-        properties
-            .push(ConnectProperty::TopicAliasMaximum(0.into()))
-            .unwrap();
-        let packet: Connect<'_, 1, W> = Connect::new(
-            settings.keep_alive(),
-            *settings.username(),
-            *settings.password(),
-            settings.client_id(),
-            true,
-            will,
-            properties,
-        );
-        self.client_state.connect(&packet)?;
-        self.send(packet).await
-    }
-
-    pub async fn connect(&mut self, settings: &ConnectionSettings<'_>) -> Result<(), ClientError> {
-        self.connect_with_will::<0>(settings, None).await
-    }
-}
-
-pub async fn demo_poll_result(client: &mut Client<'_, 1024>) -> Result<(), ClientError> {
+pub async fn demo_poll_result(
+    client: &mut PollClient<'_, NoopRawMutex, 1024>,
+) -> Result<(), ClientError> {
     client
         .connect(&ConnectionSettings::unauthenticated("packet_bin_proto"))
         .await?;
@@ -101,7 +30,7 @@ pub async fn demo_poll_result(client: &mut Client<'_, 1024>) -> Result<(), Clien
     // Ok(())
 }
 
-pub async fn demo_poll(client: &mut Client<'_, 1024>) {
+pub async fn demo_poll(client: &mut PollClient<'_, NoopRawMutex, 1024>) {
     if let Err(e) = demo_poll_result(client).await {
         info!("demo_poll: Error {}", e);
     }
@@ -161,7 +90,7 @@ pub async fn run_with_demo_poll(settings: Settings, stack: Stack<'static>) {
 pub async fn run<const N: usize>(
     settings: Settings,
     stack: Stack<'static>,
-    f: impl AsyncFn(&mut Client<N>),
+    f: impl AsyncFn(&mut PollClient<NoopRawMutex, N>),
 ) {
     let mut rx_buffer = [0; N];
     let mut tx_buffer = [0; N];
@@ -208,11 +137,7 @@ pub async fn run<const N: usize>(
             }
         };
 
-        let mut client = Client {
-            client_state: ClientStateNoQueue::default(),
-            sender: tx_channel.sender(),
-            receiver: rx_channel.receiver(),
-        };
+        let mut client = PollClient::new(tx_channel.sender(), rx_channel.receiver());
 
         info!("About to start tcp futures");
 

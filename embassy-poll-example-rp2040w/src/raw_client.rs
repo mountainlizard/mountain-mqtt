@@ -25,6 +25,13 @@ impl<'a, M, const N: usize> RawClient<'a, M, N>
 where
     M: RawMutex,
 {
+    pub fn new(
+        sender: Sender<'a, M, PacketBin<N>, 1>,
+        receiver: Receiver<'a, M, PacketBin<N>, 1>,
+    ) -> Self {
+        Self { sender, receiver }
+    }
+
     pub async fn send_bin(&mut self, message: PacketBin<N>) {
         self.sender.send(message).await
     }

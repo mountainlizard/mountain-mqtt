@@ -1,4 +1,8 @@
-use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::{
+    blocking_mutex::raw::RawMutex,
+    channel::{Receiver, Sender},
+};
+use heapless::Vec;
 use mountain_mqtt::{
     client::{ClientError, ConnectionSettings},
     client_state::{ClientState, ClientStateNoQueue},
@@ -6,7 +10,7 @@ use mountain_mqtt::{
     packets::connect::{Connect, Will},
 };
 
-use crate::raw_client::RawClient;
+use crate::{packet_bin::PacketBin, raw_client::RawClient};
 
 pub struct PollClient<'a, M, const N: usize>
 where
@@ -20,6 +24,16 @@ impl<'a, M, const N: usize> PollClient<'a, M, N>
 where
     M: RawMutex,
 {
+    pub fn new(
+        sender: Sender<'a, M, PacketBin<N>, 1>,
+        receiver: Receiver<'a, M, PacketBin<N>, 1>,
+    ) -> Self {
+        Self {
+            client_state: ClientStateNoQueue::default(),
+            raw_client: RawClient::new(sender, receiver),
+        }
+    }
+
     pub async fn connect_with_will<const W: usize>(
         &mut self,
         settings: &ConnectionSettings<'_>,
