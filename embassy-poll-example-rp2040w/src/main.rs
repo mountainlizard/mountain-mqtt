@@ -13,6 +13,8 @@ mod example_mqtt_manager;
 mod message_proto;
 mod packet_bin;
 mod packet_bin_proto;
+mod poll_client;
+mod raw_client;
 mod ui;
 
 // use crate::action::Action;

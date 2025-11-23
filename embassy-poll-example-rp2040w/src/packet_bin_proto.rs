@@ -8,7 +8,9 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::channel::Receiver;
 use embassy_sync::channel::Sender;
+use embassy_time::Delay;
 use embassy_time::Timer;
+use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
 use heapless::Vec;
 use mountain_mqtt::client::ClientError;
@@ -22,7 +24,6 @@ use mountain_mqtt::packets::connect::Connect;
 use mountain_mqtt::packets::connect::Will;
 use mountain_mqtt::packets::packet::Packet;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
-
 use {defmt_rtt as _, panic_probe as _};
 
 pub struct Client<'a, const N: usize> {
@@ -93,7 +94,11 @@ pub async fn demo_poll_result(client: &mut Client<'_, 1024>) -> Result<(), Clien
         .connect(&ConnectionSettings::unauthenticated("packet_bin_proto"))
         .await?;
 
-    Ok(())
+    loop {
+        Delay.delay_ms(500).await;
+    }
+
+    // Ok(())
 }
 
 pub async fn demo_poll(client: &mut Client<'_, 1024>) {
