@@ -6,6 +6,7 @@ use embassy_futures::select::{select3, Either3};
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::Delay;
 use embassy_time::Timer;
@@ -87,11 +88,13 @@ pub async fn run_with_demo_poll(settings: Settings, stack: Stack<'static>) {
 
 // TODO: Move to accepting a trait impl rather than AsyncFn, so it's easier to package up say some
 // queues and provide an async method to run with them?
-pub async fn run<const N: usize>(
+pub async fn run<M, const N: usize>(
     settings: Settings,
     stack: Stack<'static>,
-    f: impl AsyncFn(&mut PollClient<NoopRawMutex, N>),
-) {
+    f: impl AsyncFn(&mut PollClient<M, N>),
+) where
+    M: RawMutex,
+{
     let mut rx_buffer = [0; N];
     let mut tx_buffer = [0; N];
 
@@ -111,10 +114,10 @@ pub async fn run<const N: usize>(
         }
         info!("MQTT socket connected!");
 
-        let rx_channel: Channel<NoopRawMutex, PacketBin<N>, 1> = Channel::new();
+        let rx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
         let rx_channel_sender = rx_channel.sender();
 
-        let tx_channel: Channel<NoopRawMutex, PacketBin<N>, 1> = Channel::new();
+        let tx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
         let tx_channel_receiver = tx_channel.receiver();
 
         let (mut rx, mut tx) = socket.split();
