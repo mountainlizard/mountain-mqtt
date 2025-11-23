@@ -1,5 +1,5 @@
-use crate::packet_io;
-use crate::packet_io::PacketBin;
+use crate::packet_bin;
+use crate::packet_bin::PacketBin;
 use defmt::*;
 use embassy_futures::select::{select3, Either3};
 use embassy_net::tcp::TcpSocket;
@@ -187,7 +187,7 @@ pub async fn run<const N: usize>(
 
         let rx_fut = async {
             loop {
-                match packet_io::receive_packet_bin(&mut rx).await {
+                match packet_bin::receive_packet_bin(&mut rx).await {
                     Ok(packet_bin) => rx_channel_sender.send(packet_bin).await,
                     Err(e) => return e,
                 }

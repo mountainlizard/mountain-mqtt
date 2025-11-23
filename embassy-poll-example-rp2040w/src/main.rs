@@ -11,8 +11,8 @@ mod channels;
 mod event;
 mod example_mqtt_manager;
 mod message_proto;
+mod packet_bin;
 mod packet_bin_proto;
-mod packet_io;
 mod ui;
 
 // use crate::action::Action;
