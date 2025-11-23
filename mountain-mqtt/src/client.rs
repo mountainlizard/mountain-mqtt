@@ -331,6 +331,15 @@ impl<'a> ConnectionSettings<'a> {
     pub fn client_id(&self) -> &'a str {
         self.client_id
     }
+    pub fn keep_alive(&self) -> u16 {
+        self.keep_alive
+    }
+    pub fn username(&self) -> &Option<&'a str> {
+        &self.username
+    }
+    pub fn password(&self) -> &Option<&'a [u8]> {
+        &self.password
+    }
 }
 
 #[derive(Debug, PartialEq)]
