@@ -18,7 +18,7 @@ use mountain_mqtt_embassy::mqtt_manager::Settings;
 use {defmt_rtt as _, panic_probe as _};
 
 pub async fn demo_poll_result(
-    client: &mut PollClient<'_, NoopRawMutex, 1024>,
+    client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
 ) -> Result<(), ClientError> {
     client
         .connect(&ConnectionSettings::unauthenticated("packet_bin_proto"))
@@ -31,7 +31,7 @@ pub async fn demo_poll_result(
     // Ok(())
 }
 
-pub async fn demo_poll(client: &mut PollClient<'_, NoopRawMutex, 1024>) {
+pub async fn demo_poll(client: &mut PollClient<'_, NoopRawMutex, 1024, 16>) {
     if let Err(e) = demo_poll_result(client).await {
         info!("demo_poll: Error {}", e);
     }
@@ -88,10 +88,10 @@ pub async fn run_with_demo_poll(settings: Settings, stack: Stack<'static>) {
 
 // TODO: Move to accepting a trait impl rather than AsyncFn, so it's easier to package up say some
 // queues and provide an async method to run with them?
-pub async fn run<M, const N: usize>(
+pub async fn run<M, const N: usize, const P: usize>(
     settings: Settings,
     stack: Stack<'static>,
-    f: impl AsyncFn(&mut PollClient<M, N>),
+    f: impl AsyncFn(&mut PollClient<M, N, P>),
 ) where
     M: RawMutex,
 {

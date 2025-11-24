@@ -1,3 +1,4 @@
+use defmt::info;
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     channel::{Receiver, Sender},
@@ -5,14 +6,14 @@ use embassy_sync::{
 use heapless::Vec;
 use mountain_mqtt::{
     client::{ClientError, ConnectionSettings},
-    client_state::{ClientState, ClientStateNoQueue},
+    client_state::{ClientState, ClientStateError, ClientStateNoQueue, ClientStateReceiveEvent},
     data::property::ConnectProperty,
     packets::connect::{Connect, Will},
 };
 
 use crate::{packet_bin::PacketBin, raw_client::RawClient};
 
-pub struct PollClient<'a, M, const N: usize>
+pub struct PollClient<'a, M, const N: usize, const P: usize>
 where
     M: RawMutex,
 {
@@ -20,7 +21,7 @@ where
     raw_client: RawClient<'a, M, N>,
 }
 
-impl<'a, M, const N: usize> PollClient<'a, M, N>
+impl<'a, M, const N: usize, const P: usize> PollClient<'a, M, N, P>
 where
     M: RawMutex,
 {
@@ -58,7 +59,28 @@ where
             properties,
         );
         self.client_state.connect(&packet)?;
-        self.raw_client.send(packet).await
+        self.raw_client.send(packet).await?;
+
+        // All that can happen after first connecting is that we receive an Ack,
+        // indicating we are connected and can continue, or
+        while self.client_state.waiting_for_responses() {
+            let packet_bin = self.raw_client.receive_bin().await;
+            let packet: mountain_mqtt::packets::packet_generic::PacketGeneric<'_, P, 0, 0> =
+                packet_bin.as_packet_generic()?;
+            let event = self.client_state.receive(packet)?;
+            match event {
+                ClientStateReceiveEvent::Ack => {
+                    info!("Client connected");
+                }
+                _ => {
+                    return Err(ClientError::ClientState(
+                        ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting,
+                    ))
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn connect(&mut self, settings: &ConnectionSettings<'_>) -> Result<(), ClientError> {
