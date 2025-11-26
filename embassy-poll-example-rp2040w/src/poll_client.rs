@@ -16,20 +16,54 @@ use mountain_mqtt::{
 
 use crate::{packet_bin::PacketBin, raw_client::RawClient};
 
-/// The result of calling [`PollClient::receive`] or [`PollClient::try_receive`]
-pub struct Received<'a, const N: usize, const P: usize> {
-    packet_bin: PacketBin<N>,
-    event: Option<ClientReceivedEvent<'a, P>>,
-}
+// /// The result of calling [`PollClient::receive`] or [`PollClient::try_receive`]
+// pub struct Received<'a, const N: usize, const P: usize> {
+//     packet_bin: PacketBin<N>,
+//     event: Option<ClientReceivedEvent<'a, P>>,
+// }
 
-impl<'a, const N: usize, const P: usize> Received<'a, N, P> {
-    pub fn packet_bin(&self) -> &PacketBin<N> {
-        &self.packet_bin
-    }
-    pub fn event(&self) -> &Option<ClientReceivedEvent<'a, P>> {
-        &self.event
-    }
-}
+// impl <'a, const N: usize, const P: usize> Received<'a, N, P> {
+//     pub async fn new(
+//         packet_bin: PacketBin<N>,
+//     ) -> Result<, ClientError> {
+// }
+
+// impl<'a, const N: usize, const P: usize> Received<'a, N, P> {
+//     pub fn packet_bin(&self) -> &PacketBin<N> {
+//         &self.packet_bin
+//     }
+//     pub fn event(&self) -> &Option<ClientReceivedEvent<'a, P>> {
+//         &self.event
+//     }
+// }
+
+// /// The result of calling [`PollClient::receive`] or [`PollClient::try_receive`]
+// pub struct Received<'a, const N: usize, const P: usize> {
+//     packet_bin: PacketBin<N>,
+//     packet: Option<PacketGeneric<'a, P, 0, 0>>,
+// }
+
+// impl<'a, const N: usize, const P: usize> Received<'a, N, P> {
+//     pub async fn new(packet_bin: PacketBin<N>) -> Result<Self, ClientError> {
+//         let mut r = Self {
+//             packet_bin,
+//             packet: None,
+//         };
+//         r.packet = r.packet_bin.as_packet_generic().ok();
+//         // let packet = packet_bin.as_packet_generic()?;
+//         // Ok(Self { packet_bin, packet })
+//         Ok(r)
+//     }
+// }
+
+// impl<'a, const N: usize, const P: usize> Received<'a, N, P> {
+//     pub fn packet_bin(&self) -> &PacketBin<N> {
+//         &self.packet_bin
+//     }
+//     pub fn packet(&self) -> &Option<PacketGeneric<'a, P, 0, 0>> {
+//         &self.packet
+//     }
+// }
 
 pub struct PollClient<'a, M, const N: usize, const P: usize>
 where
@@ -115,7 +149,7 @@ where
         self.raw_client.receive_bin().await
     }
 
-    pub async fn try_receive_bin(&mut self) -> Result<PacketBin<N>, TryReceiveError> {
+    pub async fn try_receive_bin(&mut self) -> Option<PacketBin<N>> {
         self.raw_client.try_receive_bin().await
     }
 

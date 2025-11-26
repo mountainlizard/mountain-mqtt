@@ -8,9 +8,9 @@ use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Channel;
+use embassy_time::Delay;
 use embassy_time::Timer;
-// use embassy_time::Delay;
-// use embedded_hal_async::delay::DelayNs;
+use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
@@ -31,12 +31,13 @@ pub async fn demo_poll_result(
 
     // Poll for packets
     loop {
-        // TODO: method could retain a struct with both the packet bin and the optional event, solving lifetime
-        let packet_bin = client.receive_bin().await;
-        let event = client.handle_packet_bin(&packet_bin).await?;
-        if let Some(event) = event {
-            info!("Event: {:?}", event);
+        while let Some(packet_bin) = client.try_receive_bin().await {
+            let event = client.handle_packet_bin(&packet_bin).await?;
+            if let Some(event) = event {
+                info!("Event: {:?}", event);
+            }
         }
+        Delay.delay_ms(5).await;
     }
 }
 

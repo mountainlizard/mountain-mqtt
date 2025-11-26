@@ -40,8 +40,8 @@ where
         self.receiver.receive().await
     }
 
-    pub async fn try_receive_bin(&mut self) -> Result<PacketBin<N>, TryReceiveError> {
-        self.receiver.try_receive()
+    pub async fn try_receive_bin(&mut self) -> Option<PacketBin<N>> {
+        self.receiver.try_receive().ok()
     }
 
     pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
