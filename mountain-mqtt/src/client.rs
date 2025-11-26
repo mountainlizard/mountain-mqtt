@@ -393,6 +393,31 @@ impl<'a, const P: usize> From<Publish<'a, P>> for ClientReceivedEvent<'a, P> {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl<'a, const P: usize> defmt::Format for ClientReceivedEvent<'a, P> {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            ClientReceivedEvent::ApplicationMessage(application_message) => {
+                defmt::write!(f, "ApplicationMessage({})", application_message)
+            }
+            ClientReceivedEvent::Ack => defmt::write!(f, "Ack"),
+            ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
+                granted_qos,
+                maximum_qos,
+            } => defmt::write!(
+                f,
+                "SubscriptionGrantedBelowMaximumQos({},{})",
+                granted_qos,
+                maximum_qos
+            ),
+            ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers => {
+                defmt::write!(f, "PublishedMessageHadNoMatchingSubscribers")
+            }
+            ClientReceivedEvent::NoSubscriptionExisted => defmt::write!(f, "NoSubscriptionExisted"),
+        }
+    }
+}
+
 #[allow(async_fn_in_trait)]
 pub trait EventHandler<const P: usize> {
     async fn handle_event(

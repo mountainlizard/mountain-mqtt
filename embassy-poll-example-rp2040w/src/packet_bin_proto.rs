@@ -8,27 +8,36 @@ use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::Delay;
 use embassy_time::Timer;
-use embedded_hal_async::delay::DelayNs;
+// use embassy_time::Delay;
+// use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
+use mountain_mqtt::data::quality_of_service::QualityOfService;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
 use {defmt_rtt as _, panic_probe as _};
 
 pub async fn demo_poll_result(
     client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
 ) -> Result<(), ClientError> {
+    // Connect - this sends packet and then waits for response
     client
         .connect(&ConnectionSettings::unauthenticated("packet_bin_proto"))
         .await?;
 
-    loop {
-        Delay.delay_ms(500).await;
-    }
+    // Subscribe - this sends packet but does NOT wait for response - we will need to poll for packets
+    client.subscribe("nonsense", QualityOfService::Qos0).await?;
 
-    // Ok(())
+    // Poll for packets
+    loop {
+        // TODO: method could retain a struct with both the packet bin and the optional event, solving lifetime
+        let packet_bin = client.receive_bin().await;
+        let event = client.handle_packet_bin(&packet_bin).await?;
+        if let Some(event) = event {
+            info!("Event: {:?}", event);
+        }
+    }
 }
 
 pub async fn demo_poll(client: &mut PollClient<'_, NoopRawMutex, 1024, 16>) {
