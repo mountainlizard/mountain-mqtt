@@ -182,8 +182,8 @@ pub async fn run<M, const N: usize, const P: usize>(
         info!("About to start tcp futures");
 
         match select3(rx_fut, tx_fut, f(&mut client)).await {
-            Either3::First(e) => info!("Finished network comms with read error {:?}", e),
-            Either3::Second(e) => info!("Finished network comms with write error {:?}", e),
+            Either3::First(e) => warn!("Finished network comms with read error {:?}", e),
+            Either3::Second(e) => warn!("Finished network comms with write error {:?}", e),
             Either3::Third(_) => info!("Finished network comms by polling completing"),
         }
 
