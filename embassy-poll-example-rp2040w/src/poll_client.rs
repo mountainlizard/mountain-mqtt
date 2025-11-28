@@ -214,19 +214,28 @@ where
         }
     }
 
+    fn check_receive_timeout(&self) -> Result<(), ClientError> {
+        if let Some(receive_timeout_start) = self.receive_timeout_start {
+            if receive_timeout_start.elapsed() > self.settings.receive_timeout {
+                return Err(ClientError::ReceiveTimeoutServerUnresponsive);
+            }
+        }
+        Ok(())
+    }
+
+    fn reset_receive_timeout(&mut self) {
+        self.receive_timeout_start = Some(Instant::now());
+    }
+
     pub async fn try_receive_bin(&mut self) -> Result<Option<PacketBin<N>>, ClientError> {
         self.ping_if_needed().await?;
 
         let packet = self.raw_client.try_receive_bin();
         if packet.is_some() {
-            self.receive_timeout_start = Some(Instant::now());
+            self.reset_receive_timeout();
             Ok(packet)
         } else {
-            if let Some(receive_timeout_start) = self.receive_timeout_start {
-                if receive_timeout_start.elapsed() > self.settings.receive_timeout {
-                    return Err(ClientError::ReceiveTimeoutServerUnresponsive);
-                }
-            }
+            self.check_receive_timeout()?;
             Ok(packet)
         }
     }
