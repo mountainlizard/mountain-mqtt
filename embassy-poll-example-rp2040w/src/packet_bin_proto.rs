@@ -18,6 +18,9 @@ use mountain_mqtt::data::quality_of_service::QualityOfService;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
 use {defmt_rtt as _, panic_probe as _};
 
+pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";
+pub const TOPIC_LED: &str = "embassy-example-rp2040w-led";
+
 pub async fn demo_poll_result(
     client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
 ) -> Result<(), ClientError> {
@@ -27,15 +30,39 @@ pub async fn demo_poll_result(
         .await?;
 
     // Subscribe - this sends packet but does NOT wait for response - we will need to poll for packets
-    client.subscribe("nonsense", QualityOfService::Qos0).await?;
+    client.subscribe(TOPIC_LED, QualityOfService::Qos1).await?;
 
     // Poll for packets
+    while client.waiting_for_responses() {
+        while let Some(packet_bin) = client.try_receive_bin().await {
+            let event = client.handle_packet_bin(&packet_bin).await?;
+            info!("Event: {:?}", event);
+        }
+        Delay.delay_ms(5).await;
+    }
+
+    client
+        .publish(
+            TOPIC_ANNOUNCE,
+            "true".as_bytes(),
+            QualityOfService::Qos1,
+            false,
+        )
+        .await?;
+
+    // Poll for packets
+    while client.waiting_for_responses() {
+        while let Some(packet_bin) = client.try_receive_bin().await {
+            let event = client.handle_packet_bin(&packet_bin).await?;
+            info!("Event: {:?}", event);
+        }
+        Delay.delay_ms(5).await;
+    }
+
     loop {
         while let Some(packet_bin) = client.try_receive_bin().await {
             let event = client.handle_packet_bin(&packet_bin).await?;
-            if let Some(event) = event {
-                info!("Event: {:?}", event);
-            }
+            info!("Event: {:?}", event);
         }
         Delay.delay_ms(5).await;
     }

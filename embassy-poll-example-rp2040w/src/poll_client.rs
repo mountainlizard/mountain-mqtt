@@ -7,7 +7,10 @@ use heapless::Vec;
 use mountain_mqtt::{
     client::{ClientError, ClientReceivedEvent, ConnectionSettings},
     client_state::{ClientState, ClientStateError, ClientStateNoQueue, ClientStateReceiveEvent},
-    data::{property::ConnectProperty, quality_of_service::QualityOfService},
+    data::{
+        property::{ConnectProperty, PublishProperty},
+        quality_of_service::QualityOfService,
+    },
     packets::{
         connect::{Connect, Will},
         packet_generic::PacketGeneric,
@@ -182,6 +185,32 @@ where
         self.client_state.waiting_for_responses()
     }
 
+    /// Publish a message with given payload to a given topic, with no properties
+    pub async fn publish<'b>(
+        &'b mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+    ) -> Result<(), ClientError> {
+        self.publish_with_properties::<0>(topic_name, payload, qos, retain, Vec::new())
+            .await
+    }
+
+    pub async fn publish_with_properties<'b, const PP: usize>(
+        &'b mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+        properties: Vec<PublishProperty<'b>, PP>,
+    ) -> Result<(), ClientError> {
+        let packet = self
+            .client_state
+            .publish_with_properties(topic_name, payload, qos, retain, properties)?;
+        self.raw_client.send(packet).await
+    }
+
     /// Handle a [`PacketBin`], parsing it as a [`PacketGeneric`], then updating client state,
     /// sending any required response packet, and finally returning any [`ClientReceivedEvent`]
     /// resulting from the packet.
@@ -189,7 +218,7 @@ where
     pub async fn handle_packet_bin<'b>(
         &mut self,
         packet_bin: &'b PacketBin<N>,
-    ) -> Result<Option<ClientReceivedEvent<'b, P>>, ClientError> {
+    ) -> Result<ClientReceivedEvent<'b, P>, ClientError> {
         let (event, to_send) = {
             let packet: PacketGeneric<'_, P, 0, 0> = packet_bin.as_packet_generic()?;
 
@@ -243,6 +272,6 @@ where
             self.raw_client.send(packet).await?;
         }
 
-        Ok(Some(event))
+        Ok(event)
     }
 }
