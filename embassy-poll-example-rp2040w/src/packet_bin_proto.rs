@@ -1,5 +1,6 @@
 use crate::packet_bin;
 use crate::packet_bin::PacketBin;
+use crate::poll_client;
 use crate::poll_client::PollClient;
 use defmt::*;
 use embassy_futures::select::{select3, Either3};
@@ -34,7 +35,7 @@ pub async fn demo_poll_result(
 
     // Poll for packets
     while client.waiting_for_responses() {
-        while let Some(packet_bin) = client.try_receive_bin().await {
+        while let Some(packet_bin) = client.try_receive_bin().await? {
             let event = client.handle_packet_bin(&packet_bin).await?;
             info!("Event: {:?}", event);
         }
@@ -52,7 +53,7 @@ pub async fn demo_poll_result(
 
     // Poll for packets
     while client.waiting_for_responses() {
-        while let Some(packet_bin) = client.try_receive_bin().await {
+        while let Some(packet_bin) = client.try_receive_bin().await? {
             let event = client.handle_packet_bin(&packet_bin).await?;
             info!("Event: {:?}", event);
         }
@@ -60,7 +61,7 @@ pub async fn demo_poll_result(
     }
 
     loop {
-        while let Some(packet_bin) = client.try_receive_bin().await {
+        while let Some(packet_bin) = client.try_receive_bin().await? {
             let event = client.handle_packet_bin(&packet_bin).await?;
             info!("Event: {:?}", event);
         }
@@ -177,7 +178,11 @@ pub async fn run<M, const N: usize, const P: usize>(
             }
         };
 
-        let mut client = PollClient::new(tx_channel.sender(), rx_channel.receiver());
+        let mut client = PollClient::new(
+            tx_channel.sender(),
+            rx_channel.receiver(),
+            poll_client::Settings::default(),
+        );
 
         info!("About to start tcp futures");
 

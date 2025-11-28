@@ -1,6 +1,6 @@
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
-    channel::{Receiver, Sender, TryReceiveError},
+    channel::{Receiver, Sender},
 };
 use mountain_mqtt::{
     client::ClientError,
@@ -36,11 +36,11 @@ where
         self.sender.send(message).await
     }
 
-    pub async fn receive_bin(&mut self) -> PacketBin<N> {
-        self.receiver.receive().await
-    }
+    // pub async fn receive_bin(&mut self) -> PacketBin<N> {
+    //     self.receiver.receive().await
+    // }
 
-    pub async fn try_receive_bin(&mut self) -> Option<PacketBin<N>> {
+    pub fn try_receive_bin(&mut self) -> Option<PacketBin<N>> {
         self.receiver.try_receive().ok()
     }
 

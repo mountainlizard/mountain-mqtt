@@ -145,6 +145,9 @@ pub enum ClientError {
     PacketRead(PacketReadError),
     ClientState(ClientStateError),
     TimeoutOnResponsePacket,
+    /// Maximum timeout has elapsed without receiving any packets from the server,
+    /// therefore it is considred unresponsive
+    ReceiveTimeoutServerUnresponsive,
     Disconnected(DisconnectReasonCode),
     EventHandler(EventHandlerError),
     /// Client received an empty topic name when it has disabled topic aliases
@@ -162,6 +165,9 @@ impl defmt::Format for ClientError {
             Self::PacketRead(e) => defmt::write!(f, "PacketRead({})", e),
             Self::ClientState(e) => defmt::write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => defmt::write!(f, "TimeoutOnResponsePacket"),
+            Self::ReceiveTimeoutServerUnresponsive => {
+                defmt::write!(f, "ReceiveTimeoutServerUnresponsive")
+            }
             Self::Disconnected(r) => defmt::write!(f, "Disconnected({})", r),
             Self::EventHandler(e) => defmt::write!(f, "EventHandler({})", e),
             Self::EmptyTopicNameWithAliasesDisabled => {
@@ -202,6 +208,7 @@ impl Display for ClientError {
             Self::PacketRead(e) => write!(f, "PacketRead({})", e),
             Self::ClientState(e) => write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => write!(f, "TimeoutOnResponsePacket"),
+            Self::ReceiveTimeoutServerUnresponsive => write!(f, "ReceiveTimeoutServerUnresponsive"),
             Self::Disconnected(e) => write!(f, "Disconnected({})", e),
             Self::EventHandler(e) => write!(f, "EventHandler({})", e),
             Self::EmptyTopicNameWithAliasesDisabled => write!(f, "EmptyTopicWithAliasesDisabled"),
