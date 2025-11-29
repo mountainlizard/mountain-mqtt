@@ -4,6 +4,7 @@ runner = [
   "run",
   "--chip",
   "RP2040",
+  # See https://defmt.ferrous-systems.com/custom-log-output
   "--log-format",
   "{L} {s} - {f}",
 ]
