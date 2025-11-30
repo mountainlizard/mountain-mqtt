@@ -6,11 +6,9 @@
 #![allow(async_fn_in_trait)]
 
 mod action;
-mod byte_data_proto;
 mod channels;
 mod event;
 mod example_mqtt_manager;
-mod message_proto;
 mod packet_bin;
 mod packet_bin_client;
 mod packet_bin_proto;
@@ -82,7 +80,7 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    info!("Hello World!");
+    info!("Embassy MQTT example starting...");
 
     let p = embassy_rp::init(Default::default());
 
