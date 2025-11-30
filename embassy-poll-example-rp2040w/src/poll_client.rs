@@ -171,7 +171,7 @@ where
             // although when used for connect this will not trigger since the ping interval
             // start won't have been set)
             // let packet_bin = self.raw_client.receive_bin().await;
-            let packet_bin = self.receive_bin().await?;
+            let packet_bin = self.receive().await?;
             // if let Some(packet_bin) = self.try_receive_bin().await? {
             let packet: mountain_mqtt::packets::packet_generic::PacketGeneric<'_, P, 0, 0> =
                 packet_bin.as_packet_generic()?;
@@ -257,7 +257,7 @@ where
     /// This will handle sending pings as needed, and will also detect if the server is
     /// unresponsive, and will then return an error.
     /// NOT CANCEL-SAFE (e.g. it can send data to the server)
-    pub async fn try_receive_bin(&mut self) -> Result<Option<PacketBin<N>>, ClientError> {
+    pub async fn try_receive(&mut self) -> Result<Option<PacketBin<N>>, ClientError> {
         self.ping_if_needed().await?;
 
         let packet = self.raw_client.try_receive_bin();
@@ -308,7 +308,7 @@ where
     /// example you may wish to select between [`PollClient::receive_bin`], and having
     /// an outgoing message you wish to publish, for example by receiving one on a channel
     /// from the rest of your application.
-    pub async fn receive_bin(&mut self) -> Result<PacketBin<N>, ClientError> {
+    pub async fn receive(&mut self) -> Result<PacketBin<N>, ClientError> {
         // Loop until we error or return a packet
         loop {
             // We need to deal with the next event - this is either the ping interval
@@ -349,8 +349,8 @@ where
 
     /// True if client is waiting for a response from the server - if this is true, then you must receive and
     /// handle packets until it becomes false, before attempting to send any more packets.
-    /// This is done by calling [`PollClient::receive_bin`] or [`PollClient::try_receive_bin`]
-    /// and then passing any resulting packet to [`PollClient::handle_packet_bin`], and
+    /// This is done by calling [`PollClient::receive`] or [`PollClient::try_receive`]
+    /// and then passing any resulting packet to [`PollClient::process`], and
     /// handling any resulting [`ClientReceivedEvent`]s.
     pub fn waiting_for_responses(&self) -> bool {
         self.client_state.waiting_for_responses()
@@ -396,7 +396,7 @@ where
     /// resulting from the packet.
     /// This be called exactly once with each received [`PacketBin`]
     /// NOT CANCEL-SAFE (for example it may send response packets to the server)
-    pub async fn handle_packet_bin<'b>(
+    pub async fn process<'b>(
         &mut self,
         packet_bin: &'b PacketBin<N>,
     ) -> Result<ClientReceivedEvent<'b, P>, ClientError> {

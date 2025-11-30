@@ -34,8 +34,8 @@ pub async fn demo_poll_result(
 
     // Poll for packets until response
     while client.waiting_for_responses() {
-        let packet_bin = client.receive_bin().await?;
-        let event = client.handle_packet_bin(&packet_bin).await?;
+        let packet_bin = client.receive().await?;
+        let event = client.process(&packet_bin).await?;
         info!("Event: {:?}", event);
     }
 
@@ -50,18 +50,18 @@ pub async fn demo_poll_result(
 
     // Poll for packets until response
     while client.waiting_for_responses() {
-        let packet_bin = client.receive_bin().await?;
-        let event = client.handle_packet_bin(&packet_bin).await?;
+        let packet_bin = client.receive().await?;
+        let event = client.process(&packet_bin).await?;
         info!("Event: {:?}", event);
     }
 
     // Poll for packets for 20 seconds, then disconnect
     let end_time = Instant::now() + Duration::from_secs(20);
     loop {
-        match select(client.receive_bin(), Timer::at(end_time)).await {
+        match select(client.receive(), Timer::at(end_time)).await {
             Either::First(packet_bin) => {
                 let packet_bin = packet_bin?;
-                let event = client.handle_packet_bin(&packet_bin).await?;
+                let event = client.process(&packet_bin).await?;
                 info!("Event: {:?}", event);
             }
             Either::Second(_) => {
