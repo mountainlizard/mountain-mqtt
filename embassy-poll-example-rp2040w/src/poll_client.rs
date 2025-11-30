@@ -270,10 +270,18 @@ where
         }
     }
 
-    /// Disconnect the client
+    /// Disconnect the client with default reason code (success) and no properties
     /// NOT CANCEL-SAFE
     pub async fn disconnect(&mut self) -> Result<(), ClientError> {
-        let packet = Disconnect::default();
+        self.disconnect_with_packet(Disconnect::default()).await
+    }
+
+    /// Disconnect the client with a provided packet (e.g. for reason code)
+    /// NOT CANCEL-SAFE
+    pub async fn disconnect_with_packet<'b, const PP: usize>(
+        &mut self,
+        packet: Disconnect<'b, PP>,
+    ) -> Result<(), ClientError> {
         self.raw_client.send(packet).await?;
         // Send an empty packet to flush send queue so we know the
         // disconnect packet has actually made it to the network
