@@ -1,6 +1,6 @@
 use core::future;
 
-use crate::{packet_bin::PacketBin, raw_client::RawClient};
+use crate::{packet_bin::PacketBin, packet_bin_client::PacketBinClient};
 use defmt::info;
 use embassy_futures::select::{select3, Either3};
 use embassy_sync::{
@@ -49,7 +49,7 @@ where
 
     /// Used to send and receive [`PacketBin`] instances, each containing
     /// and MQTT packet in binary format.
-    raw_client: RawClient<'a, M, N>,
+    raw_client: PacketBinClient<'a, M, N>,
 
     /// The start of the timeout for received packets from the server.
     /// This is initially None. It is initialised when a
@@ -98,7 +98,7 @@ where
             ping_interval_start: None,
             connection_start: None,
             client_state: ClientStateNoQueue::default(),
-            raw_client: RawClient::new(sender, receiver),
+            raw_client: PacketBinClient::new(sender, receiver),
             settings,
         }
     }
@@ -148,7 +148,7 @@ where
         packet: Connect<'_, PP, W>,
     ) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
-        self.raw_client.send(packet).await?;
+        self.raw_client.send_packet(packet).await?;
 
         // Sending packet is the start of our connection
         self.connection_start = Some(Instant::now());
@@ -211,7 +211,7 @@ where
         // Note that the packet is not actually sent immediately, it is just queued,
         // but if the actual sending fails then the client will error and should not
         // be used further.
-        self.raw_client.send(Pingreq::default()).await?;
+        self.raw_client.send_packet(Pingreq::default()).await?;
         self.client_state.send_ping()?;
         self.ping_interval_start = Some(Instant::now());
         Ok(())
@@ -260,7 +260,7 @@ where
     pub async fn try_receive(&mut self) -> Result<Option<PacketBin<N>>, ClientError> {
         self.ping_if_needed().await?;
 
-        let packet = self.raw_client.try_receive_bin();
+        let packet = self.raw_client.try_receive();
         if packet.is_some() {
             self.reset_receive_timeout();
             Ok(packet)
@@ -282,10 +282,10 @@ where
         &mut self,
         packet: Disconnect<'b, PP>,
     ) -> Result<(), ClientError> {
-        self.raw_client.send(packet).await?;
+        self.raw_client.send_packet(packet).await?;
         // Send an empty packet to flush send queue so we know the
         // disconnect packet has actually made it to the network
-        self.raw_client.send_bin(PacketBin::empty()).await;
+        self.raw_client.send(PacketBin::empty()).await;
         self.client_state.disconnect()?;
         Ok(())
     }
@@ -317,7 +317,7 @@ where
             let r = select3(
                 Self::wait_for_interval(self.ping_interval_start, self.settings.ping_interval),
                 Self::wait_for_interval(self.receive_timeout_start, self.settings.receive_timeout),
-                self.raw_client.receive_bin(),
+                self.raw_client.receive(),
             )
             .await;
 
@@ -344,7 +344,7 @@ where
         maximum_qos: QualityOfService,
     ) -> Result<(), ClientError> {
         let packet = self.client_state.subscribe(topic_name, maximum_qos)?;
-        self.raw_client.send(packet).await
+        self.raw_client.send_packet(packet).await
     }
 
     /// True if client is waiting for a response from the server - if this is true, then you must receive and
@@ -388,7 +388,7 @@ where
         let packet = self
             .client_state
             .publish_with_properties(topic_name, payload, qos, retain, properties)?;
-        self.raw_client.send(packet).await
+        self.raw_client.send_packet(packet).await
     }
 
     /// Handle a [`PacketBin`], parsing it as a [`PacketGeneric`], then updating client state,
@@ -450,7 +450,7 @@ where
 
         // Send any resulting packet, no need to wait for responses
         if let Some(packet) = to_send {
-            self.raw_client.send(packet).await?;
+            self.raw_client.send_packet(packet).await?;
         }
 
         Ok(event)

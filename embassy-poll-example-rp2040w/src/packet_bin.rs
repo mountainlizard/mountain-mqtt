@@ -6,6 +6,10 @@ use mountain_mqtt::{
     error::PacketReadError,
     packets::packet_generic::PacketGeneric,
 };
+
+/// A binary packet, this is just a fixed maximum size buffer and a length
+/// for the data actually used within the buffer. Allows variable-sized packets
+/// to be stored as a sized struct.
 #[derive(Clone, Copy)]
 pub struct PacketBin<const N: usize> {
     pub buf: [u8; N],
@@ -13,6 +17,8 @@ pub struct PacketBin<const N: usize> {
 }
 
 impl<const N: usize> PacketBin<N> {
+    /// Create a new [`PacketBin`] with a copy of the data in the slice
+    /// Produces a [`PacketReadError`] if the slice is longer than N
     pub fn new(msg_data: &[u8]) -> Result<Self, PacketReadError> {
         let len = msg_data.len();
         if len > N {
@@ -26,10 +32,13 @@ impl<const N: usize> PacketBin<N> {
         }
     }
 
+    /// Get the actual message data from the buffer, as a slice
     pub fn msg_data(&self) -> &[u8] {
         &self.buf[0..self.len]
     }
 
+    /// Parse the message data as a [`PacketGeneric`]
+    /// Produces a [`PacketReadError`] if the data is not a valid packet.
     pub fn as_packet_generic<const P: usize, const W: usize, const S: usize>(
         &self,
     ) -> Result<PacketGeneric<'_, P, W, S>, PacketReadError> {
@@ -37,12 +46,15 @@ impl<const N: usize> PacketBin<N> {
         packet_reader.get()
     }
 
+    /// Create a new empty buffer (length 0)
     pub fn empty() -> Self {
         let buf = [0; N];
         Self { buf, len: 0 }
     }
 }
 
+/// Receive a packet from a [`Read`] and return as a [`PacketBin`]
+/// using MQTT packet encoding to find the size of the packet
 pub async fn receive_packet_bin<R, const N: usize>(
     read: &mut R,
 ) -> Result<PacketBin<N>, ClientError>
@@ -54,6 +66,8 @@ where
     Ok(PacketBin::new(&buf[0..n])?)
 }
 
+/// Receive a packet from a [`Read`] to a binary buffer,
+/// using MQTT packet encoding to find the size of the packet
 pub async fn receive_packet_buf<R, const N: usize>(
     read: &mut R,
     buf: &mut [u8; N],

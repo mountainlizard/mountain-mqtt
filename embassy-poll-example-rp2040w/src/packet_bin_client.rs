@@ -13,7 +13,7 @@ use mountain_mqtt::{
 
 use crate::packet_bin::PacketBin;
 
-pub struct RawClient<'a, M, const N: usize>
+pub struct PacketBinClient<'a, M, const N: usize>
 where
     M: RawMutex,
 {
@@ -21,7 +21,7 @@ where
     receiver: Receiver<'a, M, PacketBin<N>, 1>,
 }
 
-impl<'a, M, const N: usize> RawClient<'a, M, N>
+impl<'a, M, const N: usize> PacketBinClient<'a, M, N>
 where
     M: RawMutex,
 {
@@ -32,19 +32,19 @@ where
         Self { sender, receiver }
     }
 
-    pub async fn send_bin(&mut self, message: PacketBin<N>) {
+    pub async fn send(&mut self, message: PacketBin<N>) {
         self.sender.send(message).await
     }
 
-    pub async fn receive_bin(&mut self) -> PacketBin<N> {
+    pub async fn receive(&mut self) -> PacketBin<N> {
         self.receiver.receive().await
     }
 
-    pub fn try_receive_bin(&mut self) -> Option<PacketBin<N>> {
+    pub fn try_receive(&mut self) -> Option<PacketBin<N>> {
         self.receiver.try_receive().ok()
     }
 
-    pub async fn send<P>(&mut self, packet: P) -> Result<(), ClientError>
+    pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), ClientError>
     where
         P: Packet + write::Write,
     {
@@ -56,7 +56,7 @@ where
         };
         let packet = PacketBin { buf, len };
         buf[0] = 1;
-        self.send_bin(packet).await;
+        self.send(packet).await;
         Ok(())
     }
 }
