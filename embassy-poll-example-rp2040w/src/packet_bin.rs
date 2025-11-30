@@ -36,6 +36,11 @@ impl<const N: usize> PacketBin<N> {
         let mut packet_reader = MqttBufReader::new(self.msg_data());
         packet_reader.get()
     }
+
+    pub fn empty() -> Self {
+        let buf = [0; N];
+        Self { buf, len: 0 }
+    }
 }
 
 pub async fn receive_packet_bin<R, const N: usize>(

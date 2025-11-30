@@ -18,6 +18,7 @@ use mountain_mqtt::{
     },
     packets::{
         connect::{Connect, Will},
+        disconnect::Disconnect,
         packet_generic::PacketGeneric,
         pingreq::Pingreq,
     },
@@ -267,6 +268,18 @@ where
             self.check_receive_timeout()?;
             Ok(packet)
         }
+    }
+
+    /// Disconnect the client
+    /// NOT CANCEL-SAFE
+    pub async fn disconnect(&mut self) -> Result<(), ClientError> {
+        let packet = Disconnect::default();
+        self.raw_client.send(packet).await?;
+        // Send an empty packet to flush send queue so we know the
+        // disconnect packet has actually made it to the network
+        self.raw_client.send_bin(PacketBin::empty()).await;
+        self.client_state.disconnect()?;
+        Ok(())
     }
 
     async fn wait_for_interval(start: Option<Instant>, interval: Duration) {

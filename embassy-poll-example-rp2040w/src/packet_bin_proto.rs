@@ -3,13 +3,14 @@ use crate::packet_bin::PacketBin;
 use crate::poll_client;
 use crate::poll_client::PollClient;
 use defmt::*;
+use embassy_futures::select::{select, Either};
 use embassy_futures::select::{select3, Either3};
 use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::Timer;
+use embassy_time::{Duration, Instant, Timer};
 use embedded_io_async::Write;
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
@@ -54,63 +55,36 @@ pub async fn demo_poll_result(
         info!("Event: {:?}", event);
     }
 
-    // Poll for packets indefinitely
+    // Poll for packets for 20 seconds, then disconnect
+    let end_time = Instant::now() + Duration::from_secs(20);
     loop {
-        let packet_bin = client.receive_bin().await?;
-        let event = client.handle_packet_bin(&packet_bin).await?;
-        info!("Event: {:?}", event);
+        match select(client.receive_bin(), Timer::at(end_time)).await {
+            Either::First(packet_bin) => {
+                let packet_bin = packet_bin?;
+                let event = client.handle_packet_bin(&packet_bin).await?;
+                info!("Event: {:?}", event);
+            }
+            Either::Second(_) => {
+                info!("Finished polling loop - will disconnect");
+                break;
+            }
+        }
+
+        // Poll without timeout
+        // let packet_bin = client.receive_bin().await?;
+        // let event = client.handle_packet_bin(&packet_bin).await?;
+        // info!("Event: {:?}", event);
     }
+
+    client.disconnect().await?;
+
+    Ok(())
 }
 
 pub async fn demo_poll(client: &mut PollClient<'_, NoopRawMutex, 1024, 16>) {
     if let Err(e) = demo_poll_result(client).await {
         info!("demo_poll: Error {}", e);
     }
-
-    // let connect = Connect::unauthenticated_no_topic_aliases("packet_bin_proto");
-    // client.send(connect).await;
-
-    // let mut index: u64 = 0;
-    // loop {
-    //     info!("demo_poll: About to send packet {}", &index,);
-
-    //     let packet = Connect::unauthenticated_no_topic_aliases("packet_bin_proto");
-
-    //     if let Err(e) = client.send(packet).await {
-    //         info!("demo_poll: Failed to send connect packet {:?}", e);
-    //     } else {
-    //         info!("demo_poll: Sent connect packet");
-    //     }
-
-    //     info!("demo_poll: About to receive data (or cancel)");
-
-    //     let received = client.receive_bin().await;
-    //     match received.as_packet_generic::<16, 16, 16>() {
-    //         Ok(packet) => {
-    //             let packet_type = packet.packet_type();
-    //             info!(
-    //                 "demo_poll: Received packet type {:?} from channel",
-    //                 packet_type
-    //             );
-    //         }
-    //         Err(e) => {
-    //             info!(
-    //                 "demo_poll: Failed to decode packet from data ({}), ending...",
-    //                 e
-    //             );
-    //             return;
-    //         }
-    //     }
-
-    //     Delay.delay_ms(1000).await;
-
-    //     index += 1;
-
-    //     if index >= 10 {
-    //         info!("demo_poll: Enough data sent, ending...");
-    //         return;
-    //     }
-    // }
 }
 
 pub async fn run_with_demo_poll(settings: Settings, stack: Stack<'static>) {
@@ -165,8 +139,12 @@ pub async fn run<M, const N: usize, const P: usize>(
         let tx_fut = async {
             loop {
                 let write = tx_channel_receiver.receive().await;
-                if let Err(e) = tx.write_all(write.msg_data()).await {
-                    return e;
+                // Ignore packets with length 0 - we can use these as a way to flush
+                // the buffer.
+                if write.len > 0 {
+                    if let Err(e) = tx.write_all(write.msg_data()).await {
+                        return e;
+                    }
                 }
             }
         };
