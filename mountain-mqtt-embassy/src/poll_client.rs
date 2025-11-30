@@ -39,6 +39,8 @@ impl Default for Settings {
     }
 }
 
+/// An MQTT client that works by regularly polling for new received messages,
+/// rather than using a stream of events.
 pub struct PollClient<'a, M, const N: usize, const P: usize>
 where
     M: RawMutex,

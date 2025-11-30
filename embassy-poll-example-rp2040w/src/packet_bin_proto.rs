@@ -1,7 +1,3 @@
-use crate::packet_bin;
-use crate::packet_bin::PacketBin;
-use crate::poll_client;
-use crate::poll_client::PollClient;
 use defmt::*;
 use embassy_futures::select::{select, Either};
 use embassy_futures::select::{select3, Either3};
@@ -16,6 +12,8 @@ use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
 use mountain_mqtt::data::quality_of_service::QualityOfService;
 use mountain_mqtt_embassy::mqtt_manager::Settings;
+use mountain_mqtt_embassy::packet_bin::{self, PacketBin};
+use mountain_mqtt_embassy::poll_client::{self, PollClient};
 use {defmt_rtt as _, panic_probe as _};
 
 pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";
