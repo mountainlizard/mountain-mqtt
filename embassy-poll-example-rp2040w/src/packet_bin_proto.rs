@@ -9,9 +9,7 @@ use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::Delay;
 use embassy_time::Timer;
-use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::Write;
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
@@ -33,13 +31,11 @@ pub async fn demo_poll_result(
     // Subscribe - this sends packet but does NOT wait for response - we will need to poll for packets
     client.subscribe(TOPIC_LED, QualityOfService::Qos1).await?;
 
-    // Poll for packets
+    // Poll for packets until response
     while client.waiting_for_responses() {
-        while let Some(packet_bin) = client.try_receive_bin().await? {
-            let event = client.handle_packet_bin(&packet_bin).await?;
-            info!("Event: {:?}", event);
-        }
-        Delay.delay_ms(5).await;
+        let packet_bin = client.receive_bin().await?;
+        let event = client.handle_packet_bin(&packet_bin).await?;
+        info!("Event: {:?}", event);
     }
 
     client
@@ -51,21 +47,18 @@ pub async fn demo_poll_result(
         )
         .await?;
 
-    // Poll for packets
+    // Poll for packets until response
     while client.waiting_for_responses() {
-        while let Some(packet_bin) = client.try_receive_bin().await? {
-            let event = client.handle_packet_bin(&packet_bin).await?;
-            info!("Event: {:?}", event);
-        }
-        Delay.delay_ms(5).await;
+        let packet_bin = client.receive_bin().await?;
+        let event = client.handle_packet_bin(&packet_bin).await?;
+        info!("Event: {:?}", event);
     }
 
+    // Poll for packets indefinitely
     loop {
-        while let Some(packet_bin) = client.try_receive_bin().await? {
-            let event = client.handle_packet_bin(&packet_bin).await?;
-            info!("Event: {:?}", event);
-        }
-        Delay.delay_ms(5).await;
+        let packet_bin = client.receive_bin().await?;
+        let event = client.handle_packet_bin(&packet_bin).await?;
+        info!("Event: {:?}", event);
     }
 }
 

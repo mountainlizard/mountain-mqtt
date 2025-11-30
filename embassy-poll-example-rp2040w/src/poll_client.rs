@@ -304,7 +304,10 @@ where
                 // Note that ping is cancel-safe
                 Either3::First(()) => self.ping().await?,
                 Either3::Second(()) => return Err(ClientError::ReceiveTimeoutServerUnresponsive),
-                Either3::Third(packet_bin) => return Ok(packet_bin),
+                Either3::Third(packet_bin) => {
+                    self.reset_receive_timeout();
+                    return Ok(packet_bin);
+                }
             };
         }
     }
