@@ -6,7 +6,7 @@ runner = [
   "RP2040",
   # See https://defmt.ferrous-systems.com/custom-log-output
   "--log-format",
-  "{L} {s} - {f}",
+  "{L} {s} - {f} {t}",
 ]
 
 [build]
