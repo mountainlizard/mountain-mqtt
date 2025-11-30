@@ -1,11 +1,13 @@
+use core::future;
+
 use crate::{packet_bin::PacketBin, raw_client::RawClient};
 use defmt::info;
+use embassy_futures::select::{select3, Either3};
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     channel::{Receiver, Sender},
 };
-use embassy_time::{Delay, Duration, Instant};
-use embedded_hal_async::delay::DelayNs;
+use embassy_time::{Duration, Instant, Timer};
 use heapless::Vec;
 use mountain_mqtt::{
     client::{ClientError, ClientReceivedEvent, ConnectionSettings},
@@ -17,6 +19,7 @@ use mountain_mqtt::{
     packets::{
         connect::{Connect, Will},
         packet_generic::PacketGeneric,
+        pingreq::Pingreq,
     },
 };
 
@@ -101,12 +104,14 @@ where
 
     /// Connect to the server with [`ConnectionSettings`], see
     /// [`PollClient::connect_with_packet`] for details.
+    /// NOT CANCEL-SAFE
     pub async fn connect(&mut self, settings: &ConnectionSettings<'_>) -> Result<(), ClientError> {
         self.connect_with_will::<0>(settings, None).await
     }
 
     /// Connect to the server with [`ConnectionSettings`], and an optional [`Will`],
     /// see [`PollClient::connect_with_packet`] for details.
+    /// NOT CANCEL-SAFE
     pub async fn connect_with_will<const W: usize>(
         &mut self,
         settings: &ConnectionSettings<'_>,
@@ -136,6 +141,7 @@ where
 
     /// Connect to the server - this sends a [`Connect`] packet and  waits for
     /// the connection to be acknowledged, it will time out if the server is unresponsive
+    /// NOT CANCEL-SAFE
     pub async fn connect_with_packet<const PP: usize, const W: usize>(
         &mut self,
         packet: Connect<'_, PP, W>,
@@ -164,49 +170,61 @@ where
             // although when used for connect this will not trigger since the ping interval
             // start won't have been set)
             // let packet_bin = self.raw_client.receive_bin().await;
-            if let Some(packet_bin) = self.try_receive_bin().await? {
-                let packet: mountain_mqtt::packets::packet_generic::PacketGeneric<'_, P, 0, 0> =
-                    packet_bin.as_packet_generic()?;
-                let event = self.client_state.receive(packet)?;
-                match event {
-                    ClientStateReceiveEvent::Ack => {
-                        // We should now start sending pings - start from when we started connection,
-                        // since this is the last time we sent a packet
-                        self.ping_interval_start = self.connection_start;
-                        info!("Client connected");
-                    }
-                    _ => {
-                        return Err(ClientError::ClientState(
-                            ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting,
-                        ))
-                    }
+            let packet_bin = self.receive_bin().await?;
+            // if let Some(packet_bin) = self.try_receive_bin().await? {
+            let packet: mountain_mqtt::packets::packet_generic::PacketGeneric<'_, P, 0, 0> =
+                packet_bin.as_packet_generic()?;
+            let event = self.client_state.receive(packet)?;
+            match event {
+                ClientStateReceiveEvent::Ack => {
+                    // We should now start sending pings - start from when we started connection,
+                    // since this is the last time we sent a packet
+                    self.ping_interval_start = self.connection_start;
+                    info!("Client connected");
+                }
+                _ => {
+                    return Err(ClientError::ClientState(
+                        ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting,
+                    ))
                 }
             }
-            Delay.delay_ms(1).await;
+            // }
+            // Delay.delay_ms(1).await;
         }
 
         Ok(())
     }
 
-    // pub async fn receive_bin(&mut self) -> PacketBin<N> {
-    //     self.raw_client.receive_bin().await
-    // }
-
-    /// Send a ping - does not check whether one is needed, or update the ping interval start
+    /// Send a ping - does not check whether one is needed, but will update the ping interval start
+    /// Cancel-safe: will either queue a ping to be sent and update state and reset the interval
+    /// appropriately, or do nothing
     async fn ping(&mut self) -> Result<(), ClientError> {
-        let packet = self.client_state.send_ping()?;
         info!("Pinging");
-        self.raw_client.send(packet).await
+        // CANCEL-SAFETY: We need to send the ping first, then
+        // update the client_state and interval as sync operations.
+        // This does involve just ignoring the
+        // `Pingreq` packet we get back from the client state.
+        // Either this async fn is dropped at the await point, and since
+        // `send` is client safe, no packet is sent, OR we are not dropped,
+        // the packet is sent, and we update the client state and interval.
+        // Note that the packet is not actually sent immediately, it is just queued,
+        // but if the actual sending fails then the client will error and should not
+        // be used further.
+        self.raw_client.send(Pingreq::default()).await?;
+        self.client_state.send_ping()?;
+        self.ping_interval_start = Some(Instant::now());
+        Ok(())
     }
 
     /// Send a ping if more than the ping interval has elapsed (see [`Settings`]),
     /// and reset the ping interval if one was sent.
     /// Returns true if a ping was sent.
+    /// Cancel-safe: Will either send a ping and update client state and ping interval,
+    /// or do nothing.
     pub async fn ping_if_needed(&mut self) -> Result<bool, ClientError> {
         if let Some(ping_interval_start) = self.ping_interval_start {
             if ping_interval_start.elapsed() > self.settings.ping_interval {
                 self.ping().await?;
-                self.ping_interval_start = Some(Instant::now());
             }
             Ok(true)
         } else {
@@ -227,6 +245,17 @@ where
         self.receive_timeout_start = Some(Instant::now());
     }
 
+    /// Check whether a new [`PacketBin`] is available immediately, and if so
+    /// return it.
+    /// Note that this method is still async - it will not await new data from the server,
+    /// but if data is already present then we may need to perform async operations, for example
+    /// sending a response. However these operations will either complete or result in an error
+    /// in a bounded time (e.g. if data cannot be sent, the server will disconnect us for lack
+    /// of response, and/or we will be unable to ping the server and so the client will disconnect
+    /// since the server will appear unresponsive).
+    /// This will handle sending pings as needed, and will also detect if the server is
+    /// unresponsive, and will then return an error.
+    /// NOT CANCEL-SAFE (e.g. it can send data to the server)
     pub async fn try_receive_bin(&mut self) -> Result<Option<PacketBin<N>>, ClientError> {
         self.ping_if_needed().await?;
 
@@ -240,10 +269,51 @@ where
         }
     }
 
-    // pub async fn try_receive(&mut self) -> Result<Option<Received<N, P>>, ClientError> {
-    //     self.raw_client.try_receive_bin().await
-    // }
+    async fn wait_for_interval(start: Option<Instant>, interval: Duration) {
+        if let Some(start) = start {
+            Timer::at(start + interval).await
+        } else {
+            // When start is None, check is not enabled, so never complete
+            future::pending().await
+        }
+    }
 
+    /// Wait to receive a new [`PacketBin`].
+    /// This will handle sending pings as needed, and will also detect if the server is
+    /// unresponsive, and will then return an error.
+    ///
+    /// Cancel-safe: This will leave the client in a valid state even if dropped, and
+    /// will not lose packets if dropped. Therefore this can be used in a select. For
+    /// example you may wish to select between [`PollClient::receive_bin`], and having
+    /// an outgoing message you wish to publish, for example by receiving one on a channel
+    /// from the rest of your application.
+    pub async fn receive_bin(&mut self) -> Result<PacketBin<N>, ClientError> {
+        // Loop until we error or return a packet
+        loop {
+            // We need to deal with the next event - this is either the ping interval
+            // elapsing, a receive timeout, or a packet arriving.
+            // Note that all of these operations are cancel-safe
+            let r = select3(
+                Self::wait_for_interval(self.ping_interval_start, self.settings.ping_interval),
+                Self::wait_for_interval(self.receive_timeout_start, self.settings.receive_timeout),
+                self.raw_client.receive_bin(),
+            )
+            .await;
+
+            match r {
+                // Note that ping is cancel-safe
+                Either3::First(()) => self.ping().await?,
+                Either3::Second(()) => return Err(ClientError::ReceiveTimeoutServerUnresponsive),
+                Either3::Third(packet_bin) => return Ok(packet_bin),
+            };
+        }
+    }
+
+    /// Request a subscription.
+    /// This may require a response from the server, so after calling this, you must receive messages until
+    /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
+    /// require a response from the server.
+    /// NOT CANCEL-SAFE
     pub async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
@@ -253,7 +323,7 @@ where
         self.raw_client.send(packet).await
     }
 
-    /// True if client is waiting for responses - if this is true, then you must receive and
+    /// True if client is waiting for a response from the server - if this is true, then you must receive and
     /// handle packets until it becomes false, before attempting to send any more packets.
     /// This is done by calling [`PollClient::receive_bin`] or [`PollClient::try_receive_bin`]
     /// and then passing any resulting packet to [`PollClient::handle_packet_bin`], and
@@ -263,6 +333,10 @@ where
     }
 
     /// Publish a message with given payload to a given topic, with no properties
+    /// This may require a response from the server, so after calling this, you must receive messages until
+    /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
+    /// require a response from the server.
+    /// NOT CANCEL-SAFE
     pub async fn publish<'b>(
         &'b mut self,
         topic_name: &'b str,
@@ -274,6 +348,11 @@ where
             .await
     }
 
+    /// Publish a message with given payload to a given topic, with given properties
+    /// This may require a response from the server, so after calling this, you must receive messages until
+    /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
+    /// require a response from the server.
+    /// NOT CANCEL-SAFE
     pub async fn publish_with_properties<'b, const PP: usize>(
         &'b mut self,
         topic_name: &'b str,
@@ -292,6 +371,7 @@ where
     /// sending any required response packet, and finally returning any [`ClientReceivedEvent`]
     /// resulting from the packet.
     /// This be called exactly once with each received [`PacketBin`]
+    /// NOT CANCEL-SAFE (for example it may send response packets to the server)
     pub async fn handle_packet_bin<'b>(
         &mut self,
         packet_bin: &'b PacketBin<N>,

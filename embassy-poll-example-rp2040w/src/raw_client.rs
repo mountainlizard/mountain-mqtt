@@ -36,9 +36,9 @@ where
         self.sender.send(message).await
     }
 
-    // pub async fn receive_bin(&mut self) -> PacketBin<N> {
-    //     self.receiver.receive().await
-    // }
+    pub async fn receive_bin(&mut self) -> PacketBin<N> {
+        self.receiver.receive().await
+    }
 
     pub fn try_receive_bin(&mut self) -> Option<PacketBin<N>> {
         self.receiver.try_receive().ok()
