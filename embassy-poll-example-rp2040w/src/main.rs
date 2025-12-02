@@ -8,7 +8,7 @@
 mod action;
 mod channels;
 mod event;
-mod packet_bin_proto;
+mod mqtt;
 mod ui;
 
 use crate::action::Action;
@@ -200,7 +200,7 @@ async fn main(spawner: Spawner) {
 
     unwrap!(spawner.spawn(ui_task(event_sub_ui, action_pub_ui, p.PIN_12, control)));
 
-    unwrap!(spawner.spawn(packet_bin_proto::run(
+    unwrap!(spawner.spawn(mqtt::run(
         settings,
         stack,
         uid_handle,
