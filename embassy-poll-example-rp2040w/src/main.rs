@@ -8,7 +8,6 @@
 mod action;
 mod channels;
 mod event;
-mod example_mqtt_manager;
 mod packet_bin_proto;
 mod ui;
 
