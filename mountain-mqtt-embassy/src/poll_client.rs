@@ -95,7 +95,7 @@ impl From<ClientError> for MqttConnectionError {
 pub async fn run_mqtt_connection<M, const N: usize, const P: usize>(
     settings: Settings,
     stack: Stack<'static>,
-    f: impl AsyncFn(&mut PollClient<M, N, P>) -> Result<(), ClientError>,
+    f: impl AsyncFnOnce(&mut PollClient<M, N, P>) -> Result<(), ClientError>,
 ) -> Result<(), MqttConnectionError>
 where
     M: RawMutex,

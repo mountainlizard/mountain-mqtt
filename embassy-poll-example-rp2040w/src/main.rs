@@ -12,10 +12,10 @@ mod example_mqtt_manager;
 mod packet_bin_proto;
 mod ui;
 
-// use crate::action::Action;
-// use crate::channels::{ActionChannel, EventChannel};
-// use crate::event::Event;
-// use crate::ui::ui_task;
+use crate::action::Action;
+use crate::channels::{ActionChannel, EventChannel};
+use crate::event::Event;
+use crate::ui::ui_task;
 use core::fmt::Write as _;
 use cyw43::JoinOptions;
 use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
@@ -29,17 +29,11 @@ use embassy_rp::flash::Async;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
-// use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-// use embassy_sync::pubsub::PubSubChannel;
-// use embassy_time::{Delay, Duration, Timer};
-use embassy_time::Timer;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::pubsub::PubSubChannel;
+use embassy_time::{Duration, Timer};
 use heapless::String;
 use mountain_mqtt_embassy::poll_client::Settings;
-// use mountain_mqtt::client::{Client, ClientNoQueue, ConnectionSettings};
-// use mountain_mqtt::client_state::ClientStateNoQueue;
-// use mountain_mqtt::embedded_hal_async::DelayEmbedded;
-// use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
-// use mountain_mqtt::packet_client::PacketClient;
 use rand::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
@@ -60,8 +54,8 @@ const MQTT_PORT: &str = env!("MQTT_PORT");
 
 static UID: StaticCell<String<64>> = StaticCell::new();
 static CHIP_ID: StaticCell<String<64>> = StaticCell::new();
-// static EVENT_CHANNEL: StaticCell<EventChannel> = StaticCell::new();
-// static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
+static EVENT_CHANNEL: StaticCell<EventChannel> = StaticCell::new();
+static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
 
 #[embassy_executor::task]
 async fn cyw43_task(
@@ -191,49 +185,31 @@ async fn main(spawner: Spawner) {
     stack.wait_config_up().await;
     info!("Stack is up!");
 
-    // const B: usize = 1024;
-
-    // let mut rx_buffer = [0; B];
-    // let mut tx_buffer = [0; B];
-    // let mut mqtt_buffer = [0; B];
-
-    // let mut connection_index = 0u32;
-
     let host = MQTT_HOST.parse::<Ipv4Address>().unwrap();
     let port = MQTT_PORT.parse::<u16>().unwrap();
 
     let settings = Settings::new(host, port);
 
-    packet_bin_proto::run(settings, stack).await;
+    let event_channel = EVENT_CHANNEL.init(PubSubChannel::<NoopRawMutex, Event, 16, 4, 2>::new());
+    let event_pub_mqtt = event_channel.publisher().unwrap();
+    let event_sub_ui = event_channel.subscriber().unwrap();
 
-    // let client = ClientNoQueue::new(connection, buf, delay, timeout_millis, event_handler);
+    let action_channel =
+        ACTION_CHANNEL.init(PubSubChannel::<NoopRawMutex, Action, 16, 4, 4>::new());
+    let action_pub_ui = action_channel.publisher().unwrap();
+    let action_sub_mqtt = action_channel.subscriber().unwrap();
 
-    // let event_channel = EVENT_CHANNEL.init(PubSubChannel::<NoopRawMutex, Event, 16, 4, 2>::new());
-    // let event_pub_mqtt = event_channel.publisher().unwrap();
-    // let event_sub_ui = event_channel.subscriber().unwrap();
+    unwrap!(spawner.spawn(ui_task(event_sub_ui, action_pub_ui, p.PIN_12, control)));
 
-    // let action_channel =
-    //     ACTION_CHANNEL.init(PubSubChannel::<NoopRawMutex, Action, 16, 4, 4>::new());
-    // let action_pub_ui = action_channel.publisher().unwrap();
-    // let action_sub = action_channel.subscriber().unwrap();
+    unwrap!(spawner.spawn(packet_bin_proto::run(
+        settings,
+        stack,
+        uid_handle,
+        event_pub_mqtt,
+        action_sub_mqtt
+    )));
 
-    // let host = MQTT_HOST.parse::<Ipv4Address>().unwrap();
-    // let port = MQTT_PORT.parse::<u16>().unwrap();
-
-    // unwrap!(spawner.spawn(ui_task(event_sub_ui, action_pub_ui, p.PIN_12, control)));
-
-    // example_mqtt_manager::init(
-    //     &spawner,
-    //     stack,
-    //     uid_handle,
-    //     event_pub_mqtt,
-    //     action_sub,
-    //     host,
-    //     port,
-    // )
-    // .await;
-
-    // loop {
-    //     Timer::after(Duration::from_secs(5)).await;
-    // }
+    loop {
+        Timer::after(Duration::from_secs(5)).await;
+    }
 }
