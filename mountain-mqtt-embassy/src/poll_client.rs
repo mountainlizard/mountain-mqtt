@@ -1,13 +1,21 @@
-use core::future;
+use core::{future, net::Ipv4Addr};
 
-use crate::{packet_bin::PacketBin, packet_bin_client::PacketBinClient};
-use defmt::info;
+use crate::{
+    packet_bin::{self, PacketBin},
+    packet_bin_client::PacketBinClient,
+};
+use defmt::{info, warn};
 use embassy_futures::select::{select3, Either3};
+use embassy_net::{
+    tcp::{ConnectError, TcpSocket},
+    Stack,
+};
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
-    channel::{Receiver, Sender},
+    channel::{Channel, Receiver, Sender},
 };
 use embassy_time::{Duration, Instant, Timer};
+use embedded_io_async::Write;
 use heapless::Vec;
 use mountain_mqtt::{
     client::{ClientError, ClientReceivedEvent, ConnectionSettings},
@@ -16,6 +24,7 @@ use mountain_mqtt::{
         property::{ConnectProperty, PublishProperty},
         quality_of_service::QualityOfService,
     },
+    error::PacketWriteError,
     packets::{
         connect::{Connect, Will},
         disconnect::Disconnect,
@@ -24,17 +33,133 @@ use mountain_mqtt::{
     },
 };
 
+#[derive(Debug, Copy, Clone)]
 /// Settings for a [`PollClient`]
 pub struct Settings {
+    /// The address of the MQTT server
+    pub address: Ipv4Addr,
+
+    /// The port of the MQTT server
+    pub port: u16,
+
+    /// The maximum time between packets received from the server,
+    /// before we consider it unresponsive, leading to a
+    /// [`ClientError::ReceiveTimeoutServerUnresponsive`]
     receive_timeout: Duration,
+
+    /// The time between pings sent to the server to keep the
+    /// connection alive
     ping_interval: Duration,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
+impl Settings {
+    pub fn new(address: Ipv4Addr, port: u16) -> Self {
         Self {
+            address,
+            port,
             receive_timeout: Duration::from_secs(10),
             ping_interval: Duration::from_secs(2),
+        }
+    }
+}
+
+pub enum MqttConnectionError {
+    ConnectError(ConnectError),
+    ClientError(ClientError),
+    TcpWriteError(embassy_net::tcp::Error),
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for MqttConnectionError {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Self::ConnectError(e) => defmt::write!(f, "ConnectError({})", e),
+            Self::ClientError(e) => defmt::write!(f, "ClientError({})", e),
+            Self::TcpWriteError(e) => defmt::write!(f, "TcpWriteError({})", e),
+        }
+    }
+}
+
+impl From<ConnectError> for MqttConnectionError {
+    fn from(value: ConnectError) -> Self {
+        MqttConnectionError::ConnectError(value)
+    }
+}
+
+impl From<ClientError> for MqttConnectionError {
+    fn from(value: ClientError) -> Self {
+        MqttConnectionError::ClientError(value)
+    }
+}
+
+pub async fn run_mqtt_connection<M, const N: usize, const P: usize>(
+    settings: Settings,
+    stack: Stack<'static>,
+    f: impl AsyncFn(&mut PollClient<M, N, P>) -> Result<(), ClientError>,
+) -> Result<(), MqttConnectionError>
+where
+    M: RawMutex,
+{
+    let mut rx_buffer = [0; N];
+    let mut tx_buffer = [0; N];
+
+    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+
+    socket.set_timeout(None);
+
+    let remote_endpoint = (settings.address, settings.port);
+    info!("MQTT socket connecting to {:?}...", remote_endpoint);
+    // TODO: This should just return directly, to let caller decide whether to retry
+    socket.connect(remote_endpoint).await?;
+    info!("MQTT socket connected!");
+
+    let rx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
+    let rx_channel_sender = rx_channel.sender();
+
+    let tx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
+    let tx_channel_receiver = tx_channel.receiver();
+
+    let (mut rx, mut tx) = socket.split();
+
+    let rx_fut = async {
+        loop {
+            match packet_bin::receive_packet_bin(&mut rx).await {
+                Ok(packet_bin) => rx_channel_sender.send(packet_bin).await,
+                Err(e) => return e,
+            }
+        }
+    };
+
+    let tx_fut = async {
+        loop {
+            let write = tx_channel_receiver.receive().await;
+            // Ignore packets with length 0 - we can use these as a way to flush
+            // the buffer.
+            if write.len > 0 {
+                if let Err(e) = tx.write_all(write.msg_data()).await {
+                    return e;
+                }
+            }
+        }
+    };
+
+    let mut client = PollClient::new(tx_channel.sender(), rx_channel.receiver(), settings);
+
+    match select3(rx_fut, tx_fut, f(&mut client)).await {
+        Either3::First(e) => {
+            warn!("Finished network comms with read error {:?}", e);
+            Err(e)?
+        }
+        Either3::Second(e) => {
+            warn!("Finished network comms with write error {:?}", e);
+            Err(MqttConnectionError::ClientError(ClientError::PacketWrite(
+                PacketWriteError::ConnectionSend,
+            )))
+        }
+        Either3::Third(r) => {
+            info!("Finished network comms by polling completing with {:?}", r);
+            r?;
+            Ok(())
         }
     }
 }

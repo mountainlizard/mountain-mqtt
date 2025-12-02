@@ -1,19 +1,12 @@
 use defmt::*;
 use embassy_futures::select::{select, Either};
-use embassy_futures::select::{select3, Either3};
-use embassy_net::tcp::TcpSocket;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Timer};
-use embedded_io_async::Write;
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
 use mountain_mqtt::data::quality_of_service::QualityOfService;
-use mountain_mqtt_embassy::mqtt_manager::Settings;
-use mountain_mqtt_embassy::packet_bin::{self, PacketBin};
-use mountain_mqtt_embassy::poll_client::{self, PollClient};
+use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
 use {defmt_rtt as _, panic_probe as _};
 
 pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";
@@ -79,88 +72,17 @@ pub async fn demo_poll_result(
     Ok(())
 }
 
-pub async fn demo_poll(client: &mut PollClient<'_, NoopRawMutex, 1024, 16>) {
-    if let Err(e) = demo_poll_result(client).await {
-        info!("demo_poll: Error {}", e);
-    }
-}
-
-pub async fn run_with_demo_poll(settings: Settings, stack: Stack<'static>) {
-    run(settings, stack, demo_poll).await
-}
-
 // TODO: Move to accepting a trait impl rather than AsyncFn, so it's easier to package up say some
 // queues and provide an async method to run with them?
-pub async fn run<M, const N: usize, const P: usize>(
-    settings: Settings,
-    stack: Stack<'static>,
-    f: impl AsyncFn(&mut PollClient<M, N, P>),
-) where
-    M: RawMutex,
-{
-    let mut rx_buffer = [0; N];
-    let mut tx_buffer = [0; N];
-
+pub async fn run(settings: Settings, stack: Stack<'static>) {
     loop {
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        info!("run: Trying MQTT connection");
 
-        socket.set_timeout(None);
-
-        let remote_endpoint = (settings.address, settings.port);
-        info!("MQTT socket connecting to {:?}...", remote_endpoint);
-        // TODO: This should just return directly, to let caller decide whether to retry
-        if let Err(e) = socket.connect(remote_endpoint).await {
-            warn!("MQTT socket connect error, will retry: {:?}", e);
-            // Wait a while to try reconnecting
-            Timer::after(settings.reconnection_delay).await;
-            continue;
-        }
-        info!("MQTT socket connected!");
-
-        let rx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
-        let rx_channel_sender = rx_channel.sender();
-
-        let tx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
-        let tx_channel_receiver = tx_channel.receiver();
-
-        let (mut rx, mut tx) = socket.split();
-
-        let rx_fut = async {
-            loop {
-                match packet_bin::receive_packet_bin(&mut rx).await {
-                    Ok(packet_bin) => rx_channel_sender.send(packet_bin).await,
-                    Err(e) => return e,
-                }
-            }
-        };
-
-        let tx_fut = async {
-            loop {
-                let write = tx_channel_receiver.receive().await;
-                // Ignore packets with length 0 - we can use these as a way to flush
-                // the buffer.
-                if write.len > 0 {
-                    if let Err(e) = tx.write_all(write.msg_data()).await {
-                        return e;
-                    }
-                }
-            }
-        };
-
-        let mut client = PollClient::new(
-            tx_channel.sender(),
-            rx_channel.receiver(),
-            poll_client::Settings::default(),
-        );
-
-        info!("About to start tcp futures");
-
-        match select3(rx_fut, tx_fut, f(&mut client)).await {
-            Either3::First(e) => warn!("Finished network comms with read error {:?}", e),
-            Either3::Second(e) => warn!("Finished network comms with write error {:?}", e),
-            Either3::Third(_) => info!("Finished network comms by polling completing"),
+        if let Err(e) = poll_client::run_mqtt_connection(settings, stack, demo_poll_result).await {
+            info!("run: Error {}, will reconnect", e);
         }
 
-        info!("Finished network comms, will reconnect");
+        // Wait a while to try reconnecting
+        Timer::after(Duration::from_secs(2)).await;
     }
 }

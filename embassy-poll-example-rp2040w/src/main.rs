@@ -34,12 +34,12 @@ use embassy_rp::pio::{InterruptHandler, Pio};
 // use embassy_time::{Delay, Duration, Timer};
 use embassy_time::Timer;
 use heapless::String;
+use mountain_mqtt_embassy::poll_client::Settings;
 // use mountain_mqtt::client::{Client, ClientNoQueue, ConnectionSettings};
 // use mountain_mqtt::client_state::ClientStateNoQueue;
 // use mountain_mqtt::embedded_hal_async::DelayEmbedded;
 // use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
 // use mountain_mqtt::packet_client::PacketClient;
-use mountain_mqtt_embassy::mqtt_manager::Settings;
 use rand::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
@@ -140,6 +140,7 @@ async fn main(spawner: Spawner) {
         .await;
 
     let config = Config::dhcpv4(Default::default());
+
     // Use static IP configuration instead of DHCP
     //let config = embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
     //    address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 69, 2), 24),
@@ -203,9 +204,7 @@ async fn main(spawner: Spawner) {
 
     let settings = Settings::new(host, port);
 
-    // byte_data_proto::run_with_demo_poll(settings, stack).await;
-    // message_proto::run_with_demo_poll(settings, stack).await;
-    packet_bin_proto::run_with_demo_poll(settings, stack).await;
+    packet_bin_proto::run(settings, stack).await;
 
     // let client = ClientNoQueue::new(connection, buf, delay, timeout_millis, event_handler);
 
