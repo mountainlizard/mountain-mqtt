@@ -19,7 +19,7 @@ use embedded_io_async::Write;
 use heapless::Vec;
 use mountain_mqtt::{
     client::{ClientError, ClientReceivedEvent, ConnectionSettings},
-    client_state::{ClientState, ClientStateError, ClientStateNoQueue, ClientStateReceiveEvent},
+    client_state::{ClientState, ClientStateError, ClientStateReceiveEvent},
     data::{
         property::{ConnectProperty, PublishProperty},
         quality_of_service::QualityOfService,
@@ -28,6 +28,7 @@ use mountain_mqtt::{
     packets::{
         connect::{Connect, Will},
         disconnect::Disconnect,
+        packet::Packet,
         packet_generic::PacketGeneric,
         pingreq::Pingreq,
     },
@@ -92,13 +93,14 @@ impl From<ClientError> for MqttConnectionError {
     }
 }
 
-pub async fn run_mqtt_connection<M, const N: usize, const P: usize>(
+pub async fn run_mqtt_connection<S, M, const N: usize, const P: usize>(
     settings: Settings,
     stack: Stack<'static>,
-    f: impl AsyncFnOnce(&mut PollClient<M, N, P>) -> Result<(), ClientError>,
+    f: impl AsyncFnOnce(&mut PollClient<S, M, N, P>) -> Result<(), ClientError>,
 ) -> Result<(), MqttConnectionError>
 where
     M: RawMutex,
+    S: ClientState + Default,
 {
     let mut rx_buffer = [0; N];
     let mut tx_buffer = [0; N];
@@ -109,7 +111,6 @@ where
 
     let remote_endpoint = (settings.address, settings.port);
     info!("MQTT socket connecting to {:?}...", remote_endpoint);
-    // TODO: This should just return directly, to let caller decide whether to retry
     socket.connect(remote_endpoint).await?;
     info!("MQTT socket connected!");
 
@@ -143,7 +144,12 @@ where
         }
     };
 
-    let mut client = PollClient::new(tx_channel.sender(), rx_channel.receiver(), settings);
+    let mut client = PollClient::new(
+        tx_channel.sender(),
+        rx_channel.receiver(),
+        settings,
+        S::default(),
+    );
 
     match select3(rx_fut, tx_fut, f(&mut client)).await {
         Either3::First(e) => {
@@ -166,13 +172,14 @@ where
 
 /// An MQTT client that works by regularly polling for new received messages,
 /// rather than using a stream of events.
-pub struct PollClient<'a, M, const N: usize, const P: usize>
+pub struct PollClient<'a, S, M, const N: usize, const P: usize>
 where
     M: RawMutex,
+    S: ClientState,
 {
     /// Used to track the client state, e.g. whether we are connected,
     /// whether there are pending acks, etc.
-    client_state: ClientStateNoQueue,
+    client_state: S,
 
     /// Used to send and receive [`PacketBin`] instances, each containing
     /// and MQTT packet in binary format.
@@ -207,9 +214,10 @@ where
 
 /// Implements a relatively low-level but flexible client that is operated
 /// based on regularly polling for new messages.
-impl<'a, M, const N: usize, const P: usize> PollClient<'a, M, N, P>
+impl<'a, S, M, const N: usize, const P: usize> PollClient<'a, S, M, N, P>
 where
     M: RawMutex,
+    S: ClientState,
 {
     /// Create a PollClient using [`Sender`] and [`Receiver`] to
     /// send/receive MQTT packets as [`PacketBin`].
@@ -219,12 +227,13 @@ where
         sender: Sender<'a, M, PacketBin<N>, 1>,
         receiver: Receiver<'a, M, PacketBin<N>, 1>,
         settings: Settings,
+        client_state: S,
     ) -> Self {
         Self {
             receive_timeout_start: None,
             ping_interval_start: None,
             connection_start: None,
-            client_state: ClientStateNoQueue::default(),
+            client_state,
             raw_client: PacketBinClient::new(sender, receiver),
             settings,
         }
@@ -299,7 +308,6 @@ where
             // start won't have been set)
             // let packet_bin = self.raw_client.receive_bin().await;
             let packet_bin = self.receive().await?;
-            // if let Some(packet_bin) = self.try_receive_bin().await? {
             let packet: mountain_mqtt::packets::packet_generic::PacketGeneric<'_, P, 0, 0> =
                 packet_bin.as_packet_generic()?;
             let event = self.client_state.receive(packet)?;
@@ -316,8 +324,6 @@ where
                     ))
                 }
             }
-            // }
-            // Delay.delay_ms(1).await;
         }
 
         Ok(())

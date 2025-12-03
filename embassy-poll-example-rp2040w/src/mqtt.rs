@@ -9,6 +9,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
+use mountain_mqtt::client_state::ClientStateNoQueue;
 use mountain_mqtt::data::quality_of_service::QualityOfService;
 use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
 use mountain_mqtt_embassy::packet_bin::PacketBin;
@@ -20,10 +21,9 @@ pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";
 pub const TOPIC_LED: &str = "embassy-example-rp2040w-led";
 pub const TOPIC_BUTTON: &str = "embassy-example-rp2040w-button";
 
-pub async fn send_action(
-    client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
-    action: &Action,
-) -> Result<(), ClientError> {
+type Client<'a> = PollClient<'a, ClientStateNoQueue, NoopRawMutex, 1024, 16>;
+
+pub async fn send_action(client: &mut Client<'_>, action: &Action) -> Result<(), ClientError> {
     match action {
         Action::Button(pressed) => {
             let payload = if *pressed { "true" } else { "false" };
@@ -41,7 +41,7 @@ pub async fn send_action(
 }
 
 pub async fn receive_event(
-    client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
+    client: &mut Client<'_>,
     packet_bin: PacketBin<1024>,
     event_pub: &mut EventPub,
 ) -> Result<(), ClientError> {
@@ -73,7 +73,7 @@ pub async fn receive_event(
 }
 
 pub async fn wait_for_responses(
-    client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
+    client: &mut Client<'_>,
     event_pub: &mut EventPub,
 ) -> Result<(), ClientError> {
     while client.waiting_for_responses() {
@@ -84,7 +84,7 @@ pub async fn wait_for_responses(
 }
 
 pub async fn demo_poll_result(
-    client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
+    client: &mut Client<'_>,
     uid: &'static str,
     event_pub: &mut EventPub,
     action_sub: &mut ActionSub,
@@ -140,7 +140,7 @@ pub async fn run(
         // uses it to manage MQTT interactions.
         // Since we want to use `event_pub` and `action_sub` as well, we capture them in a closure in this
         // anonymous async function, and we can then pass that to run the connection.
-        let poll = async |client: &mut PollClient<'_, NoopRawMutex, 1024, 16>| {
+        let poll = async |client: &mut Client<'_>| {
             demo_poll_result(client, uid, &mut event_pub, &mut action_sub).await
         };
 
