@@ -9,8 +9,8 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
 use mountain_mqtt::client::ClientError;
 use mountain_mqtt::client::ConnectionSettings;
-use mountain_mqtt::client::EventHandlerError;
 use mountain_mqtt::data::quality_of_service::QualityOfService;
+use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
 use mountain_mqtt_embassy::packet_bin::PacketBin;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
 
@@ -40,13 +40,6 @@ pub async fn send_action(
     Ok(())
 }
 
-fn parse_led(payload: &[u8]) -> Result<bool, ClientError> {
-    let mut string_unescape_buffer = [0u8; 64];
-    let (state, _) = serde_json_core::from_slice_escaped(payload, &mut string_unescape_buffer)
-        .map_err(|_e| EventHandlerError::InvalidApplicationMessage)?;
-    Ok(state)
-}
-
 pub async fn receive_event(
     client: &mut PollClient<'_, NoopRawMutex, 1024, 16>,
     packet_bin: PacketBin<1024>,
@@ -55,15 +48,11 @@ pub async fn receive_event(
     let event = client.process(&packet_bin).await?;
     match event {
         mountain_mqtt::client::ClientReceivedEvent::ApplicationMessage(message) => {
-            match message.topic_name {
-                TOPIC_LED => {
-                    let state = parse_led(message.payload)?;
-                    if let Err(e) = event_pub.try_publish(Event::Led(state)) {
-                        warn!("Overflow in event channel, dropping event {:?}", e)
-                    }
-                }
-                topic => warn!("Message from unexpected topic '{}'", topic),
-            };
+            let event = Event::from_application_message(&message)?;
+            if let Err(e) = event_pub.try_publish(event) {
+                // Warn on overflow - we could also return a ClientError to cancel polling
+                warn!("Overflow in event channel, dropping event {:?}", e)
+            }
         }
         mountain_mqtt::client::ClientReceivedEvent::Ack => info!("Received Ack"),
         mountain_mqtt::client::ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
