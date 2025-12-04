@@ -21,6 +21,7 @@ use mountain_mqtt::{
     client::{ClientError, ClientReceivedEvent, ConnectionSettings},
     client_state::{ClientState, ClientStateError, ClientStateReceiveEvent},
     data::{
+        packet_type::PacketType,
         property::{ConnectProperty, PublishProperty},
         quality_of_service::QualityOfService,
     },
@@ -394,13 +395,7 @@ where
         self.ping_if_needed().await?;
 
         let packet = self.raw_client.try_receive();
-        if packet.is_some() {
-            self.reset_receive_timeout();
-            Ok(packet)
-        } else {
-            self.check_receive_timeout()?;
-            Ok(packet)
-        }
+        Ok(packet)
     }
 
     /// Disconnect the client with default reason code (success) and no properties
@@ -447,6 +442,9 @@ where
             // We need to deal with the next event - this is either the ping interval
             // elapsing, a receive timeout, or a packet arriving.
             // Note that all of these operations are cancel-safe
+            // Note that even though we also check for receive timeouts in
+            // `process`, we want to stop waiting for a packet immediately if this timeout occurs,
+            // rather than waiting until we receive and process it.
             let r = select3(
                 Self::wait_for_interval(self.ping_interval_start, self.settings.ping_interval),
                 Self::wait_for_interval(self.receive_timeout_start, self.settings.receive_timeout),
@@ -458,10 +456,7 @@ where
                 // Note that ping is cancel-safe
                 Either3::First(()) => self.ping().await?,
                 Either3::Second(()) => return Err(ClientError::ReceiveTimeoutServerUnresponsive),
-                Either3::Third(packet_bin) => {
-                    self.reset_receive_timeout();
-                    return Ok(packet_bin);
-                }
+                Either3::Third(packet_bin) => return Ok(packet_bin),
             };
         }
     }
@@ -528,6 +523,8 @@ where
     /// sending any required response packet, and finally returning any [`ClientReceivedEvent`]
     /// resulting from the packet.
     /// This be called exactly once with each received [`PacketBin`]
+    /// This also handles checking for receive timeouts, so it's best to call immediately after
+    /// receiving each packet.
     /// NOT CANCEL-SAFE (for example it may send response packets to the server)
     pub async fn process<'b>(
         &mut self,
@@ -535,6 +532,22 @@ where
     ) -> Result<ClientReceivedEvent<'b, P>, ClientError> {
         let (event, to_send) = {
             let packet: PacketGeneric<'_, P, 0, 0> = packet_bin.as_packet_generic()?;
+
+            // We reset the receive timeout on connack and pingresp only.
+            // We use the pings as our means of detecting any issue with packets getting
+            // through on either outgoing or incoming channels. If we included other packet
+            // types then even if pings were not being sent outgoing, we might not timeout
+            // since the server could still be sending publish packets regularly.
+            // Connack is safe to use since we'll only ever get one in response to our connect
+            // packet, which essentially acts as our first ping.
+            // We check here rather than on receive because we need to have decoded to
+            // know the packet type
+            match packet.packet_type() {
+                PacketType::Connack | PacketType::Pingresp => self.reset_receive_timeout(),
+                _ => {}
+            }
+
+            self.check_receive_timeout()?;
 
             let event = self.client_state.receive(packet)?;
 
