@@ -406,4 +406,13 @@ impl ClientState for ClientStateQueue {
     fn error(&mut self) {
         *self = Self::Errored;
     }
+
+    fn pending_ping_count(&self) -> u32 {
+        match self {
+            ClientStateQueue::Connected(connection_state) => {
+                connection_state.info.pending_ping_count
+            }
+            _ => 0,
+        }
+    }
 }

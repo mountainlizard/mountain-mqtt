@@ -227,6 +227,10 @@ pub trait ClientState {
     /// Produce a packet to ping the server, update state
     fn send_ping(&mut self) -> Result<Pingreq, ClientStateError>;
 
+    /// If connected, the number of pings that have been sent, but not responded
+    /// to, otherwise 0.
+    fn pending_ping_count(&self) -> u32;
+
     /// Receive a packet
     /// This updates the client state, and if anything that might require
     /// action by the caller occurs, a [ClientStateReceiveEvent] is returned.
@@ -665,5 +669,14 @@ impl ClientState for ClientStateNoQueue {
 
     fn error(&mut self) {
         *self = Self::Errored;
+    }
+
+    fn pending_ping_count(&self) -> u32 {
+        match self {
+            ClientStateNoQueue::Connected(connection_state) => {
+                connection_state.info.pending_ping_count
+            }
+            _ => 0,
+        }
     }
 }

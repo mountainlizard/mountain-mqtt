@@ -32,10 +32,14 @@ where
         Self { sender, receiver }
     }
 
+    /// Send a packet
+    /// Cancel-safe: This just sends to a [`Sender`]
     pub async fn send(&mut self, message: PacketBin<N>) {
         self.sender.send(message).await
     }
 
+    /// Receive a packet
+    /// Cancel-safe: This just receives from a [`Receiver`]
     pub async fn receive(&mut self) -> PacketBin<N> {
         self.receiver.receive().await
     }
@@ -44,6 +48,9 @@ where
         self.receiver.try_receive().ok()
     }
 
+    /// Encode a [`Packet`] as [`PacketBin`], and send via [`Self::send`].
+    /// Cancel-safe: This just performs encoding without side-effects and
+    /// then calls through to cancel-safe send.
     pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), ClientError>
     where
         P: Packet + write::Write,

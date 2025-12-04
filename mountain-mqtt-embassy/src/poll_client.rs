@@ -52,6 +52,14 @@ pub struct Settings {
     /// The time between pings sent to the server to keep the
     /// connection alive
     ping_interval: Duration,
+
+    /// We will only send one ping at a time - i.e. we need to see
+    /// a response to a sent ping request before we will send another
+    /// request.
+    /// If we reach the time when a ping is due, and the previous one
+    /// has not had a response, we will delay this additional time before
+    /// trying again.
+    ping_retry_delay: Duration,
 }
 
 impl Settings {
@@ -61,6 +69,7 @@ impl Settings {
             port,
             receive_timeout: Duration::from_secs(10),
             ping_interval: Duration::from_secs(2),
+            ping_retry_delay: Duration::from_millis(100),
         }
     }
 }
@@ -186,25 +195,24 @@ where
     /// and MQTT packet in binary format.
     raw_client: PacketBinClient<'a, M, N>,
 
-    /// The start of the timeout for received packets from the server.
-    /// This is initially None. It is initialised when a
-    /// connection is made, and then updated whenever a packet is
+    /// The end of the timeout for received packets (specifically connack and pingresp)
+    /// from the server.
+    /// This is initially None. It is initialised when a connection is started (by
+    /// sending a connect packet), and then updated whenever a  relevant packet is
     /// received.
-    /// If this is ever more than the receive_timeout in the past,
-    /// then the server has not replied for too long, and is
-    /// unresponsive leading to a disconnection.
+    /// If we ever reach this timeout instant, then the server has not
+    /// replied for too long, and is unresponsive leading to an error being reported.
     /// Note that the receive timeout is only active when this is Some.
-    receive_timeout_start: Option<Instant>,
+    receive_timeout_at: Option<Instant>,
 
-    /// The start of the interval for sending a ping.
+    /// The scheduled time for sending the next ping.
     /// This is initially None. It is initialised when a connection is
-    /// made, and then updated whenever a packet is sent.
-    /// If this is ever more than the ping_interval in the past, then
-    /// this client has not sent a packet for too long, and should
-    /// immediately send a ping request to avoid the server
-    /// disconnecting us as unresponsive.
+    /// made, and then updated whenever we attempt to send a ping. Note that
+    /// we only send one ping at a time, if ping_time occurs while there is still
+    /// a ping that has not been responded to, we will delay before attempting
+    /// to send another ping.
     /// Note that pings are only active when this is Some.
-    ping_interval_start: Option<Instant>,
+    ping_at: Option<Instant>,
 
     /// When we sent the [`Connect`] packet to start connection
     connection_start: Option<Instant>,
@@ -231,8 +239,8 @@ where
         client_state: S,
     ) -> Self {
         Self {
-            receive_timeout_start: None,
-            ping_interval_start: None,
+            receive_timeout_at: None,
+            ping_at: None,
             connection_start: None,
             client_state,
             raw_client: PacketBinClient::new(sender, receiver),
@@ -290,19 +298,18 @@ where
         // Sending packet is the start of our connection
         self.connection_start = Some(Instant::now());
 
-        // We are expecting a server reply, so we can start the receive timeout
+        // We are expecting a server reply (the connack), so we can start the receive timeout
         // We don't start the ping interval yet since we shouldn't ping until
         // we are connected
-        self.receive_timeout_start = Some(Instant::now());
+        self.receive_timeout_at = Some(Instant::now() + self.settings.receive_timeout);
 
-        // All that can happen after first connecting is that we receive an Ack,
-        // indicating we are connected and can continue, or
-        self.wait_for_ack_only().await?;
+        // We now just wait for an ack
+        self.wait_for_connected().await?;
 
         Ok(())
     }
 
-    async fn wait_for_ack_only(&mut self) -> Result<(), ClientError> {
+    async fn wait_for_connected(&mut self) -> Result<(), ClientError> {
         while self.client_state.waiting_for_responses() {
             // TODO: Use receive_bin when this supports receive_timeout (and ping interval,
             // although when used for connect this will not trigger since the ping interval
@@ -316,7 +323,9 @@ where
                 ClientStateReceiveEvent::Ack => {
                     // We should now start sending pings - start from when we started connection,
                     // since this is the last time we sent a packet
-                    self.ping_interval_start = self.connection_start;
+                    self.ping_at = self
+                        .connection_start
+                        .map(|s| s + self.settings.ping_interval);
                     info!("Client connected");
                 }
                 _ => {
@@ -330,35 +339,39 @@ where
         Ok(())
     }
 
-    /// Send a ping - does not check whether one is needed, but will update the ping interval start
-    /// Cancel-safe: will either queue a ping to be sent and update state and reset the interval
-    /// appropriately, or do nothing
+    /// Send a ping - does not check whether one is needed, but will update the next ping time
+    /// Cancel-safe: If a ping is sent, the client state is only updated (sync) after this succeeds
     async fn ping(&mut self) -> Result<(), ClientError> {
-        info!("Pinging");
-        // CANCEL-SAFETY: We need to send the ping first, then
-        // update the client_state and interval as sync operations.
-        // This does involve just ignoring the
-        // `Pingreq` packet we get back from the client state.
-        // Either this async fn is dropped at the await point, and since
-        // `send` is client safe, no packet is sent, OR we are not dropped,
-        // the packet is sent, and we update the client state and interval.
-        // Note that the packet is not actually sent immediately, it is just queued,
-        // but if the actual sending fails then the client will error and should not
-        // be used further.
-        self.raw_client.send_packet(Pingreq::default()).await?;
-        self.client_state.send_ping()?;
-        self.ping_interval_start = Some(Instant::now());
+        info!("Maybe pinging...");
+        if self.client_state.pending_ping_count() > 0 {
+            info!("...Ping pending, will delay and retry");
+            self.ping_at = Some(Instant::now() + self.settings.ping_retry_delay);
+        } else {
+            info!("...Pinging");
+            // CANCEL-SAFETY: We need to send the ping first, then
+            // if this completes we update the client_state and interval as sync operations.
+            // This does involve just ignoring the
+            // `Pingreq` packet we get back from the client state.
+            // Either this async fn is dropped at the await point, and since
+            // `send` is client safe, no packet is sent, OR we are not dropped,
+            // the packet is sent, and we update the client state and interval.
+            // Note that the packet is not actually sent immediately, it is just queued,
+            // but if the actual sending fails then the client will error and should not
+            // be used further.
+            self.raw_client.send_packet(Pingreq::default()).await?;
+            self.client_state.send_ping()?;
+            self.ping_at = Some(Instant::now() + self.settings.ping_interval);
+        }
         Ok(())
     }
 
     /// Send a ping if more than the ping interval has elapsed (see [`Settings`]),
     /// and reset the ping interval if one was sent.
     /// Returns true if a ping was sent.
-    /// Cancel-safe: Will either send a ping and update client state and ping interval,
-    /// or do nothing.
+    /// Cancel-safe: Just calls through to cancel-safe [`Self::ping`] if needed.
     pub async fn ping_if_needed(&mut self) -> Result<bool, ClientError> {
-        if let Some(ping_interval_start) = self.ping_interval_start {
-            if ping_interval_start.elapsed() > self.settings.ping_interval {
+        if let Some(ping_at) = self.ping_at {
+            if ping_at < Instant::now() {
                 self.ping().await?;
             }
             Ok(true)
@@ -368,8 +381,8 @@ where
     }
 
     fn check_receive_timeout(&self) -> Result<(), ClientError> {
-        if let Some(receive_timeout_start) = self.receive_timeout_start {
-            if receive_timeout_start.elapsed() > self.settings.receive_timeout {
+        if let Some(receive_timeout_at) = self.receive_timeout_at {
+            if receive_timeout_at < Instant::now() {
                 return Err(ClientError::ReceiveTimeoutServerUnresponsive);
             }
         }
@@ -377,23 +390,25 @@ where
     }
 
     fn reset_receive_timeout(&mut self) {
-        self.receive_timeout_start = Some(Instant::now());
+        self.receive_timeout_at = Some(Instant::now() + self.settings.receive_timeout);
     }
 
     /// Check whether a new [`PacketBin`] is available immediately, and if so
     /// return it.
     /// Note that this method is still async - it will not await new data from the server,
-    /// but if data is already present then we may need to perform async operations, for example
-    /// sending a response. However these operations will either complete or result in an error
-    /// in a bounded time (e.g. if data cannot be sent, the server will disconnect us for lack
-    /// of response, and/or we will be unable to ping the server and so the client will disconnect
-    /// since the server will appear unresponsive).
-    /// This will handle sending pings as needed, and will also detect if the server is
-    /// unresponsive, and will then return an error.
-    /// NOT CANCEL-SAFE (e.g. it can send data to the server)
+    /// but it may need to perform other async operations, e.g. sending a ping. However these
+    /// operations will either complete or result in an error in a bounded time (e.g. if data
+    /// cannot be sent, the server will disconnect us for lack of response, and/or we will
+    /// be unable to ping the server and so the client will disconnect since the server will
+    /// appear unresponsive).
+    /// This will handle sending pings as needed, and check if the server is unresponsive.
+    /// Cancel-safe
     pub async fn try_receive(&mut self) -> Result<Option<PacketBin<N>>, ClientError> {
+        self.check_receive_timeout()?;
         self.ping_if_needed().await?;
 
+        // Cancel-safety: This comes last, so if await above is interrupted, we don't
+        // receive a packet and then drop it. try_receive is sync and so can't be interrupted.
         let packet = self.raw_client.try_receive();
         Ok(packet)
     }
@@ -418,11 +433,11 @@ where
         Ok(())
     }
 
-    async fn wait_for_interval(start: Option<Instant>, interval: Duration) {
-        if let Some(start) = start {
-            Timer::at(start + interval).await
+    async fn wait_for_time(time: Option<Instant>) {
+        if let Some(time) = time {
+            Timer::at(time).await
         } else {
-            // When start is None, check is not enabled, so never complete
+            // When time is None, check is not enabled, so never complete
             future::pending().await
         }
     }
@@ -446,8 +461,8 @@ where
             // `process`, we want to stop waiting for a packet immediately if this timeout occurs,
             // rather than waiting until we receive and process it.
             let r = select3(
-                Self::wait_for_interval(self.ping_interval_start, self.settings.ping_interval),
-                Self::wait_for_interval(self.receive_timeout_start, self.settings.receive_timeout),
+                Self::wait_for_time(self.ping_at),
+                Self::wait_for_time(self.receive_timeout_at),
                 self.raw_client.receive(),
             )
             .await;
