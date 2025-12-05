@@ -277,7 +277,24 @@ pub trait ClientState {
     fn unsubscribe<'b>(
         &mut self,
         topic_name: &'b str,
+    ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {
+        let packet = self.unsubscribe_packet(topic_name)?;
+        self.unsubscribe_update(&packet)?;
+        Ok(packet)
+    }
+
+    /// Produce a packet to unsubscribe from a topic by name, this does not update
+    /// the state - call [`Self::unsubscribe_update`] after sending the packet.
+    fn unsubscribe_packet<'b>(
+        &mut self,
+        topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError>;
+
+    /// Update the state of the client after sending an unsubscribe packet
+    fn unsubscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Unsubscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to publish to a given topic, update state, with no properties
     fn publish<'b>(
@@ -506,7 +523,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn unsubscribe<'b>(
+    fn unsubscribe_packet<'b>(
         &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {
@@ -522,11 +539,27 @@ impl ClientState for ClientStateNoQueue {
                         Vec::new(),
                     );
 
+                    Ok(unsubscribe)
+                }
+            }
+            _ => Err(ClientStateError::NotConnected),
+        }
+    }
+
+    fn unsubscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Unsubscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError> {
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                if waiting.is_waiting() {
+                    Err(ClientStateError::ClientIsWaitingForResponse)
+                } else {
                     *waiting = Waiting::ForUnsuback {
-                        id: Self::UNSUBSCRIBE_PACKET_IDENTIFIER,
+                        id: *packet.packet_identifier(),
                     };
 
-                    Ok(unsubscribe)
+                    Ok(())
                 }
             }
             _ => Err(ClientStateError::NotConnected),

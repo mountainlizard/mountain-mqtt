@@ -480,10 +480,10 @@ where
     /// This may require a response from the server, so after calling this, you must receive messages until
     /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
     /// require a response from the server.
-    /// Cancel-safe: Unless subscription packet is sent, client state won't be updated
-    pub async fn subscribe<'b>(
-        &'b mut self,
-        topic_name: &'b str,
+    /// Cancel-safe: Unless subscribe packet is sent, client state won't be updated
+    pub async fn subscribe(
+        &mut self,
+        topic_name: &str,
         maximum_qos: QualityOfService,
     ) -> Result<(), ClientError> {
         let packet = self
@@ -491,6 +491,18 @@ where
             .subscribe_packet(topic_name, maximum_qos)?;
         self.raw_client.send_packet(&packet).await?;
         self.client_state.subscribe_update(&packet)?;
+        Ok(())
+    }
+
+    /// Request to unsubscribe from a topic
+    /// This may require a response from the server, so after calling this, you must receive messages until
+    /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
+    /// require a response from the server.
+    /// Cancel-safe: Unless unsubscribe packet is sent, client state won't be updated
+    pub async fn unsubscribe(&mut self, topic_name: &str) -> Result<(), ClientError> {
+        let packet = self.client_state.unsubscribe_packet(topic_name)?;
+        self.raw_client.send_packet(&packet).await?;
+        self.client_state.unsubscribe_update(&packet)?;
         Ok(())
     }
 
