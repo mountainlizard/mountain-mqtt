@@ -2,7 +2,6 @@
 
 pub mod client;
 pub mod client_state;
-pub mod client_state_queue;
 pub mod codec;
 pub mod data;
 pub mod error;

@@ -32,6 +32,7 @@ pub enum ClientStateError {
     NotIdle,
     AuthNotSupported,
     Qos2NotSupported,
+    MultipleSubscriptionRequestsNotSupported,
     ReceivedQos2PublishNotSupported,
     ClientIsWaitingForResponse,
     NotConnected,
@@ -63,6 +64,9 @@ impl defmt::Format for ClientStateError {
             Self::NotIdle => defmt::write!(f, "NotIdle"),
             Self::AuthNotSupported => defmt::write!(f, "AuthNotSupported"),
             Self::Qos2NotSupported => defmt::write!(f, "Qos2NotSupported"),
+            Self::MultipleSubscriptionRequestsNotSupported => {
+                defmt::write!(f, "MultipleSubscriptionRequestsNotSupported")
+            }
             Self::ReceivedQos2PublishNotSupported => {
                 defmt::write!(f, "ReceivedQos2PublishNotSupported")
             }
@@ -111,6 +115,9 @@ impl Display for ClientStateError {
             Self::NotIdle => write!(f, "NotIdle"),
             Self::AuthNotSupported => write!(f, "AuthNotSupported"),
             Self::Qos2NotSupported => write!(f, "Qos2NotSupported"),
+            Self::MultipleSubscriptionRequestsNotSupported => {
+                write!(f, "MultipleSubscriptionRequestsNotSupported")
+            }
             Self::ReceivedQos2PublishNotSupported => write!(f, "ReceivedQos2PublishNotSupported"),
             Self::ClientIsWaitingForResponse => write!(f, "ClientIsWaitingForResponse"),
             Self::NotConnected => write!(f, "NotConnected"),
@@ -246,7 +253,25 @@ pub trait ClientState {
         &mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
+    ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
+        let packet = self.subscribe_packet(topic_name, maximum_qos)?;
+        self.subscribe_update(&packet)?;
+        Ok(packet)
+    }
+
+    /// Produce a packet to subscribe to a topic by name, this does not update
+    /// the state - call [`Self::subscribe_update`] after sending the packet.
+    fn subscribe_packet<'b>(
+        &mut self,
+        topic_name: &'b str,
+        maximum_qos: QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError>;
+
+    /// Update the state of the client after sending a subscribe packet
+    fn subscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Subscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to unsubscribe from a topic by name, update state
     fn unsubscribe<'b>(
@@ -430,7 +455,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn subscribe<'b>(
+    fn subscribe_packet<'b>(
         &mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
@@ -449,13 +474,32 @@ impl ClientState for ClientStateNoQueue {
                         Vec::new(),
                         Vec::new(),
                     );
+                    Ok(subscribe)
+                }
+            }
+            _ => Err(ClientStateError::NotConnected),
+        }
+    }
 
+    fn subscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Subscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError> {
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                if waiting.is_waiting() {
+                    Err(ClientStateError::ClientIsWaitingForResponse)
+                } else if packet.request_count() > 1 {
+                    Err(ClientStateError::MultipleSubscriptionRequestsNotSupported)
+                } else if packet.request_maximum_qos() == QualityOfService::Qos2 {
+                    Err(ClientStateError::Qos2NotSupported)
+                } else {
                     *waiting = Waiting::ForSuback {
-                        id: Self::SUBSCRIBE_PACKET_IDENTIFIER,
-                        qos: maximum_qos,
+                        id: *packet.packet_identifier(),
+                        qos: packet.request_maximum_qos(),
                     };
 
-                    Ok(subscribe)
+                    Ok(())
                 }
             }
             _ => Err(ClientStateError::NotConnected),
