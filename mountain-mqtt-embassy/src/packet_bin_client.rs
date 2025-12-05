@@ -51,14 +51,14 @@ where
     /// Encode a [`Packet`] as [`PacketBin`], and send via [`Self::send`].
     /// Cancel-safe: This just performs encoding without side-effects and
     /// then calls through to cancel-safe send.
-    pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), ClientError>
+    pub async fn send_packet<P>(&mut self, packet: &P) -> Result<(), ClientError>
     where
         P: Packet + write::Write,
     {
         let mut buf = [0; N];
         let len = {
             let mut r = MqttBufWriter::new(&mut buf);
-            r.put(&packet)?;
+            r.put(packet)?;
             r.position()
         };
         let packet = PacketBin { buf, len };

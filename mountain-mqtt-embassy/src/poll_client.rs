@@ -293,7 +293,7 @@ where
         packet: Connect<'_, PP, W>,
     ) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
-        self.raw_client.send_packet(packet).await?;
+        self.raw_client.send_packet(&packet).await?;
 
         // Sending packet is the start of our connection
         self.connection_start = Some(Instant::now());
@@ -358,7 +358,7 @@ where
             // Note that the packet is not actually sent immediately, it is just queued,
             // but if the actual sending fails then the client will error and should not
             // be used further.
-            self.raw_client.send_packet(Pingreq::default()).await?;
+            self.raw_client.send_packet(&Pingreq::default()).await?;
             self.client_state.send_ping()?;
             self.ping_at = Some(Instant::now() + self.settings.ping_interval);
         }
@@ -425,7 +425,7 @@ where
         &mut self,
         packet: Disconnect<'b, PP>,
     ) -> Result<(), ClientError> {
-        self.raw_client.send_packet(packet).await?;
+        self.raw_client.send_packet(&packet).await?;
         // Send an empty packet to flush send queue so we know the
         // disconnect packet has actually made it to the network
         self.raw_client.send(PacketBin::empty()).await;
@@ -480,14 +480,18 @@ where
     /// This may require a response from the server, so after calling this, you must receive messages until
     /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
     /// require a response from the server.
-    /// NOT CANCEL-SAFE
+    /// Cancel-safe: Unless subscription packet is sent, client state won't be updated
     pub async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
     ) -> Result<(), ClientError> {
-        let packet = self.client_state.subscribe(topic_name, maximum_qos)?;
-        self.raw_client.send_packet(packet).await
+        let packet = self
+            .client_state
+            .subscribe_packet(topic_name, maximum_qos)?;
+        self.raw_client.send_packet(&packet).await?;
+        self.client_state.subscribe_update(&packet)?;
+        Ok(())
     }
 
     /// True if client is waiting for a response from the server - if this is true, then you must receive and
@@ -531,7 +535,7 @@ where
         let packet = self
             .client_state
             .publish_with_properties(topic_name, payload, qos, retain, properties)?;
-        self.raw_client.send_packet(packet).await
+        self.raw_client.send_packet(&packet).await
     }
 
     /// Handle a [`PacketBin`], parsing it as a [`PacketGeneric`], then updating client state,
@@ -616,7 +620,7 @@ where
 
         // Send any resulting packet, no need to wait for responses
         if let Some(packet) = to_send {
-            self.raw_client.send_packet(packet).await?;
+            self.raw_client.send_packet(&packet).await?;
         }
 
         Ok(event)
