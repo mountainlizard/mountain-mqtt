@@ -540,7 +540,12 @@ where
     /// This be called exactly once with each received [`PacketBin`]
     /// This also handles checking for receive timeouts, so it's best to call immediately after
     /// receiving each packet.
-    /// NOT CANCEL-SAFE (for example it may send response packets to the server)
+    /// NOT CANCEL-SAFE: It will update the client state before sending any required response
+    /// packet, if the sending of the packet is cancelled then the client/connection state
+    /// will be invalid. TODO: It's possible this could be made cancel-safe by splitting the
+    /// client state handling into two parts - the first would produce a response packet but not
+    /// change the state itself, and then when this packet had been sent successfully the client
+    /// state would be updated by the second part of the handling.
     pub async fn process<'b>(
         &mut self,
         packet_bin: &'b PacketBin<N>,
