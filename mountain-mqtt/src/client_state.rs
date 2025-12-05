@@ -315,7 +315,43 @@ pub trait ClientState {
         qos: QualityOfService,
         retain: bool,
         properties: Vec<PublishProperty<'b>, P>,
+    ) -> Result<Publish<'b, P>, ClientStateError> {
+        let packet =
+            self.publish_with_properties_packet(topic_name, payload, qos, retain, properties)?;
+        self.publish_update(&packet)?;
+        Ok(packet)
+    }
+
+    /// Produce a packet to publish to a given topic, with no properties. This
+    /// does not update the state, call [`Self::publish_update`]
+    /// after sending the packet.
+    fn publish_packet<'b>(
+        &mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+    ) -> Result<Publish<'b, 0>, ClientStateError> {
+        self.publish_with_properties_packet(topic_name, payload, qos, retain, Vec::new())
+    }
+
+    /// Produce a packet to publish to a given topic, with properties. This
+    /// does not update the state, call [`Self::publish_update`]
+    /// after sending the packet.
+    fn publish_with_properties_packet<'b, const P: usize>(
+        &mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+        properties: Vec<PublishProperty<'b>, P>,
     ) -> Result<Publish<'b, P>, ClientStateError>;
+
+    /// Update the state of the client after sending an publish packet
+    fn publish_update<'b, const P: usize>(
+        &mut self,
+        packet: &Publish<'b, P>,
+    ) -> Result<(), ClientStateError>;
 
     /// Move to errored state, no further operations are possible
     /// This must be called if the user of the client state cannot successfully send
@@ -430,7 +466,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn publish_with_properties<'b, const P: usize>(
+    fn publish_with_properties_packet<'b, const P: usize>(
         &mut self,
         topic_name: &'b str,
         payload: &'b [u8],
@@ -459,14 +495,32 @@ impl ClientState for ClientStateNoQueue {
                     payload,
                     properties,
                 );
-
-                if qos == QualityOfService::Qos1 {
-                    *waiting = Waiting::ForPuback {
-                        id: Self::PUBLISH_PACKET_IDENTIFIER,
-                    };
-                }
-
                 Ok(publish)
+            }
+            _ => Err(ClientStateError::NotConnected),
+        }
+    }
+
+    fn publish_update<'b, const P: usize>(
+        &mut self,
+        packet: &Publish<'b, P>,
+    ) -> Result<(), ClientStateError> {
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                match packet.publish_packet_identifier() {
+                    PublishPacketIdentifier::None => Ok(()),
+                    PublishPacketIdentifier::Qos1(packet_identifier) => {
+                        if waiting.is_waiting() {
+                            Err(ClientStateError::ClientIsWaitingForResponse)
+                        } else {
+                            *waiting = Waiting::ForPuback {
+                                id: *packet_identifier,
+                            };
+                            Ok(())
+                        }
+                    }
+                    PublishPacketIdentifier::Qos2(_) => Err(ClientStateError::Qos2NotSupported),
+                }
             }
             _ => Err(ClientStateError::NotConnected),
         }

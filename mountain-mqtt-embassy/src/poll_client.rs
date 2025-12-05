@@ -519,7 +519,7 @@ where
     /// This may require a response from the server, so after calling this, you must receive messages until
     /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
     /// require a response from the server.
-    /// NOT CANCEL-SAFE
+    /// Cancel-safe: Unless publish packet is sent, client state won't be updated
     pub async fn publish<'b>(
         &'b mut self,
         topic_name: &'b str,
@@ -535,7 +535,7 @@ where
     /// This may require a response from the server, so after calling this, you must receive messages until
     /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
     /// require a response from the server.
-    /// NOT CANCEL-SAFE
+    /// Cancel-safe: Unless publish packet is sent, client state won't be updated
     pub async fn publish_with_properties<'b, const PP: usize>(
         &'b mut self,
         topic_name: &'b str,
@@ -546,8 +546,10 @@ where
     ) -> Result<(), ClientError> {
         let packet = self
             .client_state
-            .publish_with_properties(topic_name, payload, qos, retain, properties)?;
-        self.raw_client.send_packet(&packet).await
+            .publish_with_properties_packet(topic_name, payload, qos, retain, properties)?;
+        self.raw_client.send_packet(&packet).await?;
+        self.client_state.publish_update(&packet)?;
+        Ok(())
     }
 
     /// Handle a [`PacketBin`], parsing it as a [`PacketGeneric`], then updating client state,
