@@ -630,7 +630,6 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    // TODO: Split into packet and update methods, so we can use in a cancel-safe way around sending the response packet
     fn receive<'a, 'b, const P: usize, const W: usize, const S: usize>(
         &mut self,
         packet: PacketGeneric<'a, P, W, S>,
