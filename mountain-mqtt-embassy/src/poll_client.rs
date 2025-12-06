@@ -1,6 +1,7 @@
 use core::{future, net::Ipv4Addr};
 
 use crate::{
+    handler_client::HandlerClient,
     packet_bin::{self, PacketBin},
     packet_bin_client::PacketBinClient,
 };
@@ -246,6 +247,13 @@ where
             raw_client: PacketBinClient::new(sender, receiver),
             settings,
         }
+    }
+
+    pub fn to_handler_client<F>(self, handler: F) -> HandlerClient<'a, S, M, F, N, P>
+    where
+        F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
+    {
+        HandlerClient::new(self, handler)
     }
 
     /// Connect to the server with [`ConnectionSettings`], see
@@ -629,117 +637,5 @@ where
                 Err(ClientError::Disconnected(*disconnect.reason_code()))
             }
         }
-    }
-}
-
-/// An MQTT client that extends a [`PollClient`] with a handler function
-/// for accepting received messages, allowing for more convenient use.
-pub struct HandlerClient<'a, S, M, F, const N: usize, const P: usize>
-where
-    M: RawMutex,
-    S: ClientState,
-    F: AsyncFn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
-{
-    poll_client: PollClient<'a, S, M, N, P>,
-    handler: F,
-}
-
-impl<'a, S, M, F, const N: usize, const P: usize> HandlerClient<'a, S, M, F, N, P>
-where
-    M: RawMutex,
-    S: ClientState,
-    F: AsyncFn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
-{
-    /// Consume this [`HandlerClient`] and return the underlying [`PollClient`]
-    pub fn to_poll_client(self) -> PollClient<'a, S, M, N, P> {
-        self.poll_client
-    }
-
-    /// NOT CANCEL-SAFE: When packets are received, they must then be processed, so this future should
-    /// not be dropped unless this client or the associater [`PollClient`]` will not be used again.
-    /// TODO: If self.receive becomes cancel-safe, this will be too
-    async fn wait_for_response(&mut self) -> Result<(), ClientError> {
-        while self.poll_client.waiting_for_responses() {
-            self.receive().await?;
-        }
-
-        Ok(())
-    }
-
-    /// Attempt to receive and handle one message
-    /// NOT CANCEL-SAFE: When packets are received, they must then be processed, so this future should
-    /// not be dropped unless this client or the associater [`PollClient`]` will not be used again.
-    /// TODO: Can we make this cancel-safe by caching the packet to handle on next call if interrupted? This will also
-    /// need PollClient::process to be cancel safe, where it only updates the client state if the packet is sent...
-    pub async fn receive(&mut self) -> Result<(), ClientError> {
-        let packet = self.poll_client.receive().await?;
-        let event = self.poll_client.process(&packet).await?;
-
-        let handler = &self.handler;
-        handler(event).await.map_err(ClientError::EventHandler)?;
-
-        Ok(())
-    }
-
-    /// Publish a message with given payload to a given topic, with no properties.
-    /// This will then wait for any required response from the server.
-    /// NOT CANCEL-SAFE: This method will wait for responses, and when packets are received, they must
-    /// then be processed, so this future should not be dropped unless this client or the associater
-    /// [`PollClient`]` will not be used again.
-    pub async fn publish<'b>(
-        &'b mut self,
-        topic_name: &'b str,
-        payload: &'b [u8],
-        qos: QualityOfService,
-        retain: bool,
-    ) -> Result<(), ClientError> {
-        self.publish_with_properties::<0>(topic_name, payload, qos, retain, Vec::new())
-            .await
-    }
-
-    /// Publish a message with given payload to a given topic, with given properties
-    /// This will then wait for any required response from the server.
-    /// NOT CANCEL-SAFE: This method will wait for responses, and when packets are received, they must
-    /// then be processed, so this future should not be dropped unless this client or the associater
-    /// [`PollClient`]` will not be used again.
-    pub async fn publish_with_properties<'b, const PP: usize>(
-        &'b mut self,
-        topic_name: &'b str,
-        payload: &'b [u8],
-        qos: QualityOfService,
-        retain: bool,
-        properties: Vec<PublishProperty<'b>, PP>,
-    ) -> Result<(), ClientError> {
-        self.poll_client
-            .publish_with_properties(topic_name, payload, qos, retain, properties)
-            .await?;
-        self.wait_for_response().await?;
-        Ok(())
-    }
-
-    /// Request a subscription.
-    /// This will then wait for any required response from the server.
-    /// NOT CANCEL-SAFE: This method will wait for responses, and when packets are received, they must
-    /// then be processed, so this future should not be dropped unless this client or the associater
-    /// [`PollClient`]` will not be used again.
-    pub async fn subscribe(
-        &mut self,
-        topic_name: &str,
-        maximum_qos: QualityOfService,
-    ) -> Result<(), ClientError> {
-        self.poll_client.subscribe(topic_name, maximum_qos).await?;
-        self.wait_for_response().await?;
-        Ok(())
-    }
-
-    /// Request to unsubscribe from a topic
-    /// This will then wait for any required response from the server.
-    /// NOT CANCEL-SAFE: This method will wait for responses, and when packets are received, they must
-    /// then be processed, so this future should not be dropped unless this client or the associater
-    /// [`PollClient`]` will not be used again.
-    pub async fn unsubscribe(&mut self, topic_name: &str) -> Result<(), ClientError> {
-        self.poll_client.unsubscribe(topic_name).await?;
-        self.wait_for_response().await?;
-        Ok(())
     }
 }
