@@ -248,6 +248,16 @@ pub trait ClientState {
         packet: PacketGeneric<'a, P, W, S>,
     ) -> Result<ClientStateReceiveEvent<'a, 'b, P>, ClientStateError>;
 
+    /// Receive a packet and produce the corresponding packet to send as
+    /// a response.
+    /// This does not update the client state - call
+    /// Errors indicate an invalid packet was received,
+    /// or the received packet was unexpected based on our state
+    fn receive_produce_response<'a, const P: usize, const W: usize, const S: usize>(
+        &self,
+        packet: &PacketGeneric<'a, P, W, S>,
+    ) -> Result<Option<Puback<'_, P>>, ClientStateError>;
+
     /// Produce a packet to subscribe to a topic by name, update state
     fn subscribe<'b>(
         &mut self,
@@ -627,6 +637,120 @@ impl ClientState for ClientStateNoQueue {
                 Ok(Pingreq::default())
             }
             _ => Err(ClientStateError::NotConnected),
+        }
+    }
+
+    fn receive_produce_response<'a, const P: usize, const W: usize, const S: usize>(
+        &self,
+        packet: &PacketGeneric<'a, P, W, S>,
+    ) -> Result<Option<Puback<'_, P>>, ClientStateError> {
+        match self {
+            // If we are connecting, we only expect a Connack packet
+            // (server cannot disconnect before Connack [MQTT-3.14.0-1])
+            // or an Auth packet [MQTT-3.2.0-1]
+            ClientStateNoQueue::Connecting(RequestedConnectionInfo {
+                clean_start,
+                keep_alive: _,
+            }) => match packet {
+                PacketGeneric::Connack(connack) => match connack.reason_code() {
+                    ConnectReasonCode::Success => {
+                        let session_present = connack.session_present();
+
+                        // If there's a session, but we requested a clean start, this is an error
+                        if session_present && *clean_start {
+                            return Err(ClientStateError::UnexpectedSessionPresentForCleanStart);
+                        }
+
+                        Ok(None)
+                    }
+                    reason_code => Err(ClientStateError::Connect(*reason_code)),
+                },
+                PacketGeneric::Auth(_) => Err(ClientStateError::AuthNotSupported),
+                _ => Err(ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting),
+            },
+
+            // If we are connected, we handle all client packets other than Connack
+            ClientStateNoQueue::Connected(ConnectionState { info, waiting }) => match packet {
+                PacketGeneric::Publish(publish) => match publish.publish_packet_identifier() {
+                    PublishPacketIdentifier::None => Ok(None),
+                    PublishPacketIdentifier::Qos1(packet_identifier) => {
+                        let puback =
+                            Puback::new(*packet_identifier, PublishReasonCode::Success, Vec::new());
+                        Ok(Some(puback))
+                    }
+                    PublishPacketIdentifier::Qos2(_) => {
+                        Err(ClientStateError::ReceivedQos2PublishNotSupported)
+                    }
+                },
+
+                PacketGeneric::Puback(puback) => {
+                    let ack_id = puback.packet_identifier();
+                    match waiting {
+                        Waiting::ForPuback { id } if id == ack_id => {
+                            let reason_code = puback.reason_code();
+                            if reason_code.is_error() {
+                                Err(ClientStateError::Publish(*reason_code))
+                            } else {
+                                Ok(None)
+                            }
+                        }
+                        Waiting::ForPuback { id: _ } => {
+                            Err(ClientStateError::UnexpectedPubackPacketIdentifier)
+                        }
+                        _ => Err(ClientStateError::UnexpectedPuback),
+                    }
+                }
+
+                PacketGeneric::Suback(suback) => {
+                    let ack_id = suback.packet_identifier();
+
+                    match waiting {
+                        Waiting::ForSuback { id, qos: _ } if id == ack_id => Ok(None),
+                        Waiting::ForSuback { id: _, qos: _ } => {
+                            Err(ClientStateError::UnexpectedSubackPacketIdentifier)
+                        }
+                        _ => Err(ClientStateError::UnexpectedSuback),
+                    }
+                }
+                PacketGeneric::Unsuback(unsuback) => {
+                    let ack_id = unsuback.packet_identifier();
+
+                    match waiting {
+                        Waiting::ForUnsuback { id } if id == ack_id => {
+                            let reason_code = unsuback.first_reason_code();
+                            if reason_code.is_error() {
+                                Err(ClientStateError::Unsubscribe(*reason_code))
+                            } else {
+                                Ok(None)
+                            }
+                        }
+                        Waiting::ForUnsuback { id: _ } => {
+                            Err(ClientStateError::UnexpectedUnsubackPacketIdentifier)
+                        }
+                        _ => Err(ClientStateError::UnexpectedUnsuback),
+                    }
+                }
+                PacketGeneric::Pingresp(_pingresp) => {
+                    if info.pending_ping_count > 0 {
+                        Ok(None)
+                    } else {
+                        Err(ClientStateError::UnexpectedPingresp)
+                    }
+                }
+                PacketGeneric::Disconnect(_) => Ok(None),
+                PacketGeneric::Connack(_) => {
+                    Err(ClientStateError::ReceivedConnackWhenNotConnecting)
+                }
+                PacketGeneric::Auth(_auth) => Err(ClientStateError::AuthNotSupported),
+                PacketGeneric::Connect(_)
+                | PacketGeneric::Pubrec(_)
+                | PacketGeneric::Pubrel(_)
+                | PacketGeneric::Pubcomp(_)
+                | PacketGeneric::Subscribe(_)
+                | PacketGeneric::Unsubscribe(_)
+                | PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
+            },
+            _ => Err(ClientStateError::ReceiveWhenNotConnectedOrConnecting),
         }
     }
 

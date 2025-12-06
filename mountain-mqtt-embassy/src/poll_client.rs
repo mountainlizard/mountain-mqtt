@@ -554,86 +554,81 @@ where
     /// This be called exactly once with each received [`PacketBin`]
     /// This also handles checking for receive timeouts, so it's best to call immediately after
     /// receiving each packet.
-    /// NOT CANCEL-SAFE: It will update the client state before sending any required response
-    /// packet, if the sending of the packet is cancelled then the client/connection state
-    /// will be invalid. TODO: It's possible this could be made cancel-safe by splitting the
-    /// client state handling into two parts - the first would produce a response packet but not
-    /// change the state itself, and then when this packet had been sent successfully the client
-    /// state would be updated by the second part of the handling.
+    /// Cancel-safe with note: This method may await sending a response packet, and will only
+    /// update state if the packet is sent, so state remains consistent. However note that if
+    /// process is interrupted, it must be called again with the same `packet_bin`, since the
+    /// packet will not have been handled.
     pub async fn process<'b>(
         &mut self,
         packet_bin: &'b PacketBin<N>,
     ) -> Result<ClientReceivedEvent<'b, P>, ClientError> {
-        let (event, to_send) = {
-            let packet: PacketGeneric<'_, P, 0, 0> = packet_bin.as_packet_generic()?;
+        // Cancel-safety - this doesn't modify state, so safe to do before interruptible send
+        let packet: PacketGeneric<'_, P, 0, 0> = packet_bin.as_packet_generic()?;
 
-            // We reset the receive timeout on connack and pingresp only.
-            // We use the pings as our means of detecting any issue with packets getting
-            // through on either outgoing or incoming channels. If we included other packet
-            // types then even if pings were not being sent outgoing, we might not timeout
-            // since the server could still be sending publish packets regularly.
-            // Connack is safe to use since we'll only ever get one in response to our connect
-            // packet, which essentially acts as our first ping.
-            // We check here rather than on receive because we need to have decoded to
-            // know the packet type
-            match packet.packet_type() {
-                PacketType::Connack | PacketType::Pingresp => self.reset_receive_timeout(),
-                _ => {}
-            }
+        // Cancel-safety: This just resets receive timeout and checks for timeout error -
+        // this is safe to do as soon as we know the packet has been received, even if the
+        // following send is interrupted this doesn't make state inconsistent.
+        // We reset the receive timeout on connack and pingresp only.
+        // We use the pings as our means of detecting any issue with packets getting
+        // through on either outgoing or incoming channels. If we included other packet
+        // types then even if pings were not being sent outgoing, we might not timeout
+        // since the server could still be sending publish packets regularly.
+        // Connack is safe to use since we'll only ever get one in response to our connect
+        // packet, which essentially acts as our first ping.
+        // We check here rather than on receive because we need to have decoded to
+        // know the packet type
+        match packet.packet_type() {
+            PacketType::Connack | PacketType::Pingresp => self.reset_receive_timeout(),
+            _ => {}
+        }
+        self.check_receive_timeout()?;
 
-            self.check_receive_timeout()?;
-
-            let event = self.client_state.receive(packet)?;
-
-            match event {
-                ClientStateReceiveEvent::Ack => (ClientReceivedEvent::Ack, None),
-
-                ClientStateReceiveEvent::Publish { publish } => {
-                    if publish.topic_name().is_empty() {
-                        return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
-                    }
-                    (publish.into(), None)
-                }
-
-                ClientStateReceiveEvent::PublishAndPuback { publish, puback } => {
-                    if publish.topic_name().is_empty() {
-                        return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
-                    }
-                    (publish.into(), Some(puback))
-                }
-
-                ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQos {
-                    granted_qos,
-                    maximum_qos,
-                } => (
-                    ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
-                        granted_qos,
-                        maximum_qos,
-                    },
-                    None,
-                ),
-
-                ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => (
-                    ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers,
-                    None,
-                ),
-
-                ClientStateReceiveEvent::NoSubscriptionExisted => {
-                    (ClientReceivedEvent::NoSubscriptionExisted, None)
-                }
-
-                ClientStateReceiveEvent::Disconnect { disconnect } => {
-                    return Err(ClientError::Disconnected(*disconnect.reason_code()));
-                }
-            }
-        };
-
-        // Send any resulting packet, no need to wait for responses
-        if let Some(packet) = to_send {
-            self.raw_client.send_packet(&packet).await?;
+        // Note that send may be interrupted, if so the client state will not be updated.
+        // However note that if interrupted, this process method must be called again on
+        // the packet until it completes (i.e. response is set and client state is updated).
+        if let Some(response) = self.client_state.receive_produce_response(&packet)? {
+            self.raw_client.send_packet(&response).await?;
         }
 
-        Ok(event)
+        // Remaining operations are sync, and update client state now that send has succeeded
+        let event = self.client_state.receive(packet)?;
+
+        match event {
+            ClientStateReceiveEvent::Ack => Ok(ClientReceivedEvent::Ack),
+
+            ClientStateReceiveEvent::Publish { publish } => {
+                if publish.topic_name().is_empty() {
+                    return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
+                }
+                Ok(publish.into())
+            }
+
+            ClientStateReceiveEvent::PublishAndPuback { publish, puback: _ } => {
+                if publish.topic_name().is_empty() {
+                    return Err(ClientError::EmptyTopicNameWithAliasesDisabled);
+                }
+                Ok(publish.into())
+            }
+
+            ClientStateReceiveEvent::SubscriptionGrantedBelowMaximumQos {
+                granted_qos,
+                maximum_qos,
+            } => Ok(ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
+                granted_qos,
+                maximum_qos,
+            }),
+
+            ClientStateReceiveEvent::PublishedMessageHadNoMatchingSubscribers => {
+                Ok(ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers)
+            }
+            ClientStateReceiveEvent::NoSubscriptionExisted => {
+                Ok(ClientReceivedEvent::NoSubscriptionExisted)
+            }
+
+            ClientStateReceiveEvent::Disconnect { disconnect } => {
+                Err(ClientError::Disconnected(*disconnect.reason_code()))
+            }
+        }
     }
 }
 
