@@ -1,7 +1,7 @@
 use core::{future, net::Ipv4Addr};
 
 use crate::{
-    handler_client::HandlerClient,
+    handler_client::{HandlerClient, SyncEventHandler},
     packet_bin::{self, PacketBin},
     packet_bin_client::PacketBinClient,
 };
@@ -19,7 +19,7 @@ use embassy_time::{Duration, Instant, Timer};
 use embedded_io_async::Write;
 use heapless::Vec;
 use mountain_mqtt::{
-    client::{ClientError, ClientReceivedEvent, ConnectionSettings, EventHandlerError},
+    client::{ClientError, ClientReceivedEvent, ConnectionSettings},
     client_state::{ClientState, ClientStateError, ClientStateReceiveEvent},
     data::{
         packet_type::PacketType,
@@ -107,7 +107,7 @@ impl From<ClientError> for MqttConnectionError {
 pub async fn run_mqtt_connection<S, M, const N: usize, const P: usize>(
     settings: Settings,
     stack: Stack<'static>,
-    f: impl AsyncFnOnce(&mut PollClient<S, M, N, P>) -> Result<(), ClientError>,
+    client_function: impl AsyncFnOnce(PollClient<S, M, N, P>) -> Result<(), ClientError>,
 ) -> Result<(), MqttConnectionError>
 where
     M: RawMutex,
@@ -155,14 +155,14 @@ where
         }
     };
 
-    let mut client = PollClient::new(
+    let client = PollClient::new(
         tx_channel.sender(),
         rx_channel.receiver(),
         settings,
         S::default(),
     );
 
-    match select3(rx_fut, tx_fut, f(&mut client)).await {
+    match select3(rx_fut, tx_fut, client_function(client)).await {
         Either3::First(e) => {
             warn!("Finished network comms with read error {:?}", e);
             Err(e)?
@@ -251,7 +251,7 @@ where
 
     pub fn to_handler_client<F>(self, handler: F) -> HandlerClient<'a, S, M, F, N, P>
     where
-        F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
+        F: SyncEventHandler<P>,
     {
         HandlerClient::new(self, handler)
     }

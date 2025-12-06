@@ -8,6 +8,10 @@ use mountain_mqtt::{
 
 use crate::{packet_bin::PacketBin, poll_client::PollClient};
 
+pub trait SyncEventHandler<const P: usize> {
+    fn handle_event(&mut self, event: ClientReceivedEvent<P>) -> Result<(), EventHandlerError>;
+}
+
 /// An MQTT client that extends a [`PollClient`] with a handler function
 /// for accepting received messages, allowing for more convenient use.
 /// Note that the handler is not async to avoid cancel-safety issues
@@ -19,7 +23,7 @@ pub struct HandlerClient<'a, S, M, F, const N: usize, const P: usize>
 where
     M: RawMutex,
     S: ClientState,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
+    F: SyncEventHandler<P>,
 {
     poll_client: PollClient<'a, S, M, N, P>,
     handler: F,
@@ -30,7 +34,7 @@ impl<'a, S, M, F, const N: usize, const P: usize> HandlerClient<'a, S, M, F, N, 
 where
     M: RawMutex,
     S: ClientState,
-    F: Fn(ClientReceivedEvent<P>) -> Result<(), EventHandlerError>,
+    F: SyncEventHandler<P>,
 {
     pub fn new(poll_client: PollClient<'a, S, M, N, P>, handler: F) -> Self {
         Self {
@@ -82,8 +86,10 @@ where
         // possibly sends a packet. However then we would have to require that the handler is
         // cancel safe, and it would receive the same event again if the handler was cancelled.
         self.pending_packet = None;
-        let handler = &self.handler;
-        handler(event).map_err(ClientError::EventHandler)?;
+
+        self.handler
+            .handle_event(event)
+            .map_err(ClientError::EventHandler)?;
 
         Ok(())
     }

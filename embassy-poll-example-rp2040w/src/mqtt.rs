@@ -8,11 +8,13 @@ use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
 use mountain_mqtt::client::ClientError;
+use mountain_mqtt::client::ClientReceivedEvent;
 use mountain_mqtt::client::ConnectionSettings;
+use mountain_mqtt::client::EventHandlerError;
 use mountain_mqtt::client_state::ClientStateNoQueue;
 use mountain_mqtt::data::quality_of_service::QualityOfService;
+use mountain_mqtt_embassy::handler_client::SyncEventHandler;
 use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
-use mountain_mqtt_embassy::packet_bin::PacketBin;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
 
 use {defmt_rtt as _, panic_probe as _};
@@ -23,80 +25,56 @@ pub const TOPIC_BUTTON: &str = "embassy-example-rp2040w-button";
 
 type Client<'a> = PollClient<'a, ClientStateNoQueue, NoopRawMutex, 1024, 16>;
 
-pub async fn send_action(client: &mut Client<'_>, action: &Action) -> Result<(), ClientError> {
-    match action {
-        Action::Button(pressed) => {
-            let payload = if *pressed { "true" } else { "false" };
-            client
-                .publish(
-                    TOPIC_BUTTON,
-                    payload.as_bytes(),
-                    QualityOfService::Qos1,
-                    false,
-                )
-                .await?;
-        }
-    }
-    Ok(())
+pub struct QueueEventHandler<'a, const P: usize> {
+    event_pub: &'a mut EventPub,
 }
 
-pub async fn receive_event(
-    client: &mut Client<'_>,
-    packet_bin: PacketBin<1024>,
-    event_pub: &mut EventPub,
-) -> Result<(), ClientError> {
-    let event = client.process(&packet_bin).await?;
-    match event {
-        mountain_mqtt::client::ClientReceivedEvent::ApplicationMessage(message) => {
-            let event = Event::from_application_message(&message)?;
-            if let Err(e) = event_pub.try_publish(event) {
-                // Warn on overflow - we could also return a ClientError to cancel polling
-                warn!("Overflow in event channel, dropping event {:?}", e)
+impl<'a, const P: usize> SyncEventHandler<P> for QueueEventHandler<'a, P> {
+    fn handle_event(&mut self, event: ClientReceivedEvent<P>) -> Result<(), EventHandlerError> {
+        match event {
+            mountain_mqtt::client::ClientReceivedEvent::ApplicationMessage(message) => {
+                let event = Event::from_application_message(&message)?;
+                if let Err(e) = self.event_pub.try_publish(event) {
+                    // Warn on overflow - we could also return a ClientError to cancel polling
+                    warn!("Overflow in event channel, dropping event {:?}", e)
+                }
+            }
+            mountain_mqtt::client::ClientReceivedEvent::Ack => info!("Received Ack"),
+            mountain_mqtt::client::ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
+                granted_qos,
+                maximum_qos,
+            } => warn!(
+                "SubscriptionGrantedBelowMaximumQos, requested {:?}, received {:?}",
+                maximum_qos, granted_qos
+            ),
+            mountain_mqtt::client::ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers => {
+                warn!("PublishedMessageHadNoMatchingSubscribers")
+            }
+            mountain_mqtt::client::ClientReceivedEvent::NoSubscriptionExisted => {
+                warn!("NoSubscriptionExisted")
             }
         }
-        mountain_mqtt::client::ClientReceivedEvent::Ack => info!("Received Ack"),
-        mountain_mqtt::client::ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
-            granted_qos,
-            maximum_qos,
-        } => warn!(
-            "SubscriptionGrantedBelowMaximumQos, requested {:?}, received {:?}",
-            maximum_qos, granted_qos
-        ),
-        mountain_mqtt::client::ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers => {
-            warn!("PublishedMessageHadNoMatchingSubscribers")
-        }
-        mountain_mqtt::client::ClientReceivedEvent::NoSubscriptionExisted => {
-            warn!("NoSubscriptionExisted")
-        }
+        Ok(())
     }
-    Ok(())
 }
 
-pub async fn wait_for_responses(
-    client: &mut Client<'_>,
-    event_pub: &mut EventPub,
-) -> Result<(), ClientError> {
-    while client.waiting_for_responses() {
-        let packet_bin = client.receive().await?;
-        receive_event(client, packet_bin, event_pub).await?;
-    }
-    Ok(())
-}
-
-pub async fn demo_poll_result(
-    client: &mut Client<'_>,
+pub async fn client_function_with_channels(
+    mut client: Client<'_>,
     uid: &'static str,
     event_pub: &mut EventPub,
     action_sub: &mut ActionSub,
 ) -> Result<(), ClientError> {
+    let handler = QueueEventHandler { event_pub };
+
     // Connect - this sends packet and then waits for response
     client
         .connect(&ConnectionSettings::unauthenticated(uid))
         .await?;
 
+    let mut client = client.to_handler_client(handler);
+
     // Subscribe - this sends packet but does NOT wait for response - we will need to poll for packets
     client.subscribe(TOPIC_LED, QualityOfService::Qos1).await?;
-    wait_for_responses(client, event_pub).await?;
 
     // Announce ourselves
     client
@@ -107,20 +85,26 @@ pub async fn demo_poll_result(
             false,
         )
         .await?;
-    wait_for_responses(client, event_pub).await?;
 
     // Poll for incoming MQTT application messages, and for actions we need
     // to send out to MQTT server
     loop {
         match select(action_sub.next_message_pure(), client.receive()).await {
-            Either::First(action) => {
-                send_action(client, &action).await?;
-                wait_for_responses(client, event_pub).await?;
-            }
-            Either::Second(packet_bin) => {
-                let packet_bin = packet_bin?;
-                receive_event(client, packet_bin, event_pub).await?;
-            }
+            Either::First(action) => match action {
+                Action::Button(pressed) => {
+                    let payload = if pressed { "true" } else { "false" };
+                    client
+                        .publish(
+                            TOPIC_BUTTON,
+                            payload.as_bytes(),
+                            QualityOfService::Qos1,
+                            false,
+                        )
+                        .await?;
+                }
+            },
+            // Errors from handler are returned causing reconnection
+            Either::Second(result) => result?,
         }
     }
 }
@@ -140,11 +124,11 @@ pub async fn run(
         // uses it to manage MQTT interactions.
         // Since we want to use `event_pub` and `action_sub` as well, we capture them in a closure in this
         // anonymous async function, and we can then pass that to run the connection.
-        let poll = async |client: &mut Client<'_>| {
-            demo_poll_result(client, uid, &mut event_pub, &mut action_sub).await
+        let client_function = async |client: Client<'_>| {
+            client_function_with_channels(client, uid, &mut event_pub, &mut action_sub).await
         };
 
-        if let Err(e) = poll_client::run_mqtt_connection(settings, stack, poll).await {
+        if let Err(e) = poll_client::run_mqtt_connection(settings, stack, client_function).await {
             info!("run: Error {}, will reconnect", e);
         }
 
