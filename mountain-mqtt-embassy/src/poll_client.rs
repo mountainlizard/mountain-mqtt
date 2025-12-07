@@ -61,6 +61,9 @@ pub struct Settings {
     /// has not had a response, we will delay this additional time before
     /// trying again.
     ping_retry_delay: Duration,
+
+    /// The timeout for sending a packet
+    send_packet_timeout: Duration,
 }
 
 impl Settings {
@@ -71,6 +74,7 @@ impl Settings {
             receive_timeout: Duration::from_secs(10),
             ping_interval: Duration::from_secs(2),
             ping_retry_delay: Duration::from_millis(100),
+            send_packet_timeout: Duration::from_secs(5),
         }
     }
 }
@@ -301,7 +305,9 @@ where
         packet: Connect<'_, PP, W>,
     ) -> Result<(), ClientError> {
         self.client_state.connect(&packet)?;
-        self.raw_client.send_packet(&packet).await?;
+        self.raw_client
+            .send_packet_timeout(&packet, self.settings.send_packet_timeout)
+            .await?;
 
         // Sending packet is the start of our connection
         self.connection_start = Some(Instant::now());
@@ -362,7 +368,9 @@ where
             // Note that the packet is not actually sent immediately, it is just queued,
             // but if the actual sending fails then the client will error and should not
             // be used further.
-            self.raw_client.send_packet(&Pingreq::default()).await?;
+            self.raw_client
+                .send_packet_timeout(&Pingreq::default(), self.settings.send_packet_timeout)
+                .await?;
             self.client_state.send_ping()?;
             self.ping_at = Some(Instant::now() + self.settings.ping_interval);
         }
@@ -429,10 +437,14 @@ where
         &mut self,
         packet: Disconnect<'b, PP>,
     ) -> Result<(), ClientError> {
-        self.raw_client.send_packet(&packet).await?;
+        self.raw_client
+            .send_packet_timeout(&packet, self.settings.send_packet_timeout)
+            .await?;
         // Send an empty packet to flush send queue so we know the
         // disconnect packet has actually made it to the network
-        self.raw_client.send(PacketBin::empty()).await;
+        self.raw_client
+            .send_timeout(PacketBin::empty(), self.settings.send_packet_timeout)
+            .await?;
         self.client_state.disconnect()?;
         Ok(())
     }
@@ -493,7 +505,9 @@ where
         let packet = self
             .client_state
             .subscribe_packet(topic_name, maximum_qos)?;
-        self.raw_client.send_packet(&packet).await?;
+        self.raw_client
+            .send_packet_timeout(&packet, self.settings.send_packet_timeout)
+            .await?;
         self.client_state.subscribe_update(&packet)?;
         Ok(())
     }
@@ -505,7 +519,9 @@ where
     /// Cancel-safe: Unless unsubscribe packet is sent, client state won't be updated
     pub async fn unsubscribe(&mut self, topic_name: &str) -> Result<(), ClientError> {
         let packet = self.client_state.unsubscribe_packet(topic_name)?;
-        self.raw_client.send_packet(&packet).await?;
+        self.raw_client
+            .send_packet_timeout(&packet, self.settings.send_packet_timeout)
+            .await?;
         self.client_state.unsubscribe_update(&packet)?;
         Ok(())
     }
@@ -551,7 +567,9 @@ where
         let packet = self
             .client_state
             .publish_with_properties_packet(topic_name, payload, qos, retain, properties)?;
-        self.raw_client.send_packet(&packet).await?;
+        self.raw_client
+            .send_packet_timeout(&packet, self.settings.send_packet_timeout)
+            .await?;
         self.client_state.publish_update(&packet)?;
         Ok(())
     }
@@ -595,7 +613,9 @@ where
         // However note that if interrupted, this process method must be called again on
         // the packet until it completes (i.e. response is set and client state is updated).
         if let Some(response) = self.client_state.receive_produce_response(&packet)? {
-            self.raw_client.send_packet(&response).await?;
+            self.raw_client
+                .send_packet_timeout(&response, self.settings.send_packet_timeout)
+                .await?;
         }
 
         // Remaining operations are sync, and update client state now that send has succeeded

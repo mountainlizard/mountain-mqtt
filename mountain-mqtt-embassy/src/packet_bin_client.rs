@@ -2,12 +2,14 @@ use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     channel::{Receiver, Sender},
 };
+use embassy_time::{Duration, WithTimeout};
 use mountain_mqtt::{
     client::ClientError,
     codec::{
         mqtt_writer::{MqttBufWriter, MqttWriter},
         write,
     },
+    error::PacketWriteError,
     packets::packet::Packet,
 };
 
@@ -64,6 +66,33 @@ where
         let packet = PacketBin { buf, len };
         buf[0] = 1;
         self.send(packet).await;
+        Ok(())
+    }
+
+    pub async fn send_packet_timeout<PP>(
+        &mut self,
+        packet: &PP,
+        duration: Duration,
+    ) -> Result<(), ClientError>
+    where
+        PP: Packet + write::Write,
+    {
+        self.send_packet(packet)
+            .with_timeout(duration)
+            .await
+            .map_err(|_| ClientError::PacketWrite(PacketWriteError::ConnectionSend))??;
+        Ok(())
+    }
+
+    pub async fn send_timeout(
+        &mut self,
+        message: PacketBin<N>,
+        duration: Duration,
+    ) -> Result<(), ClientError> {
+        self.send(message)
+            .with_timeout(duration)
+            .await
+            .map_err(|_| ClientError::PacketWrite(PacketWriteError::ConnectionSend))?;
         Ok(())
     }
 }
