@@ -232,7 +232,9 @@ pub trait Client<'a> {
     /// Disconnect from server
     async fn disconnect(&mut self) -> Result<(), ClientError>;
 
-    /// Send a ping message to broker
+    /// Optionally send a ping message to broker - note that if the implementation
+    /// already handles sending pings this may be a no-op, otherwise it can be used
+    /// to determine when to send pings to keep connection alive.
     async fn send_ping(&mut self) -> Result<(), ClientError>;
 
     /// Poll for and handle at most one event
@@ -286,7 +288,31 @@ pub trait Client<'a> {
     async fn perform<'b, const P: usize>(
         &'b mut self,
         action: ClientAction<'b, P>,
-    ) -> Result<(), ClientError>;
+    ) -> Result<(), ClientError> {
+        match action {
+            ClientAction::Subscribe {
+                topic_name,
+                maximum_qos,
+            } => self.subscribe(topic_name, maximum_qos).await,
+            ClientAction::Unsubscribe { topic_name } => self.unsubscribe(topic_name).await,
+            ClientAction::Publish {
+                topic_name,
+                payload,
+                qos,
+                retain,
+            } => self.publish(topic_name, payload, qos, retain).await,
+            ClientAction::PublishWithProperties {
+                topic_name,
+                payload,
+                qos,
+                retain,
+                properties,
+            } => {
+                self.publish_with_properties(topic_name, payload, qos, retain, properties)
+                    .await
+            }
+        }
+    }
 }
 
 pub enum ClientAction<'a, const P: usize> {
@@ -676,34 +702,5 @@ where
         }
 
         Ok(true)
-    }
-
-    async fn perform<'b, const PP: usize>(
-        &'b mut self,
-        action: ClientAction<'b, PP>,
-    ) -> Result<(), ClientError> {
-        match action {
-            ClientAction::Subscribe {
-                topic_name,
-                maximum_qos,
-            } => self.subscribe(topic_name, maximum_qos).await,
-            ClientAction::Unsubscribe { topic_name } => self.unsubscribe(topic_name).await,
-            ClientAction::Publish {
-                topic_name,
-                payload,
-                qos,
-                retain,
-            } => self.publish(topic_name, payload, qos, retain).await,
-            ClientAction::PublishWithProperties {
-                topic_name,
-                payload,
-                qos,
-                retain,
-                properties,
-            } => {
-                self.publish_with_properties(topic_name, payload, qos, retain, properties)
-                    .await
-            }
-        }
     }
 }

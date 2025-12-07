@@ -7,6 +7,7 @@ use embassy_futures::select::{select, Either};
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
+use mountain_mqtt::client::Client as _;
 use mountain_mqtt::client::{
     ClientError, ClientReceivedEvent, ConnectionSettings, EventHandlerError,
 };
@@ -14,7 +15,6 @@ use mountain_mqtt::{client_state::ClientStateNoQueue, data::quality_of_service::
 use mountain_mqtt_embassy::handler_client::SyncEventHandler;
 use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
-
 use {defmt_rtt as _, panic_probe as _};
 
 pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";

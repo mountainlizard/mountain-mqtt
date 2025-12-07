@@ -10,7 +10,7 @@ use mountain_mqtt::{
 /// A binary packet, this is just a fixed maximum size buffer and a length
 /// for the data actually used within the buffer. Allows variable-sized packets
 /// to be stored as a sized struct.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PacketBin<const N: usize> {
     pub buf: [u8; N],
     pub len: usize,
