@@ -7,12 +7,10 @@ use embassy_futures::select::{select, Either};
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
-use mountain_mqtt::client::ClientError;
-use mountain_mqtt::client::ClientReceivedEvent;
-use mountain_mqtt::client::ConnectionSettings;
-use mountain_mqtt::client::EventHandlerError;
-use mountain_mqtt::client_state::ClientStateNoQueue;
-use mountain_mqtt::data::quality_of_service::QualityOfService;
+use mountain_mqtt::client::{
+    ClientError, ClientReceivedEvent, ConnectionSettings, EventHandlerError,
+};
+use mountain_mqtt::{client_state::ClientStateNoQueue, data::quality_of_service::QualityOfService};
 use mountain_mqtt_embassy::handler_client::SyncEventHandler;
 use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
@@ -118,7 +116,7 @@ pub async fn run(
     mut action_sub: ActionSub,
 ) {
     loop {
-        info!("run: Trying MQTT connection");
+        info!("run: Trying MQTT connection, will use handler");
 
         // `poll_client::run_mqtt_connection` accepts an async function that just accepts a `PollClient` and
         // uses it to manage MQTT interactions.

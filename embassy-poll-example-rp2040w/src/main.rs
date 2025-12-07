@@ -9,6 +9,7 @@ mod action;
 mod channels;
 mod event;
 mod mqtt;
+mod mqtt_poll;
 mod ui;
 
 use crate::action::Action;
@@ -200,13 +201,24 @@ async fn main(spawner: Spawner) {
 
     unwrap!(spawner.spawn(ui_task(event_sub_ui, action_pub_ui, p.PIN_12, control)));
 
-    unwrap!(spawner.spawn(mqtt::run(
-        settings,
-        stack,
-        uid_handle,
-        event_pub_mqtt,
-        action_sub_mqtt
-    )));
+    let poll = false;
+    if poll {
+        unwrap!(spawner.spawn(mqtt_poll::run(
+            settings,
+            stack,
+            uid_handle,
+            event_pub_mqtt,
+            action_sub_mqtt
+        )));
+    } else {
+        unwrap!(spawner.spawn(mqtt::run(
+            settings,
+            stack,
+            uid_handle,
+            event_pub_mqtt,
+            action_sub_mqtt
+        )));
+    }
 
     loop {
         Timer::after(Duration::from_secs(5)).await;
