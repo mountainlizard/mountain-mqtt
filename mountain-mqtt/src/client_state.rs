@@ -250,7 +250,8 @@ pub trait ClientState {
 
     /// Receive a packet and produce the corresponding packet to send as
     /// a response.
-    /// This does not update the client state - call
+    /// This does not update the client state - call [`ClientState::receive`] to
+    /// do this.
     /// Errors indicate an invalid packet was received,
     /// or the received packet was unexpected based on our state
     fn receive_produce_response<'a, const P: usize, const W: usize, const S: usize>(
@@ -333,7 +334,7 @@ pub trait ClientState {
     }
 
     /// Produce a packet to publish to a given topic, with no properties. This
-    /// does not update the state, call [`Self::publish_update`]
+    /// does not update the state, call [`ClientState::publish_update`]
     /// after sending the packet.
     fn publish_packet<'b>(
         &mut self,
@@ -346,7 +347,7 @@ pub trait ClientState {
     }
 
     /// Produce a packet to publish to a given topic, with properties. This
-    /// does not update the state, call [`Self::publish_update`]
+    /// does not update the state, call [`ClientState::publish_update`]
     /// after sending the packet.
     fn publish_with_properties_packet<'b, const P: usize>(
         &mut self,

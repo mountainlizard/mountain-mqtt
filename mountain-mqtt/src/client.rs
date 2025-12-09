@@ -145,8 +145,8 @@ pub enum ClientError {
     PacketRead(PacketReadError),
     ClientState(ClientStateError),
     TimeoutOnResponsePacket,
-    /// Maximum timeout has elapsed without receiving any packets from the server,
-    /// therefore it is considred unresponsive
+    /// Maximum timeout has elapsed without receiving ping responses from the server,
+    /// therefore it is considered unresponsive
     ReceiveTimeoutServerUnresponsive,
     Disconnected(DisconnectReasonCode),
     EventHandler(EventHandlerError),
