@@ -35,6 +35,21 @@ pub struct ApplicationMessage<'a, const P: usize> {
     pub properties: Vec<PublishProperty<'a>, P>,
 }
 
+#[cfg(feature = "defmt")]
+impl<'a, const P: usize> defmt::Format for ApplicationMessage<'a, P> {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(
+            f,
+            "ApplicationMessage({},{},{},{},{} properties)",
+            self.topic_name,
+            self.payload,
+            self.qos,
+            self.retain,
+            self.properties.len()
+        )
+    }
+}
+
 impl<'a, const P: usize> From<Publish<'a, P>> for ApplicationMessage<'a, P> {
     fn from(p: Publish<'a, P>) -> Self {
         ApplicationMessage {

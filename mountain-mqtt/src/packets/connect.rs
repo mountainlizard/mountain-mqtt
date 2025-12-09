@@ -69,7 +69,25 @@ impl<'a> Connect<'a, 0, 0> {
         }
     }
 }
+impl<'a> Connect<'a, 1, 0> {
+    pub fn unauthenticated_no_topic_aliases(client_id: &'a str) -> Connect<'a, 1, 0> {
+        let mut properties = Vec::new();
 
+        properties
+            .push(ConnectProperty::TopicAliasMaximum(0.into()))
+            .unwrap();
+
+        Self {
+            keep_alive: KEEP_ALIVE_DEFAULT,
+            username: None,
+            password: None,
+            client_id,
+            clean_start: true,
+            will: None,
+            properties,
+        }
+    }
+}
 impl<'a, const P: usize, const W: usize> Connect<'a, P, W> {
     pub fn new(
         keep_alive: u16,

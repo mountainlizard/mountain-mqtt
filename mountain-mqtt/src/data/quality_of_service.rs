@@ -3,7 +3,7 @@ use core::fmt::{Display, Formatter};
 use crate::error::PacketReadError;
 
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Eq, Hash, PartialOrd)]
 pub enum QualityOfService {
     Qos0 = 0,
     Qos1 = 1,

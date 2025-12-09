@@ -1,0 +1,138 @@
+use embedded_io_async::Read;
+use mountain_mqtt::{
+    client::ClientError,
+    codec::mqtt_reader::{MqttBufReader, MqttReader},
+    data::packet_type::PacketType,
+    error::PacketReadError,
+    packets::packet_generic::PacketGeneric,
+};
+
+/// A binary packet, this is just a fixed maximum size buffer and a length
+/// for the data actually used within the buffer. Allows variable-sized packets
+/// to be stored as a sized struct.
+#[derive(Clone)]
+pub struct PacketBin<const N: usize> {
+    pub buf: [u8; N],
+    pub len: usize,
+}
+
+impl<const N: usize> PacketBin<N> {
+    /// Create a new [`PacketBin`] with a copy of the data in the slice
+    /// Produces a [`PacketReadError`] if the slice is longer than N
+    pub fn new(msg_data: &[u8]) -> Result<Self, PacketReadError> {
+        let len = msg_data.len();
+        if len > N {
+            Err(PacketReadError::PacketTooLargeForBuffer)
+        } else {
+            // TODO: Is it worth doing this without initialising the array where we are just going
+            // to overwrite it?
+            let mut buf = [0; N];
+            buf[0..len].clone_from_slice(msg_data);
+            Ok(Self { buf, len })
+        }
+    }
+
+    /// Get the actual message data from the buffer, as a slice
+    pub fn msg_data(&self) -> &[u8] {
+        &self.buf[0..self.len]
+    }
+
+    /// Parse the message data as a [`PacketGeneric`]
+    /// Produces a [`PacketReadError`] if the data is not a valid packet.
+    pub fn as_packet_generic<const P: usize, const W: usize, const S: usize>(
+        &self,
+    ) -> Result<PacketGeneric<'_, P, W, S>, PacketReadError> {
+        let mut packet_reader = MqttBufReader::new(self.msg_data());
+        packet_reader.get()
+    }
+
+    /// Create a new empty buffer (length 0)
+    pub fn empty() -> Self {
+        let buf = [0; N];
+        Self { buf, len: 0 }
+    }
+}
+
+/// Receive a packet from a [`Read`] and return as a [`PacketBin`]
+/// using MQTT packet encoding to find the size of the packet
+pub async fn receive_packet_bin<R, const N: usize>(
+    read: &mut R,
+) -> Result<PacketBin<N>, ClientError>
+where
+    R: Read,
+{
+    let mut buf = [0; N];
+    let n = receive_packet_buf(read, &mut buf).await?;
+    Ok(PacketBin::new(&buf[0..n])?)
+}
+
+/// Receive a packet from a [`Read`] to a binary buffer,
+/// using MQTT packet encoding to find the size of the packet
+pub async fn receive_packet_buf<R, const N: usize>(
+    read: &mut R,
+    buf: &mut [u8; N],
+) -> Result<usize, ClientError>
+where
+    R: Read,
+{
+    let mut position: usize = 0;
+
+    read.read_exact(&mut buf[0..1])
+        .await
+        .map_err(|_| ClientError::PacketRead(PacketReadError::ConnectionReceive))?;
+    position += 1;
+
+    // Check first header byte is valid, if not we can error early without
+    // trying to read the rest of a packet
+    if !PacketType::is_valid_first_header_byte(buf[0]) {
+        return Err(ClientError::PacketRead(PacketReadError::InvalidPacketType));
+    }
+
+    // We will read up to 4 bytes into buffer as variable u32
+
+    // First byte always exists
+    read.read_exact(&mut buf[position..position + 1])
+        .await
+        .map_err(|_| ClientError::PacketRead(PacketReadError::ConnectionReceive))?;
+    position += 1;
+
+    // Read up to 3 more bytes looking for the end of the encoded length
+    for _extra in 0..3 {
+        if buf[position - 1] & 128 == 0 {
+            break;
+        } else {
+            read.read_exact(&mut buf[position..position + 1])
+                .await
+                .map_err(|_| ClientError::PacketRead(PacketReadError::ConnectionReceive))?;
+            position += 1;
+        }
+    }
+
+    // Error if we didn't see the end of the length
+    if buf[position - 1] & 128 != 0 {
+        return Err(ClientError::PacketRead(
+            PacketReadError::InvalidVariableByteIntegerEncoding,
+        ));
+    }
+
+    // We have a valid length, decode it
+    let remaining_length = {
+        let mut r = MqttBufReader::new(&buf[1..position]);
+        r.get_variable_u32().map_err(ClientError::PacketRead)?
+    } as usize;
+
+    // If packet will not fit in buffer, error
+    if position + remaining_length > buf.len() {
+        return Err(ClientError::PacketRead(
+            PacketReadError::PacketTooLargeForBuffer,
+        ));
+    }
+
+    // Read the rest of the packet
+    read.read_exact(&mut buf[position..position + remaining_length])
+        .await
+        .map_err(|_| ClientError::PacketRead(PacketReadError::ConnectionReceive))?;
+    position += remaining_length;
+
+    Ok(position)
+}

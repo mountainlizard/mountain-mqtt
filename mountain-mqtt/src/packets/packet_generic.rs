@@ -1,7 +1,8 @@
 use crate::{
-    codec::{mqtt_reader, read::Read},
+    codec::{mqtt_reader, mqtt_writer, read::Read, write::Write},
     data::packet_type::PacketType,
     error::PacketReadError,
+    packets::packet::PacketWrite,
 };
 
 use super::{
@@ -47,6 +48,31 @@ pub enum PacketGeneric<'a, const P: usize, const W: usize, const S: usize> {
     Pingresp(Pingresp),
     Disconnect(Disconnect<'a, P>),
     Auth(Auth<'a, P>),
+}
+
+impl<const P: usize, const W: usize, const S: usize> PacketWrite for PacketGeneric<'_, P, W, S> {
+    fn put_variable_header_and_payload<'w, WRITER: mqtt_writer::MqttWriter<'w>>(
+        &self,
+        writer: &mut WRITER,
+    ) -> mqtt_writer::Result<()> {
+        match self {
+            PacketGeneric::Connect(connect) => connect.write(writer),
+            PacketGeneric::Connack(connack) => connack.write(writer),
+            PacketGeneric::Publish(publish) => publish.write(writer),
+            PacketGeneric::Puback(puback) => puback.write(writer),
+            PacketGeneric::Pubrec(pubrec) => pubrec.write(writer),
+            PacketGeneric::Pubrel(pubrel) => pubrel.write(writer),
+            PacketGeneric::Pubcomp(pubcomp) => pubcomp.write(writer),
+            PacketGeneric::Subscribe(subscribe) => subscribe.write(writer),
+            PacketGeneric::Suback(suback) => suback.write(writer),
+            PacketGeneric::Unsubscribe(unsubscribe) => unsubscribe.write(writer),
+            PacketGeneric::Unsuback(unsuback) => unsuback.write(writer),
+            PacketGeneric::Pingreq(pingreq) => pingreq.write(writer),
+            PacketGeneric::Pingresp(pingresp) => pingresp.write(writer),
+            PacketGeneric::Disconnect(disconnect) => disconnect.write(writer),
+            PacketGeneric::Auth(auth) => auth.write(writer),
+        }
+    }
 }
 
 impl<'a, const P: usize, const W: usize, const S: usize> Read<'a> for PacketGeneric<'a, P, W, S> {

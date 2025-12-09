@@ -35,6 +35,10 @@ impl<'a, const P: usize, const S: usize>
             properties,
         }
     }
+    
+    pub fn packet_identifier(&self) -> &PacketIdentifier {
+        &self.packet_identifier
+    }
 }
 
 impl<const P: usize, const S: usize> Packet
