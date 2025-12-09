@@ -68,6 +68,24 @@ impl<'a, const P: usize, const S: usize> Subscribe<'a, P, S> {
             properties,
         }
     }
+
+    pub fn packet_identifier(&self) -> &PacketIdentifier {
+        &self.packet_identifier
+    }
+
+    pub fn request_maximum_qos(&self) -> QualityOfService {
+        let mut qos = self.first_request.options.maximum_qos;
+        for r in self.other_requests.iter() {
+            if r.options.maximum_qos > qos {
+                qos = r.options.maximum_qos;
+            }
+        }
+        qos
+    }
+
+    pub fn request_count(&self) -> usize {
+        self.other_requests.len() + 1
+    }
 }
 
 impl<const P: usize, const S: usize> Packet for Subscribe<'_, P, S> {

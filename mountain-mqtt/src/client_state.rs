@@ -32,6 +32,7 @@ pub enum ClientStateError {
     NotIdle,
     AuthNotSupported,
     Qos2NotSupported,
+    MultipleSubscriptionRequestsNotSupported,
     ReceivedQos2PublishNotSupported,
     ClientIsWaitingForResponse,
     NotConnected,
@@ -63,6 +64,9 @@ impl defmt::Format for ClientStateError {
             Self::NotIdle => defmt::write!(f, "NotIdle"),
             Self::AuthNotSupported => defmt::write!(f, "AuthNotSupported"),
             Self::Qos2NotSupported => defmt::write!(f, "Qos2NotSupported"),
+            Self::MultipleSubscriptionRequestsNotSupported => {
+                defmt::write!(f, "MultipleSubscriptionRequestsNotSupported")
+            }
             Self::ReceivedQos2PublishNotSupported => {
                 defmt::write!(f, "ReceivedQos2PublishNotSupported")
             }
@@ -111,6 +115,9 @@ impl Display for ClientStateError {
             Self::NotIdle => write!(f, "NotIdle"),
             Self::AuthNotSupported => write!(f, "AuthNotSupported"),
             Self::Qos2NotSupported => write!(f, "Qos2NotSupported"),
+            Self::MultipleSubscriptionRequestsNotSupported => {
+                write!(f, "MultipleSubscriptionRequestsNotSupported")
+            }
             Self::ReceivedQos2PublishNotSupported => write!(f, "ReceivedQos2PublishNotSupported"),
             Self::ClientIsWaitingForResponse => write!(f, "ClientIsWaitingForResponse"),
             Self::NotConnected => write!(f, "NotConnected"),
@@ -227,6 +234,10 @@ pub trait ClientState {
     /// Produce a packet to ping the server, update state
     fn send_ping(&mut self) -> Result<Pingreq, ClientStateError>;
 
+    /// If connected, the number of pings that have been sent, but not responded
+    /// to, otherwise 0.
+    fn pending_ping_count(&self) -> u32;
+
     /// Receive a packet
     /// This updates the client state, and if anything that might require
     /// action by the caller occurs, a [ClientStateReceiveEvent] is returned.
@@ -237,18 +248,64 @@ pub trait ClientState {
         packet: PacketGeneric<'a, P, W, S>,
     ) -> Result<ClientStateReceiveEvent<'a, 'b, P>, ClientStateError>;
 
+    /// Receive a packet and produce the corresponding packet to send as
+    /// a response.
+    /// This does not update the client state - call [`ClientState::receive`] to
+    /// do this.
+    /// Errors indicate an invalid packet was received,
+    /// or the received packet was unexpected based on our state
+    fn receive_produce_response<'a, const P: usize, const W: usize, const S: usize>(
+        &self,
+        packet: &PacketGeneric<'a, P, W, S>,
+    ) -> Result<Option<Puback<'_, P>>, ClientStateError>;
+
     /// Produce a packet to subscribe to a topic by name, update state
     fn subscribe<'b>(
         &mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
+    ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
+        let packet = self.subscribe_packet(topic_name, maximum_qos)?;
+        self.subscribe_update(&packet)?;
+        Ok(packet)
+    }
+
+    /// Produce a packet to subscribe to a topic by name, this does not update
+    /// the state - call [`Self::subscribe_update`] after sending the packet.
+    fn subscribe_packet<'b>(
+        &mut self,
+        topic_name: &'b str,
+        maximum_qos: QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError>;
+
+    /// Update the state of the client after sending a subscribe packet
+    fn subscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Subscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to unsubscribe from a topic by name, update state
     fn unsubscribe<'b>(
         &mut self,
         topic_name: &'b str,
+    ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {
+        let packet = self.unsubscribe_packet(topic_name)?;
+        self.unsubscribe_update(&packet)?;
+        Ok(packet)
+    }
+
+    /// Produce a packet to unsubscribe from a topic by name, this does not update
+    /// the state - call [`Self::unsubscribe_update`] after sending the packet.
+    fn unsubscribe_packet<'b>(
+        &mut self,
+        topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError>;
+
+    /// Update the state of the client after sending an unsubscribe packet
+    fn unsubscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Unsubscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError>;
 
     /// Produce a packet to publish to a given topic, update state, with no properties
     fn publish<'b>(
@@ -269,7 +326,43 @@ pub trait ClientState {
         qos: QualityOfService,
         retain: bool,
         properties: Vec<PublishProperty<'b>, P>,
+    ) -> Result<Publish<'b, P>, ClientStateError> {
+        let packet =
+            self.publish_with_properties_packet(topic_name, payload, qos, retain, properties)?;
+        self.publish_update(&packet)?;
+        Ok(packet)
+    }
+
+    /// Produce a packet to publish to a given topic, with no properties. This
+    /// does not update the state, call [`ClientState::publish_update`]
+    /// after sending the packet.
+    fn publish_packet<'b>(
+        &mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+    ) -> Result<Publish<'b, 0>, ClientStateError> {
+        self.publish_with_properties_packet(topic_name, payload, qos, retain, Vec::new())
+    }
+
+    /// Produce a packet to publish to a given topic, with properties. This
+    /// does not update the state, call [`ClientState::publish_update`]
+    /// after sending the packet.
+    fn publish_with_properties_packet<'b, const P: usize>(
+        &mut self,
+        topic_name: &'b str,
+        payload: &'b [u8],
+        qos: QualityOfService,
+        retain: bool,
+        properties: Vec<PublishProperty<'b>, P>,
     ) -> Result<Publish<'b, P>, ClientStateError>;
+
+    /// Update the state of the client after sending an publish packet
+    fn publish_update<'b, const P: usize>(
+        &mut self,
+        packet: &Publish<'b, P>,
+    ) -> Result<(), ClientStateError>;
 
     /// Move to errored state, no further operations are possible
     /// This must be called if the user of the client state cannot successfully send
@@ -384,7 +477,7 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn publish_with_properties<'b, const P: usize>(
+    fn publish_with_properties_packet<'b, const P: usize>(
         &mut self,
         topic_name: &'b str,
         payload: &'b [u8],
@@ -413,20 +506,38 @@ impl ClientState for ClientStateNoQueue {
                     payload,
                     properties,
                 );
-
-                if qos == QualityOfService::Qos1 {
-                    *waiting = Waiting::ForPuback {
-                        id: Self::PUBLISH_PACKET_IDENTIFIER,
-                    };
-                }
-
                 Ok(publish)
             }
             _ => Err(ClientStateError::NotConnected),
         }
     }
 
-    fn subscribe<'b>(
+    fn publish_update<'b, const P: usize>(
+        &mut self,
+        packet: &Publish<'b, P>,
+    ) -> Result<(), ClientStateError> {
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                match packet.publish_packet_identifier() {
+                    PublishPacketIdentifier::None => Ok(()),
+                    PublishPacketIdentifier::Qos1(packet_identifier) => {
+                        if waiting.is_waiting() {
+                            Err(ClientStateError::ClientIsWaitingForResponse)
+                        } else {
+                            *waiting = Waiting::ForPuback {
+                                id: *packet_identifier,
+                            };
+                            Ok(())
+                        }
+                    }
+                    PublishPacketIdentifier::Qos2(_) => Err(ClientStateError::Qos2NotSupported),
+                }
+            }
+            _ => Err(ClientStateError::NotConnected),
+        }
+    }
+
+    fn subscribe_packet<'b>(
         &mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
@@ -445,12 +556,6 @@ impl ClientState for ClientStateNoQueue {
                         Vec::new(),
                         Vec::new(),
                     );
-
-                    *waiting = Waiting::ForSuback {
-                        id: Self::SUBSCRIBE_PACKET_IDENTIFIER,
-                        qos: maximum_qos,
-                    };
-
                     Ok(subscribe)
                 }
             }
@@ -458,7 +563,32 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn unsubscribe<'b>(
+    fn subscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Subscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError> {
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                if waiting.is_waiting() {
+                    Err(ClientStateError::ClientIsWaitingForResponse)
+                } else if packet.request_count() > 1 {
+                    Err(ClientStateError::MultipleSubscriptionRequestsNotSupported)
+                } else if packet.request_maximum_qos() == QualityOfService::Qos2 {
+                    Err(ClientStateError::Qos2NotSupported)
+                } else {
+                    *waiting = Waiting::ForSuback {
+                        id: *packet.packet_identifier(),
+                        qos: packet.request_maximum_qos(),
+                    };
+
+                    Ok(())
+                }
+            }
+            _ => Err(ClientStateError::NotConnected),
+        }
+    }
+
+    fn unsubscribe_packet<'b>(
         &mut self,
         topic_name: &'b str,
     ) -> Result<Unsubscribe<'b, 0, 0>, ClientStateError> {
@@ -474,11 +604,27 @@ impl ClientState for ClientStateNoQueue {
                         Vec::new(),
                     );
 
+                    Ok(unsubscribe)
+                }
+            }
+            _ => Err(ClientStateError::NotConnected),
+        }
+    }
+
+    fn unsubscribe_update<'b, const P: usize, const S: usize>(
+        &mut self,
+        packet: &Unsubscribe<'b, P, S>,
+    ) -> Result<(), ClientStateError> {
+        match self {
+            ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
+                if waiting.is_waiting() {
+                    Err(ClientStateError::ClientIsWaitingForResponse)
+                } else {
                     *waiting = Waiting::ForUnsuback {
-                        id: Self::UNSUBSCRIBE_PACKET_IDENTIFIER,
+                        id: *packet.packet_identifier(),
                     };
 
-                    Ok(unsubscribe)
+                    Ok(())
                 }
             }
             _ => Err(ClientStateError::NotConnected),
@@ -492,6 +638,120 @@ impl ClientState for ClientStateNoQueue {
                 Ok(Pingreq::default())
             }
             _ => Err(ClientStateError::NotConnected),
+        }
+    }
+
+    fn receive_produce_response<'a, const P: usize, const W: usize, const S: usize>(
+        &self,
+        packet: &PacketGeneric<'a, P, W, S>,
+    ) -> Result<Option<Puback<'_, P>>, ClientStateError> {
+        match self {
+            // If we are connecting, we only expect a Connack packet
+            // (server cannot disconnect before Connack [MQTT-3.14.0-1])
+            // or an Auth packet [MQTT-3.2.0-1]
+            ClientStateNoQueue::Connecting(RequestedConnectionInfo {
+                clean_start,
+                keep_alive: _,
+            }) => match packet {
+                PacketGeneric::Connack(connack) => match connack.reason_code() {
+                    ConnectReasonCode::Success => {
+                        let session_present = connack.session_present();
+
+                        // If there's a session, but we requested a clean start, this is an error
+                        if session_present && *clean_start {
+                            return Err(ClientStateError::UnexpectedSessionPresentForCleanStart);
+                        }
+
+                        Ok(None)
+                    }
+                    reason_code => Err(ClientStateError::Connect(*reason_code)),
+                },
+                PacketGeneric::Auth(_) => Err(ClientStateError::AuthNotSupported),
+                _ => Err(ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting),
+            },
+
+            // If we are connected, we handle all client packets other than Connack
+            ClientStateNoQueue::Connected(ConnectionState { info, waiting }) => match packet {
+                PacketGeneric::Publish(publish) => match publish.publish_packet_identifier() {
+                    PublishPacketIdentifier::None => Ok(None),
+                    PublishPacketIdentifier::Qos1(packet_identifier) => {
+                        let puback =
+                            Puback::new(*packet_identifier, PublishReasonCode::Success, Vec::new());
+                        Ok(Some(puback))
+                    }
+                    PublishPacketIdentifier::Qos2(_) => {
+                        Err(ClientStateError::ReceivedQos2PublishNotSupported)
+                    }
+                },
+
+                PacketGeneric::Puback(puback) => {
+                    let ack_id = puback.packet_identifier();
+                    match waiting {
+                        Waiting::ForPuback { id } if id == ack_id => {
+                            let reason_code = puback.reason_code();
+                            if reason_code.is_error() {
+                                Err(ClientStateError::Publish(*reason_code))
+                            } else {
+                                Ok(None)
+                            }
+                        }
+                        Waiting::ForPuback { id: _ } => {
+                            Err(ClientStateError::UnexpectedPubackPacketIdentifier)
+                        }
+                        _ => Err(ClientStateError::UnexpectedPuback),
+                    }
+                }
+
+                PacketGeneric::Suback(suback) => {
+                    let ack_id = suback.packet_identifier();
+
+                    match waiting {
+                        Waiting::ForSuback { id, qos: _ } if id == ack_id => Ok(None),
+                        Waiting::ForSuback { id: _, qos: _ } => {
+                            Err(ClientStateError::UnexpectedSubackPacketIdentifier)
+                        }
+                        _ => Err(ClientStateError::UnexpectedSuback),
+                    }
+                }
+                PacketGeneric::Unsuback(unsuback) => {
+                    let ack_id = unsuback.packet_identifier();
+
+                    match waiting {
+                        Waiting::ForUnsuback { id } if id == ack_id => {
+                            let reason_code = unsuback.first_reason_code();
+                            if reason_code.is_error() {
+                                Err(ClientStateError::Unsubscribe(*reason_code))
+                            } else {
+                                Ok(None)
+                            }
+                        }
+                        Waiting::ForUnsuback { id: _ } => {
+                            Err(ClientStateError::UnexpectedUnsubackPacketIdentifier)
+                        }
+                        _ => Err(ClientStateError::UnexpectedUnsuback),
+                    }
+                }
+                PacketGeneric::Pingresp(_pingresp) => {
+                    if info.pending_ping_count > 0 {
+                        Ok(None)
+                    } else {
+                        Err(ClientStateError::UnexpectedPingresp)
+                    }
+                }
+                PacketGeneric::Disconnect(_) => Ok(None),
+                PacketGeneric::Connack(_) => {
+                    Err(ClientStateError::ReceivedConnackWhenNotConnecting)
+                }
+                PacketGeneric::Auth(_auth) => Err(ClientStateError::AuthNotSupported),
+                PacketGeneric::Connect(_)
+                | PacketGeneric::Pubrec(_)
+                | PacketGeneric::Pubrel(_)
+                | PacketGeneric::Pubcomp(_)
+                | PacketGeneric::Subscribe(_)
+                | PacketGeneric::Unsubscribe(_)
+                | PacketGeneric::Pingreq(_) => Err(ClientStateError::ServerOnlyMessageReceived),
+            },
+            _ => Err(ClientStateError::ReceiveWhenNotConnectedOrConnecting),
         }
     }
 
@@ -665,5 +925,14 @@ impl ClientState for ClientStateNoQueue {
 
     fn error(&mut self) {
         *self = Self::Errored;
+    }
+
+    fn pending_ping_count(&self) -> u32 {
+        match self {
+            ClientStateNoQueue::Connected(connection_state) => {
+                connection_state.info.pending_ping_count
+            }
+            _ => 0,
+        }
     }
 }

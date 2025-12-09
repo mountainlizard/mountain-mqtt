@@ -145,6 +145,11 @@ pub enum ClientError {
     PacketRead(PacketReadError),
     ClientState(ClientStateError),
     TimeoutOnResponsePacket,
+    /// Maximum timeout has elapsed without receiving responses from the server,
+    /// therefore it is considered unresponsive (the details of how this is detected
+    /// may vary by client, for example sending pingreqs and expecting a pingresp within
+    /// a timeout).
+    ReceiveTimeoutServerUnresponsive,
     Disconnected(DisconnectReasonCode),
     EventHandler(EventHandlerError),
     /// Client received an empty topic name when it has disabled topic aliases
@@ -162,6 +167,9 @@ impl defmt::Format for ClientError {
             Self::PacketRead(e) => defmt::write!(f, "PacketRead({})", e),
             Self::ClientState(e) => defmt::write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => defmt::write!(f, "TimeoutOnResponsePacket"),
+            Self::ReceiveTimeoutServerUnresponsive => {
+                defmt::write!(f, "ReceiveTimeoutServerUnresponsive")
+            }
             Self::Disconnected(r) => defmt::write!(f, "Disconnected({})", r),
             Self::EventHandler(e) => defmt::write!(f, "EventHandler({})", e),
             Self::EmptyTopicNameWithAliasesDisabled => {
@@ -202,6 +210,7 @@ impl Display for ClientError {
             Self::PacketRead(e) => write!(f, "PacketRead({})", e),
             Self::ClientState(e) => write!(f, "ClientState({})", e),
             Self::TimeoutOnResponsePacket => write!(f, "TimeoutOnResponsePacket"),
+            Self::ReceiveTimeoutServerUnresponsive => write!(f, "ReceiveTimeoutServerUnresponsive"),
             Self::Disconnected(e) => write!(f, "Disconnected({})", e),
             Self::EventHandler(e) => write!(f, "EventHandler({})", e),
             Self::EmptyTopicNameWithAliasesDisabled => write!(f, "EmptyTopicWithAliasesDisabled"),
@@ -225,7 +234,9 @@ pub trait Client<'a> {
     /// Disconnect from server
     async fn disconnect(&mut self) -> Result<(), ClientError>;
 
-    /// Send a ping message to broker
+    /// Optionally send a ping message to broker - note that if the implementation
+    /// already handles sending pings this may be a no-op, otherwise it can be used
+    /// to determine when to send pings to keep connection alive.
     async fn send_ping(&mut self) -> Result<(), ClientError>;
 
     /// Poll for and handle at most one event
@@ -279,7 +290,31 @@ pub trait Client<'a> {
     async fn perform<'b, const P: usize>(
         &'b mut self,
         action: ClientAction<'b, P>,
-    ) -> Result<(), ClientError>;
+    ) -> Result<(), ClientError> {
+        match action {
+            ClientAction::Subscribe {
+                topic_name,
+                maximum_qos,
+            } => self.subscribe(topic_name, maximum_qos).await,
+            ClientAction::Unsubscribe { topic_name } => self.unsubscribe(topic_name).await,
+            ClientAction::Publish {
+                topic_name,
+                payload,
+                qos,
+                retain,
+            } => self.publish(topic_name, payload, qos, retain).await,
+            ClientAction::PublishWithProperties {
+                topic_name,
+                payload,
+                qos,
+                retain,
+                properties,
+            } => {
+                self.publish_with_properties(topic_name, payload, qos, retain, properties)
+                    .await
+            }
+        }
+    }
 }
 
 pub enum ClientAction<'a, const P: usize> {
@@ -331,6 +366,15 @@ impl<'a> ConnectionSettings<'a> {
     pub fn client_id(&self) -> &'a str {
         self.client_id
     }
+    pub fn keep_alive(&self) -> u16 {
+        self.keep_alive
+    }
+    pub fn username(&self) -> &Option<&'a str> {
+        &self.username
+    }
+    pub fn password(&self) -> &Option<&'a [u8]> {
+        &self.password
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -381,6 +425,31 @@ pub enum ClientReceivedEvent<'a, const P: usize> {
 impl<'a, const P: usize> From<Publish<'a, P>> for ClientReceivedEvent<'a, P> {
     fn from(value: Publish<'a, P>) -> Self {
         Self::ApplicationMessage(value.into())
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<'a, const P: usize> defmt::Format for ClientReceivedEvent<'a, P> {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            ClientReceivedEvent::ApplicationMessage(application_message) => {
+                defmt::write!(f, "ApplicationMessage({})", application_message)
+            }
+            ClientReceivedEvent::Ack => defmt::write!(f, "Ack"),
+            ClientReceivedEvent::SubscriptionGrantedBelowMaximumQos {
+                granted_qos,
+                maximum_qos,
+            } => defmt::write!(
+                f,
+                "SubscriptionGrantedBelowMaximumQos({},{})",
+                granted_qos,
+                maximum_qos
+            ),
+            ClientReceivedEvent::PublishedMessageHadNoMatchingSubscribers => {
+                defmt::write!(f, "PublishedMessageHadNoMatchingSubscribers")
+            }
+            ClientReceivedEvent::NoSubscriptionExisted => defmt::write!(f, "NoSubscriptionExisted"),
+        }
     }
 }
 
@@ -635,34 +704,5 @@ where
         }
 
         Ok(true)
-    }
-
-    async fn perform<'b, const PP: usize>(
-        &'b mut self,
-        action: ClientAction<'b, PP>,
-    ) -> Result<(), ClientError> {
-        match action {
-            ClientAction::Subscribe {
-                topic_name,
-                maximum_qos,
-            } => self.subscribe(topic_name, maximum_qos).await,
-            ClientAction::Unsubscribe { topic_name } => self.unsubscribe(topic_name).await,
-            ClientAction::Publish {
-                topic_name,
-                payload,
-                qos,
-                retain,
-            } => self.publish(topic_name, payload, qos, retain).await,
-            ClientAction::PublishWithProperties {
-                topic_name,
-                payload,
-                qos,
-                retain,
-                properties,
-            } => {
-                self.publish_with_properties(topic_name, payload, qos, retain, properties)
-                    .await
-            }
-        }
     }
 }
