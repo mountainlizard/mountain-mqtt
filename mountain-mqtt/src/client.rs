@@ -363,6 +363,28 @@ impl<'a> ConnectionSettings<'a> {
             client_id,
         }
     }
+
+    pub fn with_auth(
+        client_id: &'a str,
+        username: Option<&'a str>,
+        password: Option<&'a [u8]>,
+    ) -> ConnectionSettings<'a> {
+        Self {
+            keep_alive: KEEP_ALIVE_DEFAULT,
+            username,
+            password,
+            client_id,
+        }
+    }
+
+    pub fn authenticated(
+        client_id: &'a str,
+        username: &'a str,
+        password: &'a [u8],
+    ) -> ConnectionSettings<'a> {
+        Self::with_auth(client_id, Some(username), Some(password))
+    }
+
     pub fn client_id(&self) -> &'a str {
         self.client_id
     }
