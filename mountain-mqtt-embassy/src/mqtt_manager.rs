@@ -1,4 +1,5 @@
 use core::cell::RefCell;
+// #[cfg(feature = "defmt")]
 // use defmt::*;
 use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -13,7 +14,9 @@ use mountain_mqtt::embedded_hal_async::DelayEmbedded;
 use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
 use mountain_mqtt::mqtt_manager::{ConnectionId, MqttOperations};
 use mountain_mqtt::packets::publish::ApplicationMessage;
-// use {defmt_rtt as _, panic_probe as _};
+// #[cfg(feature = "defmt")]
+// use defmt_rtt as _;
+// use panic_probe as _;
 
 /// Convert an [ApplicationMessage] to an application-specific event type
 /// This is a specific trait rather than [TryFrom] so it can use a specific
@@ -385,6 +388,8 @@ where
         if elapsed > settings.connection_event_max_interval {
             #[cfg(feature = "defmt")]
             defmt::warn!("Mqtt server unresponsive");
+            #[cfg(feature = "log")]
+            log::warn!("Mqtt server unresponsive");
             return Err(Error::MqttServerUnresponsive);
         }
 
@@ -528,15 +533,23 @@ where
         let remote_endpoint = (settings.address, settings.port);
         #[cfg(feature = "defmt")]
         defmt::info!("MQTT socket connecting to {:?}...", remote_endpoint);
+        #[cfg(feature = "log")]
+        log::info!("MQTT socket connecting to {:?}...", remote_endpoint);
+
         if let Err(e) = socket.connect(remote_endpoint).await {
             #[cfg(feature = "defmt")]
             defmt::warn!("MQTT socket connect error, will retry: {:?}", e);
+            #[cfg(feature = "log")]
+            log::warn!("MQTT socket connect error, will retry: {:?}", e);
             // Wait a while to try reconnecting
             Timer::after(settings.reconnection_delay).await;
             continue;
         }
+
         #[cfg(feature = "defmt")]
         defmt::info!("MQTT socket connected!");
+        #[cfg(feature = "log")]
+        log::info!("MQTT socket connected!");
 
         let connection = ConnectionEmbedded::new(socket);
         let delay = DelayEmbedded::new(Delay);
@@ -574,6 +587,8 @@ where
         {
             #[cfg(feature = "defmt")]
             defmt::warn!("MQTT handle_messages errored: {:?}", error);
+            #[cfg(feature = "log")]
+            log::warn!("MQTT handle_messages errored: {:?}", error);
             event_sender
                 .send(MqttEvent::Disconnected {
                     connection_id,
