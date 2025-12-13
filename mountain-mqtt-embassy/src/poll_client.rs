@@ -5,7 +5,7 @@ use crate::{
     packet_bin::{self, PacketBin},
     packet_bin_client::PacketBinClient,
 };
-use defmt::{info, warn};
+use defmt::{debug, trace, warn};
 use embassy_futures::select::{select3, Either3};
 use embassy_net::{
     tcp::{ConnectError, TcpSocket},
@@ -125,9 +125,9 @@ where
     socket.set_timeout(None);
 
     let remote_endpoint = (settings.address, settings.port);
-    info!("MQTT socket connecting to {:?}...", remote_endpoint);
+    debug!("MQTT socket connecting to {:?}...", remote_endpoint);
     socket.connect(remote_endpoint).await?;
-    info!("MQTT socket connected!");
+    debug!("MQTT socket connected!");
 
     let rx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
     let rx_channel_sender = rx_channel.sender();
@@ -178,7 +178,7 @@ where
             )))
         }
         Either3::Third(r) => {
-            info!("Finished network comms by polling completing with {:?}", r);
+            debug!("Finished network comms by polling completing with {:?}", r);
             r?;
             Ok(())
         }
@@ -336,7 +336,7 @@ where
                     self.ping_at = self
                         .connection_start
                         .map(|s| s + self.settings.ping_interval);
-                    info!("Client connected");
+                    debug!("Client connected");
                 }
                 _ => {
                     return Err(ClientError::ClientState(
@@ -352,12 +352,12 @@ where
     /// Send a ping - does not check whether one is needed, but will update the next ping time
     /// Cancel-safe: If a ping is sent, the client state is only updated (sync) after this succeeds
     async fn ping(&mut self) -> Result<(), ClientError> {
-        info!("Maybe pinging...");
+        trace!("Maybe pinging...");
         if self.client_state.pending_ping_count() > 0 {
-            info!("...Ping pending, will delay and retry");
+            trace!("...Ping pending, will delay and retry");
             self.ping_at = Some(Instant::now() + self.settings.ping_retry_delay);
         } else {
-            info!("...Pinging");
+            trace!("...Pinging");
             // CANCEL-SAFETY: We need to send the ping first, then
             // if this completes we update the client_state and interval as sync operations.
             // This does involve just ignoring the
