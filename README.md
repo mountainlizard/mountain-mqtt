@@ -8,13 +8,23 @@ Note there are also `README.md` files in each crate folder, covering the respect
 
 For development, crates reference each other via relative paths, each crate is also published to `crates.io`.
 
+## Development Status
+
+`mountain-mqtt` is still at an early stage of development, and the API is likely to have breaking changes in future.
+
+- The `codec`, `data` and `packets` modules in the `mountain-mqtt` crate are relatively stable and complete, with at least some unit and integration tests.
+- The client code in the `mountain-mqtt` crate is much less stable - this is likely to be updated to use a better async approach that doesn't rely on delays (`PollClient` and `HandlerClient` in the `mountain-mqtt-embassy` crate already use this kind of approach).
+- The `mountain-mqtt-embassy` crate is being updated, the new `PollClient` and `HandlerClient` are likely to replace `mqtt_manager` since they promise to be simpler and easier to use, and may also be more reliable. See the `embassy-poll-example-rp2040w` crate for an example of using them.
+
 ## Projects
 
 - `mountain-mqtt` - A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client. Designed to be independent of async implementation, networking etc., this provides encoding/decoding of MQTT packets, and an approximately sans-io approach to modelling the MQTT protocol using a state machine and a connection abstraction. Also contains implementations of connection for [`tokio`](https://tokio.rs) and [`embedded-hal`](https://github.com/rust-embedded/embedded-hal), and a simple client example using `tokio`.
 
-- `mountain-mqtt-embassy` - A higher-level interface using `embassy` channels to provide an `mqtt_manager` that will handle reconnecting to the server.
+- `mountain-mqtt-embassy` - A higher-level interface using `embassy` channels to provide an `mqtt_manager` that will handle reconnecting to the server, and slightly lower level clients `PollClient` and `HandlerClient`.
 
-- `embassy-example-rp2040w` - An example application using `embassy` to demonstrate MQTT on a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) board. The README also has a detailed explanation of an approach to using `mountain-mqtt-embassy`.
+- `embassy-example-rp2040w` - An example application using `embassy` with`mqtt_manager` to demonstrate MQTT on a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) board. The README also has a detailed explanation of an approach to using `mountain-mqtt-embassy`.
+
+- `embassy-poll-example-rp2040w` - similar to the example above, but using `PollClient` or `HandlerClient`.
 
 ## Editing with VS Code
 
