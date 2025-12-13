@@ -5,6 +5,7 @@ use crate::{
     packet_bin::{self, PacketBin},
     packet_bin_client::PacketBinClient,
 };
+#[cfg(feature = "defmt")]
 use defmt::{info, warn};
 use embassy_futures::select::{select3, Either3};
 use embassy_net::{
@@ -18,6 +19,8 @@ use embassy_sync::{
 use embassy_time::{Duration, Instant, Timer};
 use embedded_io_async::Write;
 use heapless::Vec;
+#[cfg(feature = "log")]
+use log::{info, warn};
 use mountain_mqtt::{
     client::{ClientError, ClientReceivedEvent, ConnectionSettings},
     client_state::{ClientState, ClientStateError, ClientStateReceiveEvent},
@@ -79,6 +82,7 @@ impl Settings {
     }
 }
 
+#[cfg_attr(feature = "log", derive(Debug))]
 pub enum MqttConnectionError {
     ConnectError(ConnectError),
     ClientError(ClientError),
