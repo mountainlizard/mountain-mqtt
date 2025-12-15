@@ -201,9 +201,9 @@ async fn main(spawner: Spawner) {
 
     unwrap!(spawner.spawn(ui_task(event_sub_ui, action_pub_ui, p.PIN_12, control)));
 
-    let poll = false;
-    if poll {
-        unwrap!(spawner.spawn(mqtt_poll::run(
+    let handler = true;
+    if handler {
+        unwrap!(spawner.spawn(mqtt::run(
             settings,
             stack,
             uid_handle,
@@ -211,7 +211,7 @@ async fn main(spawner: Spawner) {
             action_sub_mqtt
         )));
     } else {
-        unwrap!(spawner.spawn(mqtt::run(
+        unwrap!(spawner.spawn(mqtt_poll::run(
             settings,
             stack,
             uid_handle,

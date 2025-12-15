@@ -17,11 +17,12 @@ use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
 use {defmt_rtt as _, panic_probe as _};
 
-pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";
-pub const TOPIC_LED: &str = "embassy-example-rp2040w-led";
-pub const TOPIC_BUTTON: &str = "embassy-example-rp2040w-button";
+pub const TOPIC_ANNOUNCE: &str = "embassy-poll-example-rp2040w-presence";
+pub const TOPIC_LED: &str = "embassy-poll-example-rp2040w-led";
+pub const TOPIC_BUTTON: &str = "embassy-poll-example-rp2040w-button";
 
-type Client<'a> = PollClient<'a, ClientStateNoQueue, NoopRawMutex, 1024, 16>;
+// Type defined just to avoid repeating the parameters of PollClient
+type OurPollClient<'a> = PollClient<'a, ClientStateNoQueue, NoopRawMutex, 1024, 16>;
 
 pub struct QueueEventHandler<'a, const P: usize> {
     event_pub: &'a mut EventPub,
@@ -57,7 +58,7 @@ impl<'a, const P: usize> SyncEventHandler<P> for QueueEventHandler<'a, P> {
 }
 
 pub async fn client_function_with_channels(
-    mut client: Client<'_>,
+    mut client: OurPollClient<'_>,
     uid: &'static str,
     event_pub: &mut EventPub,
     action_sub: &mut ActionSub,
@@ -122,7 +123,7 @@ pub async fn run(
         // uses it to manage MQTT interactions.
         // Since we want to use `event_pub` and `action_sub` as well, we capture them in a closure in this
         // anonymous async function, and we can then pass that to run the connection.
-        let client_function = async |client: Client<'_>| {
+        let client_function = async |client: OurPollClient<'_>| {
             client_function_with_channels(client, uid, &mut event_pub, &mut action_sub).await
         };
 
