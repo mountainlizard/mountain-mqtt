@@ -1,6 +1,4 @@
 use core::cell::RefCell;
-// #[cfg(feature = "defmt")]
-// use defmt::*;
 use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
@@ -14,9 +12,6 @@ use mountain_mqtt::embedded_hal_async::DelayEmbedded;
 use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
 use mountain_mqtt::mqtt_manager::{ConnectionId, MqttOperations};
 use mountain_mqtt::packets::publish::ApplicationMessage;
-// #[cfg(feature = "defmt")]
-// use defmt_rtt as _;
-// use panic_probe as _;
 
 /// Convert an [ApplicationMessage] to an application-specific event type
 /// This is a specific trait rather than [TryFrom] so it can use a specific
