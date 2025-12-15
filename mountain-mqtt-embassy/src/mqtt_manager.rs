@@ -1,5 +1,4 @@
 use core::cell::RefCell;
-// use defmt::*;
 use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
@@ -13,7 +12,6 @@ use mountain_mqtt::embedded_hal_async::DelayEmbedded;
 use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
 use mountain_mqtt::mqtt_manager::{ConnectionId, MqttOperations};
 use mountain_mqtt::packets::publish::ApplicationMessage;
-// use {defmt_rtt as _, panic_probe as _};
 
 /// Convert an [ApplicationMessage] to an application-specific event type
 /// This is a specific trait rather than [TryFrom] so it can use a specific
@@ -385,6 +383,8 @@ where
         if elapsed > settings.connection_event_max_interval {
             #[cfg(feature = "defmt")]
             defmt::warn!("Mqtt server unresponsive");
+            #[cfg(feature = "log")]
+            log::warn!("Mqtt server unresponsive");
             return Err(Error::MqttServerUnresponsive);
         }
 
@@ -482,27 +482,10 @@ where
 ///
 /// Generally you will want to call this function as an embassy task - since it
 /// contains type parameters it can't be used directly, so you can just wrap it
-/// in another function that specifies the type parameters directly, e.g.:
+/// in another function that specifies the type parameters directly, e.g. see the
+/// example in the `embassy-example-rp2040w` crate, in the `example_mqtt_manager`
+/// module.
 ///
-/// ```
-/// #[embassy_executor::task]
-/// async fn mqtt_manager_task(
-///     stack: Stack<'static>,
-///     connection_settings: ConnectionSettings<'static>,
-///     settings: Settings,
-///     event_sender: Sender<'static, NoopRawMutex, MqttEvent<Event>, 32>,
-///     action_receiver: Receiver<'static, NoopRawMutex, MqttAction, 32>,
-/// ) -> ! {
-///     mqtt_manager::run::<MqttAction, Event, 16, 4096, 32>(
-///         stack,
-///         connection_settings,
-///         settings,
-///         event_sender,
-///         action_receiver,
-///     )
-///     .await;
-/// }
-/// ```
 pub async fn run<A, E, const P: usize, const B: usize, const Q: usize>(
     stack: Stack<'static>,
     connection_settings: ConnectionSettings<'static>,
@@ -528,15 +511,23 @@ where
         let remote_endpoint = (settings.address, settings.port);
         #[cfg(feature = "defmt")]
         defmt::info!("MQTT socket connecting to {:?}...", remote_endpoint);
+        #[cfg(feature = "log")]
+        log::info!("MQTT socket connecting to {:?}...", remote_endpoint);
+
         if let Err(e) = socket.connect(remote_endpoint).await {
             #[cfg(feature = "defmt")]
             defmt::warn!("MQTT socket connect error, will retry: {:?}", e);
+            #[cfg(feature = "log")]
+            log::warn!("MQTT socket connect error, will retry: {:?}", e);
             // Wait a while to try reconnecting
             Timer::after(settings.reconnection_delay).await;
             continue;
         }
+
         #[cfg(feature = "defmt")]
         defmt::info!("MQTT socket connected!");
+        #[cfg(feature = "log")]
+        log::info!("MQTT socket connected!");
 
         let connection = ConnectionEmbedded::new(socket);
         let delay = DelayEmbedded::new(Delay);
@@ -574,6 +565,8 @@ where
         {
             #[cfg(feature = "defmt")]
             defmt::warn!("MQTT handle_messages errored: {:?}", error);
+            #[cfg(feature = "log")]
+            log::warn!("MQTT handle_messages errored: {:?}", error);
             event_sender
                 .send(MqttEvent::Disconnected {
                     connection_id,
