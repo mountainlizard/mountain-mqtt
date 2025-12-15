@@ -51,9 +51,11 @@ default = ["defmt"]
 defmt = [
   "dep:defmt",
   "embassy-net/defmt",
+  "embassy-sync/defmt",
   "embassy-time/defmt",
   "embassy-time/defmt-timestamp-uptime",
   "embedded-io-async/defmt-03",
   "mountain-mqtt/defmt",
 ]
-log = ["dep:log", "embassy-net/log", "embassy-time/log"]
+
+log = ["dep:log", "embassy-net/log", "embassy-sync/log", "embassy-time/log"]
