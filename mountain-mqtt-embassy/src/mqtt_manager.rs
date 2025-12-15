@@ -482,27 +482,10 @@ where
 ///
 /// Generally you will want to call this function as an embassy task - since it
 /// contains type parameters it can't be used directly, so you can just wrap it
-/// in another function that specifies the type parameters directly, e.g.:
+/// in another function that specifies the type parameters directly, e.g. see the
+/// example in the `embassy-example-rp2040w` crate, in the `example_mqtt_manager`
+/// module.
 ///
-/// ```
-/// #[embassy_executor::task]
-/// async fn mqtt_manager_task(
-///     stack: Stack<'static>,
-///     connection_settings: ConnectionSettings<'static>,
-///     settings: Settings,
-///     event_sender: Sender<'static, NoopRawMutex, MqttEvent<Event>, 32>,
-///     action_receiver: Receiver<'static, NoopRawMutex, MqttAction, 32>,
-/// ) -> ! {
-///     mqtt_manager::run::<MqttAction, Event, 16, 4096, 32>(
-///         stack,
-///         connection_settings,
-///         settings,
-///         event_sender,
-///         action_receiver,
-///     )
-///     .await;
-/// }
-/// ```
 pub async fn run<A, E, const P: usize, const B: usize, const Q: usize>(
     stack: Stack<'static>,
     connection_settings: ConnectionSettings<'static>,
