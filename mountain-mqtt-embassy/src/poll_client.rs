@@ -19,8 +19,6 @@ use embassy_sync::{
 use embassy_time::{Duration, Instant, Timer};
 use embedded_io_async::Write;
 use heapless::Vec;
-#[cfg(feature = "log")]
-use log::{info, warn};
 use mountain_mqtt::{
     client::{ClientError, ClientReceivedEvent, ConnectionSettings},
     client_state::{ClientState, ClientStateError, ClientStateReceiveEvent},
@@ -129,8 +127,10 @@ where
     socket.set_timeout(None);
 
     let remote_endpoint = (settings.address, settings.port);
+    #[cfg(feature = "defmt")]
     debug!("MQTT socket connecting to {:?}...", remote_endpoint);
     socket.connect(remote_endpoint).await?;
+    #[cfg(feature = "defmt")]
     debug!("MQTT socket connected!");
 
     let rx_channel: Channel<M, PacketBin<N>, 1> = Channel::new();
@@ -172,16 +172,19 @@ where
 
     match select3(rx_fut, tx_fut, client_function(client)).await {
         Either3::First(e) => {
+            #[cfg(feature = "defmt")]
             warn!("Finished network comms with read error {:?}", e);
             Err(e)?
         }
         Either3::Second(e) => {
+            #[cfg(feature = "defmt")]
             warn!("Finished network comms with write error {:?}", e);
             Err(MqttConnectionError::ClientError(ClientError::PacketWrite(
                 PacketWriteError::ConnectionSend,
             )))
         }
         Either3::Third(r) => {
+            #[cfg(feature = "defmt")]
             debug!("Finished network comms by polling completing with {:?}", r);
             r?;
             Ok(())
@@ -340,6 +343,7 @@ where
                     self.ping_at = self
                         .connection_start
                         .map(|s| s + self.settings.ping_interval);
+                    #[cfg(feature = "defmt")]
                     debug!("Client connected");
                 }
                 _ => {
@@ -356,11 +360,14 @@ where
     /// Send a ping - does not check whether one is needed, but will update the next ping time
     /// Cancel-safe: If a ping is sent, the client state is only updated (sync) after this succeeds
     async fn ping(&mut self) -> Result<(), ClientError> {
+        #[cfg(feature = "defmt")]
         trace!("Maybe pinging...");
         if self.client_state.pending_ping_count() > 0 {
+            #[cfg(feature = "defmt")]
             trace!("...Ping pending, will delay and retry");
             self.ping_at = Some(Instant::now() + self.settings.ping_retry_delay);
         } else {
+            #[cfg(feature = "defmt")]
             trace!("...Pinging");
             // CANCEL-SAFETY: We need to send the ping first, then
             // if this completes we update the client_state and interval as sync operations.
