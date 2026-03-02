@@ -23,6 +23,15 @@ use crate::{
     },
 };
 
+/// Convert an [ApplicationMessage] to an application-specific event type
+/// This is a specific trait rather than [TryFrom] so it can use a specific
+/// error type, and include the expected number of properties in the
+/// [ApplicationMessage].
+pub trait FromApplicationMessage<const P: usize>: Sized {
+    fn from_application_message(message: &ApplicationMessage<P>)
+        -> Result<Self, EventHandlerError>;
+}
+
 /// Errors produced when a [ClientNoQueue] event handler cannot handle
 /// a [ClientReceivedEvent]. These errors propagate to the user of the
 /// client, and so are likely to cause the client to be disconnected.

@@ -5,22 +5,12 @@ use embassy_sync::channel::{Receiver, Sender};
 use embassy_time::{Delay, Duration, Instant, Timer};
 use mountain_mqtt::client::{
     Client, ClientError, ClientNoQueue, ClientReceivedEvent, ConnectionSettings, EventHandler,
-    EventHandlerError,
+    EventHandlerError, FromApplicationMessage,
 };
 use mountain_mqtt::data::quality_of_service::QualityOfService;
 use mountain_mqtt::embedded_hal_async::DelayEmbedded;
 use mountain_mqtt::embedded_io_async::ConnectionEmbedded;
 use mountain_mqtt::mqtt_manager::{ConnectionId, MqttOperations};
-use mountain_mqtt::packets::publish::ApplicationMessage;
-
-/// Convert an [ApplicationMessage] to an application-specific event type
-/// This is a specific trait rather than [TryFrom] so it can use a specific
-/// error type, and include the expected number of properties in the
-/// [ApplicationMessage].
-pub trait FromApplicationMessage<const P: usize>: Sized {
-    fn from_application_message(message: &ApplicationMessage<P>)
-        -> Result<Self, EventHandlerError>;
-}
 
 /// Represents an error while running MQTT connections
 /// These are passed to the [MqttEvent] channel in
