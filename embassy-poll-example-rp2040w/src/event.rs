@@ -1,5 +1,7 @@
-use mountain_mqtt::{client::EventHandlerError, packets::publish::ApplicationMessage};
-use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
+use mountain_mqtt::{
+    client::{EventHandlerError, FromApplicationMessage},
+    packets::publish::ApplicationMessage,
+};
 
 pub const TOPIC_LED: &str = "embassy-example-rp2040w-led";
 

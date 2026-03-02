@@ -64,7 +64,6 @@ where
             r.position()
         };
         let packet = PacketBin { buf, len };
-        buf[0] = 1;
         self.send(packet).await;
         Ok(())
     }

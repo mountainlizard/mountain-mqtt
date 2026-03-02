@@ -7,11 +7,9 @@ use embassy_futures::select::{select, Either};
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
-use mountain_mqtt::client::ClientError;
-use mountain_mqtt::client::ConnectionSettings;
+use mountain_mqtt::client::{ClientError, ConnectionSettings, FromApplicationMessage};
 use mountain_mqtt::client_state::ClientStateNoQueue;
 use mountain_mqtt::data::quality_of_service::QualityOfService;
-use mountain_mqtt_embassy::mqtt_manager::FromApplicationMessage;
 use mountain_mqtt_embassy::packet_bin::PacketBin;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
 
