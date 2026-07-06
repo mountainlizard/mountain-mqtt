@@ -10,6 +10,7 @@ use crate::{
         reason_code::{
             ConnectReasonCode, PublishReasonCode, SubscribeReasonCode, UnsubscribeReasonCode,
         },
+        subscription_options::SubscriptionOptions,
     },
     error::{PacketReadError, PacketWriteError},
     packets::{
@@ -259,23 +260,44 @@ pub trait ClientState {
         packet: &PacketGeneric<'a, P, W, S>,
     ) -> Result<Option<Puback<'_, P>>, ClientStateError>;
 
-    /// Produce a packet to subscribe to a topic by name, update state
+    /// Produce a packet to subscribe to a topic by name, and update state
     fn subscribe<'b>(
         &mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
-        let packet = self.subscribe_packet(topic_name, maximum_qos)?;
+        self.subscribe_with_options(topic_name, SubscriptionOptions::new(maximum_qos))
+    }
+
+    /// Produce a packet to subscribe to a topic by name, with options, and
+    /// update state
+    fn subscribe_with_options<'b>(
+        &mut self,
+        topic_name: &'b str,
+        options: SubscriptionOptions,
+    ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
+        let packet = self.subscribe_packet_with_options(topic_name, options)?;
         self.subscribe_update(&packet)?;
         Ok(packet)
     }
 
     /// Produce a packet to subscribe to a topic by name, this does not update
     /// the state - call [`Self::subscribe_update`] after sending the packet.
+    /// Uses the defaults from [`SubscriptionOptions::new`]
     fn subscribe_packet<'b>(
-        &mut self,
+        &self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
+    ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
+        self.subscribe_packet_with_options(topic_name, SubscriptionOptions::new(maximum_qos))
+    }
+
+    /// Produce a packet to subscribe to a topic by name, this does not update
+    /// the state - call [`Self::subscribe_update`] after sending the packet.
+    fn subscribe_packet_with_options<'b>(
+        &self,
+        topic_name: &'b str,
+        options: SubscriptionOptions,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError>;
 
     /// Update the state of the client after sending a subscribe packet
@@ -537,19 +559,19 @@ impl ClientState for ClientStateNoQueue {
         }
     }
 
-    fn subscribe_packet<'b>(
-        &mut self,
+    fn subscribe_packet_with_options<'b>(
+        &self,
         topic_name: &'b str,
-        maximum_qos: QualityOfService,
+        options: SubscriptionOptions,
     ) -> Result<Subscribe<'b, 0, 0>, ClientStateError> {
         match self {
             ClientStateNoQueue::Connected(ConnectionState { info: _, waiting }) => {
                 if waiting.is_waiting() {
                     Err(ClientStateError::ClientIsWaitingForResponse)
-                } else if maximum_qos == QualityOfService::Qos2 {
+                } else if options.maximum_qos == QualityOfService::Qos2 {
                     Err(ClientStateError::Qos2NotSupported)
                 } else {
-                    let first_request = SubscriptionRequest::new(topic_name, maximum_qos);
+                    let first_request = SubscriptionRequest::new_with_options(topic_name, options);
                     let subscribe: Subscribe<'_, 0, 0> = Subscribe::new(
                         Self::SUBSCRIBE_PACKET_IDENTIFIER,
                         first_request,

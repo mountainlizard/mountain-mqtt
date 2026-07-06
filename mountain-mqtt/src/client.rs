@@ -12,6 +12,7 @@ use crate::{
         property::{ConnectProperty, PublishProperty},
         quality_of_service::QualityOfService,
         reason_code::DisconnectReasonCode,
+        subscription_options::SubscriptionOptions,
     },
     error::{PacketReadError, PacketWriteError},
     packet_client::{Connection, PacketClient},
@@ -261,11 +262,22 @@ pub trait Client<'a> {
     /// disconnected.
     async fn poll(&mut self, wait: bool) -> Result<bool, ClientError>;
 
-    /// Subscribe to a topic
+    /// Subscribe to a topic, using default options from
+    /// [`SubscriptionOptions::new`]
     async fn subscribe<'b>(
         &'b mut self,
         topic_name: &'b str,
         maximum_qos: QualityOfService,
+    ) -> Result<(), ClientError> {
+        self.subscribe_with_options(topic_name, SubscriptionOptions::new(maximum_qos))
+            .await
+    }
+
+    /// Subscribe to a topic with all options
+    async fn subscribe_with_options<'b>(
+        &'b mut self,
+        topic_name: &'b str,
+        options: SubscriptionOptions,
     ) -> Result<(), ClientError>;
 
     /// Unsubscribe from a topic
@@ -630,12 +642,14 @@ where
         self.send_wait_for_responses(packet).await
     }
 
-    async fn subscribe<'b>(
+    async fn subscribe_with_options<'b>(
         &'b mut self,
         topic_name: &'b str,
-        maximum_qos: QualityOfService,
+        options: SubscriptionOptions,
     ) -> Result<(), ClientError> {
-        let packet = self.client_state.subscribe(topic_name, maximum_qos)?;
+        let packet = self
+            .client_state
+            .subscribe_with_options(topic_name, options)?;
         self.send_wait_for_responses(packet).await
     }
 

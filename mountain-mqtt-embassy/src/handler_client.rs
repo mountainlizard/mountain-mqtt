@@ -3,7 +3,10 @@ use heapless::Vec;
 use mountain_mqtt::{
     client::{Client, ClientError, ClientReceivedEvent, ConnectionSettings, EventHandlerError},
     client_state::ClientState,
-    data::{property::PublishProperty, quality_of_service::QualityOfService},
+    data::{
+        property::PublishProperty, quality_of_service::QualityOfService,
+        subscription_options::SubscriptionOptions,
+    },
     packets::connect::Will,
 };
 
@@ -210,7 +213,7 @@ where
         }
     }
 
-    /// Request a subscription.
+    /// Request a subscription, using options from [`SubscriptionOptions::new`]
     /// This will then wait for any required response from the server.
     /// NOT CANCEL-SAFE: If cancelled, there may be pending responses from the server, and this may result
     /// in an error if another client method is called that attempts to send requests (e.g. subscribe, unsubscribe,
@@ -221,7 +224,24 @@ where
         topic_name: &str,
         maximum_qos: QualityOfService,
     ) -> Result<(), ClientError> {
-        self.poll_client.subscribe(topic_name, maximum_qos).await?;
+        self.subscribe_with_options(topic_name, SubscriptionOptions::new(maximum_qos))
+            .await
+    }
+
+    /// Request a subscription with options.
+    /// This will then wait for any required response from the server.
+    /// NOT CANCEL-SAFE: If cancelled, there may be pending responses from the server, and this may result
+    /// in an error if another client method is called that attempts to send requests (e.g. subscribe, unsubscribe,
+    /// publish). To avoid this, if this method is cancelled, ensure you call [`HandlerClient::wait_for_responses`]
+    /// and allow it to complete before attempting to send further requests.
+    async fn subscribe_with_options<'b>(
+        &'b mut self,
+        topic_name: &'b str,
+        options: SubscriptionOptions,
+    ) -> Result<(), ClientError> {
+        self.poll_client
+            .subscribe_with_options(topic_name, options)
+            .await?;
         self.wait_for_responses().await?;
         Ok(())
     }

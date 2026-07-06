@@ -26,6 +26,7 @@ use mountain_mqtt::{
         packet_type::PacketType,
         property::{ConnectProperty, PublishProperty},
         quality_of_service::QualityOfService,
+        subscription_options::SubscriptionOptions,
     },
     error::PacketWriteError,
     packets::{
@@ -475,7 +476,7 @@ where
     ///
     /// Cancel-safe: This will leave the client in a valid state even if dropped, and
     /// will not lose packets if dropped. Therefore this can be used in a select. For
-    /// example you may wish to select between [`PollClient::receive_bin`], and having
+    /// example you may wish to select between [`PollClient::receive`], and handling
     /// an outgoing message you wish to publish, for example by receiving one on a channel
     /// from the rest of your application.
     pub async fn receive(&mut self) -> Result<PacketBin<N>, ClientError> {
@@ -503,7 +504,7 @@ where
         }
     }
 
-    /// Request a subscription.
+    /// Request a subscription with default options from [`SubscriptionOptions::new`]
     /// This may require a response from the server, so after calling this, you must receive messages until
     /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
     /// require a response from the server.
@@ -513,9 +514,23 @@ where
         topic_name: &str,
         maximum_qos: QualityOfService,
     ) -> Result<(), ClientError> {
+        self.subscribe_with_options(topic_name, SubscriptionOptions::new(maximum_qos))
+            .await
+    }
+
+    /// Request a subscription with full options.
+    /// This may require a response from the server, so after calling this, you must receive messages until
+    /// [`PollClient::waiting_for_responses`] returns false, before calling any other methods that may
+    /// require a response from the server.
+    /// Cancel-safe: Unless subscribe packet is sent, client state won't be updated
+    pub async fn subscribe_with_options(
+        &mut self,
+        topic_name: &str,
+        options: SubscriptionOptions,
+    ) -> Result<(), ClientError> {
         let packet = self
             .client_state
-            .subscribe_packet(topic_name, maximum_qos)?;
+            .subscribe_packet_with_options(topic_name, options)?;
         self.raw_client
             .send_packet_timeout(&packet, self.settings.send_packet_timeout)
             .await?;

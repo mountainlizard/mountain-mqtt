@@ -18,6 +18,21 @@ pub struct SubscriptionOptions {
     pub retain_handling: RetainHandling,
 }
 
+impl SubscriptionOptions {
+    /// Create  new [`SubscriptionOptions`] with common options.
+    /// [`SubscriptionOptions::no_local`] is false.
+    /// [`SubscriptionOptions::retain_as_published`] is false.
+    /// [`SubscriptionOptions::retain_handling`] is [`RetainHandling::SendOnSubscribe`].
+    pub fn new(maximum_qos: QualityOfService) -> Self {
+        Self {
+            maximum_qos,
+            no_local: false,
+            retain_as_published: false,
+            retain_handling: RetainHandling::SendOnSubscribe,
+        }
+    }
+}
+
 const QOS_MASK: u8 = 0x3;
 const NO_LOCAL_BIT: u8 = 1 << 2;
 const RETAIN_AS_PUBLISHED_BIT: u8 = 1 << 3;
