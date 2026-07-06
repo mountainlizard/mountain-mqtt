@@ -1,10 +1,7 @@
 use super::packet::{Packet, PacketRead, PacketWrite};
 use crate::data::{
-    packet_identifier::PacketIdentifier,
-    packet_type::PacketType,
-    property::SubscribeProperty,
-    quality_of_service::QualityOfService,
-    subscription_options::{RetainHandling, SubscriptionOptions},
+    packet_identifier::PacketIdentifier, packet_type::PacketType, property::SubscribeProperty,
+    quality_of_service::QualityOfService, subscription_options::SubscriptionOptions,
 };
 use crate::{
     codec::{
@@ -24,15 +21,20 @@ pub struct SubscriptionRequest<'a> {
 }
 
 impl<'a> SubscriptionRequest<'a> {
+    /// Create new [`SubscriptionRequest`] with qos specified and other options as produced by
+    /// [`SubscriptionOptions::new`]
     pub fn new(topic_name: &'a str, maximum_qos: QualityOfService) -> SubscriptionRequest<'a> {
+        Self::new_with_options(topic_name, SubscriptionOptions::new(maximum_qos))
+    }
+
+    /// Create a new [`SubscriptionRequest`] with all options
+    pub fn new_with_options(
+        topic_name: &'a str,
+        options: SubscriptionOptions,
+    ) -> SubscriptionRequest<'a> {
         SubscriptionRequest {
             topic_name,
-            options: SubscriptionOptions {
-                maximum_qos,
-                no_local: false,
-                retain_as_published: false,
-                retain_handling: RetainHandling::SendOnSubscribe,
-            },
+            options,
         }
     }
 }
@@ -155,11 +157,14 @@ impl<'a, const P: usize, const S: usize> PacketRead<'a> for Subscribe<'a, P, S> 
 
 #[cfg(test)]
 mod tests {
-    use crate::codec::{
-        mqtt_reader::MqttBufReader,
-        mqtt_writer::{MqttBufWriter, MqttLenWriter},
-        read::Read,
-        write::Write,
+    use crate::{
+        codec::{
+            mqtt_reader::MqttBufReader,
+            mqtt_writer::{MqttBufWriter, MqttLenWriter},
+            read::Read,
+            write::Write,
+        },
+        data::subscription_options::RetainHandling,
     };
 
     use super::*;
