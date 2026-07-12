@@ -3,14 +3,16 @@ runner = [
   "probe-rs",
   "run",
   "--chip",
-  "RP2040",
+  # "RP2040",
+  "RP235x",
   # See https://defmt.ferrous-systems.com/custom-log-output
   "--log-format",
   "{L} {s} - {f} {t}",
 ]
 
 [build]
-target = "thumbv6m-none-eabi" # Cortex-M0 and Cortex-M0+
+# target = "thumbv6m-none-eabi" # RP2040
+target = "thumbv8m.main-none-eabi" # RP235x
 
 [env]
 DEFMT_LOG = "info"

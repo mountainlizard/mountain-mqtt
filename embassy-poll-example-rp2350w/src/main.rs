@@ -16,7 +16,6 @@ use crate::action::Action;
 use crate::channels::{ActionChannel, EventChannel};
 use crate::event::Event;
 use crate::ui::ui_task;
-use core::fmt::Write as _;
 use cyw43::JoinOptions;
 use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
 use defmt::*;
@@ -24,36 +23,45 @@ use embassy_executor::Spawner;
 use embassy_net::Ipv4Address;
 use embassy_net::{Config, StackResources};
 use embassy_rp::bind_interrupts;
+use embassy_rp::block::ImageDef;
 use embassy_rp::clocks::RoscRng;
-use embassy_rp::flash::Async;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::{Duration, Timer};
-use heapless::String;
 use mountain_mqtt_embassy::poll_client::Settings;
 use rand::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+#[link_section = ".start_block"]
+#[used]
+pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
+
+// Program metadata for `picotool info`.
+// This isn't needed, but it's recomended to have these minimal entries.
+#[link_section = ".bi_entries"]
+#[used]
+pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
+    embassy_rp::binary_info::rp_program_name!(c"mountain-mqtt-embassy poll example, pico 2w"),
+    embassy_rp::binary_info::rp_program_description!(
+        c"Example of mountain-mqtt-embassy running on a pico 2w (rp2350)"
+    ),
+    embassy_rp::binary_info::rp_cargo_version!(),
+    embassy_rp::binary_info::rp_program_build_attribute!(),
+];
+
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
 });
-
-// Required to start flash driver and get unique ID - not actually
-// used for anything since we don't read/write actual flash, so
-// we pick a default small value
-const FLASH_SIZE: usize = 2 * 1024 * 1024;
 
 const WIFI_NETWORK: &str = env!("WIFI_NETWORK");
 const WIFI_PASSWORD: &str = env!("WIFI_PASSWORD");
 const MQTT_HOST: &str = env!("MQTT_HOST");
 const MQTT_PORT: &str = env!("MQTT_PORT");
 
-static UID: StaticCell<String<64>> = StaticCell::new();
-static CHIP_ID: StaticCell<String<64>> = StaticCell::new();
 static EVENT_CHANNEL: StaticCell<EventChannel> = StaticCell::new();
 static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
 
@@ -74,29 +82,6 @@ async fn main(spawner: Spawner) {
     info!("Embassy MQTT example starting...");
 
     let p = embassy_rp::init(Default::default());
-
-    // Get unique id from flash
-    let mut flash = embassy_rp::flash::Flash::<_, Async, FLASH_SIZE>::new(p.FLASH, p.DMA_CH1);
-    let mut uid = [0; 8];
-    flash.blocking_unique_id(&mut uid).unwrap();
-    let chip_id_handle = CHIP_ID.init(String::new());
-    let uid_handle = UID.init(String::new());
-
-    core::write!(
-        chip_id_handle,
-        "{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
-        uid[0],
-        uid[1],
-        uid[2],
-        uid[3],
-        uid[4],
-        uid[5],
-        uid[6],
-        uid[7]
-    )
-    .unwrap();
-
-    core::write!(uid_handle, "embassy-example-{}", chip_id_handle).unwrap();
 
     let mut rng = RoscRng;
 
@@ -206,7 +191,7 @@ async fn main(spawner: Spawner) {
         unwrap!(spawner.spawn(mqtt::run(
             settings,
             stack,
-            uid_handle,
+            "embassy-poll-example-rp2350w-uid",
             event_pub_mqtt,
             action_sub_mqtt
         )));
@@ -214,7 +199,7 @@ async fn main(spawner: Spawner) {
         unwrap!(spawner.spawn(mqtt_poll::run(
             settings,
             stack,
-            uid_handle,
+            "embassy-poll-example-rp2350w-uid",
             event_pub_mqtt,
             action_sub_mqtt
         )));

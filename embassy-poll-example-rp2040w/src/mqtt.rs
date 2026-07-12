@@ -64,17 +64,20 @@ pub async fn client_function_with_channels(
 ) -> Result<(), ClientError> {
     let handler = QueueEventHandler { event_pub };
 
-    // Connect - this sends packet and then waits for response
+    // Connect - this sends packet and then waits for response (indicating connected)
     client
         .connect(&ConnectionSettings::unauthenticated(uid))
         .await?;
 
+    // From now on we want incoming messages to be handled automatically,
+    // so we convert to a handler client. This will pass any incoming
+    // application messages to the `handler`
     let mut client = client.to_handler_client(handler);
 
-    // Subscribe - this sends packet but does NOT wait for response - we will need to poll for packets
+    // Subscribe - this sends packet and waits for response
     client.subscribe(TOPIC_LED, QualityOfService::Qos1).await?;
 
-    // Announce ourselves
+    // Announce ourselves - again this sends packet and waits for responses
     client
         .publish(
             TOPIC_ANNOUNCE,

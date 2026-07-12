@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "embassy-poll-example-rp2040w"
+name = "embassy-poll-example-rp2350w"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 # This is a more precise solution than adding `"rust-analyzer.cargo.allTargets": false` to vs code settings, since it only
 # disables tests for embedded main, leaving them enabled for non-embedded crates so we can still see errors in test code there.
 [[bin]]
-name = "embassy-poll-example-rp2040w"
+name = "embassy-poll-example-rp2350w"
 test = false
 doctest = false
 bench = false
@@ -32,7 +32,9 @@ embassy-rp = { version = "0.4.0", features = [
   "unstable-pac",
   "time-driver",
   "critical-section-impl",
-  "rp2040",
+  # "rp2040",
+  "rp235xa",
+  "binary-info"
 ] }
 embassy-usb = { version = "0.4.0", features = ["defmt"] }
 embassy-net = { version = "0.7.0", features = [
