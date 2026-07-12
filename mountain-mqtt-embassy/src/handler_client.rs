@@ -12,6 +12,10 @@ use mountain_mqtt::{
 
 use crate::{packet_bin::PacketBin, poll_client::PollClient};
 
+/// This handles events received, as a sync operation.
+/// This is used by [`HandlerClient`] to allow incoming messages to
+/// be handled when they are received, removing the need to do this
+/// manually as required by [`PollClient`].
 pub trait SyncEventHandler<const P: usize> {
     fn handle_event(&mut self, event: ClientReceivedEvent<P>) -> Result<(), EventHandlerError>;
 }
