@@ -7,7 +7,6 @@ use embassy_futures::select::{self, Either};
 use embassy_net::{Ipv4Address, Stack};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use heapless::String;
 use mountain_mqtt::client::{Client, ClientError, ConnectionSettings};
 use mountain_mqtt::data::quality_of_service::QualityOfService;
 use mountain_mqtt::mqtt_manager::{ConnectionId, MqttOperations};
