@@ -1,0 +1,50 @@
+[package]
+edition = "2021"
+name = "embassy-poll-example-rp2350w"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+
+# We can't run tests etc. on embedded, so specifically skip them to avoid spurious rust-analyzer errors.
+# This is a more precise solution than adding `"rust-analyzer.cargo.allTargets": false` to vs code settings, since it only
+# disables tests for embedded main, leaving them enabled for non-embedded crates so we can still see errors in test code there.
+[[bin]]
+name = "embassy-poll-example-rp2350w"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+embassy-executor = { version = "0.10.0", features = [
+  "platform-cortex-m",
+  "executor-thread",
+  "executor-interrupt",
+  "defmt",
+] }
+cortex-m-rt = "0.7.0"
+
+embassy-poll-example = { path = "../embassy-poll-example", default-features = false, features = [
+  "rp235xa",
+] }
+
+[profile.release]
+# note: debug is okay - debuginfo isn't flashed to the device!
+debug = 2
+
+[profile.dev]
+debug = 2
+lto = true
+opt-level = "z"
+
+[patch.crates-io]
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }

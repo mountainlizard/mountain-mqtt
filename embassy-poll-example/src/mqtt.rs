@@ -2,6 +2,9 @@ use crate::action::Action;
 use crate::channels::ActionSub;
 use crate::channels::EventPub;
 use crate::event::Event;
+use crate::topics::TOPIC_ANNOUNCE;
+use crate::topics::TOPIC_BUTTON;
+use crate::topics::TOPIC_LED;
 use defmt::*;
 use embassy_futures::select::{select, Either};
 use embassy_net::Stack;
@@ -15,10 +18,6 @@ use mountain_mqtt::{client_state::ClientStateNoQueue, data::quality_of_service::
 use mountain_mqtt_embassy::handler_client::SyncEventHandler;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
 use {defmt_rtt as _, panic_probe as _};
-
-pub const TOPIC_ANNOUNCE: &str = "embassy-poll-example-rp2040w-presence";
-pub const TOPIC_LED: &str = "embassy-poll-example-rp2040w-led";
-pub const TOPIC_BUTTON: &str = "embassy-poll-example-rp2040w-button";
 
 // Type defined just to avoid repeating the parameters of PollClient
 type OurPollClient<'a> = PollClient<'a, ClientStateNoQueue, NoopRawMutex, 1024, 16>;
@@ -64,17 +63,20 @@ pub async fn client_function_with_channels(
 ) -> Result<(), ClientError> {
     let handler = QueueEventHandler { event_pub };
 
-    // Connect - this sends packet and then waits for response
+    // Connect - this sends packet and then waits for response (indicating connected)
     client
         .connect(&ConnectionSettings::unauthenticated(uid))
         .await?;
 
+    // From now on we want incoming events from the client to be handled automatically,
+    // so we convert to a handler client. This will pass any incoming events
+    // (including application messages) to the `handler`
     let mut client = client.to_handler_client(handler);
 
-    // Subscribe - this sends packet but does NOT wait for response - we will need to poll for packets
+    // Subscribe - this sends packet and waits for response
     client.subscribe(TOPIC_LED, QualityOfService::Qos1).await?;
 
-    // Announce ourselves
+    // Announce ourselves - again this sends packet and waits for responses
     client
         .publish(
             TOPIC_ANNOUNCE,

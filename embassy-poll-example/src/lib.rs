@@ -8,7 +8,9 @@
 mod action;
 mod channels;
 mod event;
-mod example_mqtt_manager;
+mod mqtt;
+mod mqtt_poll;
+mod topics;
 mod ui;
 
 use crate::action::Action;
@@ -21,6 +23,8 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_net::Ipv4Address;
 use embassy_net::{Config, StackResources};
+#[cfg(not(feature = "rp2040"))]
+use embassy_rp::block::ImageDef;
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0};
@@ -29,8 +33,14 @@ use embassy_rp::{bind_interrupts, dma};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::{Duration, Timer};
+use mountain_mqtt_embassy::poll_client::Settings;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+
+#[cfg(not(feature = "rp2040"))]
+#[link_section = ".start_block"]
+#[used]
+pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
 
 bind_interrupts!(struct Irqs {
     // Wifi on 0 and 1
@@ -64,9 +74,8 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
     runner.run().await
 }
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    info!("Hello World!");
+pub async fn run_example(spawner: Spawner) {
+    info!("Embassy MQTT example starting...");
 
     let p = embassy_rp::init(Default::default());
 
@@ -151,6 +160,11 @@ async fn main(spawner: Spawner) {
     // Now we have a WiFi connection, we can connect to the MQTT server
     //
 
+    let host = MQTT_HOST.parse::<Ipv4Address>().unwrap();
+    let port = MQTT_PORT.parse::<u16>().unwrap();
+
+    let settings = Settings::new(host, port);
+
     let event_channel = EVENT_CHANNEL.init(PubSubChannel::<NoopRawMutex, Event, 16, 4, 2>::new());
     let event_pub_mqtt = event_channel.publisher().unwrap();
     let event_sub_ui = event_channel.subscriber().unwrap();
@@ -158,10 +172,7 @@ async fn main(spawner: Spawner) {
     let action_channel =
         ACTION_CHANNEL.init(PubSubChannel::<NoopRawMutex, Action, 16, 4, 4>::new());
     let action_pub_ui = action_channel.publisher().unwrap();
-    let action_sub = action_channel.subscriber().unwrap();
-
-    let host = MQTT_HOST.parse::<Ipv4Address>().unwrap();
-    let port = MQTT_PORT.parse::<u16>().unwrap();
+    let action_sub_mqtt = action_channel.subscriber().unwrap();
 
     spawner.spawn(unwrap!(ui_task(
         event_sub_ui,
@@ -170,16 +181,24 @@ async fn main(spawner: Spawner) {
         control
     )));
 
-    example_mqtt_manager::init(
-        &spawner,
-        stack,
-        &UID,
-        event_pub_mqtt,
-        action_sub,
-        host,
-        port,
-    )
-    .await;
+    let handler = true;
+    if handler {
+        spawner.spawn(unwrap!(mqtt::run(
+            settings,
+            stack,
+            UID,
+            event_pub_mqtt,
+            action_sub_mqtt
+        )));
+    } else {
+        spawner.spawn(unwrap!(mqtt_poll::run(
+            settings,
+            stack,
+            UID,
+            event_pub_mqtt,
+            action_sub_mqtt
+        )));
+    }
 
     loop {
         Timer::after(Duration::from_secs(5)).await;

@@ -7,7 +7,6 @@ use embassy_futures::select::{self, Either};
 use embassy_net::{Ipv4Address, Stack};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use heapless::String;
 use mountain_mqtt::client::{Client, ClientError, ConnectionSettings};
 use mountain_mqtt::data::quality_of_service::QualityOfService;
 use mountain_mqtt::mqtt_manager::{ConnectionId, MqttOperations};
@@ -68,7 +67,7 @@ async fn mqtt_channel_task(
     action_receiver: Receiver<'static, NoopRawMutex, MqttAction, 32>,
     host: Ipv4Address,
     port: u16,
-) -> ! {
+) -> () {
     let settings = Settings::new(host, port);
     let connection_settings = ConnectionSettings::unauthenticated(uid);
 
@@ -129,7 +128,7 @@ static ACTION_CHANNEL: StaticCell<Channel<NoopRawMutex, MqttEvent<Event>, 32>> =
 pub async fn init(
     spawner: &Spawner,
     stack: Stack<'static>,
-    uid: &'static String<64>,
+    uid: &'static str,
     event_pub: EventPub,
     action_sub: ActionSub,
     host: Ipv4Address,
@@ -139,7 +138,7 @@ pub async fn init(
     let mqtt_event_channel =
         ACTION_CHANNEL.init(Channel::<NoopRawMutex, MqttEvent<Event>, 32>::new());
 
-    unwrap!(spawner.spawn(mqtt_channel_task(
+    spawner.spawn(unwrap!(mqtt_channel_task(
         stack,
         uid,
         mqtt_event_channel.sender(),
@@ -148,7 +147,7 @@ pub async fn init(
         port
     )));
 
-    unwrap!(spawner.spawn(mqtt_task(
+    spawner.spawn(unwrap!(mqtt_task(
         action_sub,
         mqtt_action_channel.sender(),
         mqtt_event_channel.receiver(),

@@ -3,7 +3,7 @@ use mountain_mqtt::{
     packets::publish::ApplicationMessage,
 };
 
-pub const TOPIC_LED: &str = "embassy-example-rp2040w-led";
+use crate::topics;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, defmt::Format)]
 pub enum Event {
@@ -15,7 +15,7 @@ impl<const P: usize> FromApplicationMessage<P> for Event {
         message: &ApplicationMessage<P>,
     ) -> Result<Self, EventHandlerError> {
         let received = match message.topic_name {
-            TOPIC_LED => {
+            topics::TOPIC_LED => {
                 let state = parse_led(message.payload)?;
                 Ok(Self::Led(state))
             }

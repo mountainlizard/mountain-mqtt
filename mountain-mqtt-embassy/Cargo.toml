@@ -1,6 +1,6 @@
 [package]
 name = "mountain-mqtt-embassy"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["mqtt", "embassy"]
@@ -19,7 +19,7 @@ readme = "README.md"
 
 heapless = "0.8"
 
-embassy-net = { version = "0.7.0", features = [
+embassy-net = { version = "0.9.1", features = [
   "tcp",
   "udp",
   "raw",
@@ -28,19 +28,19 @@ embassy-net = { version = "0.7.0", features = [
   "dns",
 ] }
 
-embassy-sync = { version = "0.6.2" }
+embassy-sync = { version = "0.8.0" }
 
-embassy-time = { version = "0.4.0" }
+embassy-time = { version = "0.5.1" }
 
-embassy-futures = { version = "0.1.1" }
+embassy-futures = { version = "0.1.2" }
 
-defmt = { version = "1.0", optional = true }
+defmt = { version = "1.1", optional = true }
 
 log = { version = "0.4", optional = true }
 
-embedded-io-async = { version = "0.6.1" }
+embedded-io-async = { version = "0.7" }
 
-mountain-mqtt = { version = "0.4.0", path = "../mountain-mqtt", default-features = false, features = [
+mountain-mqtt = { version = "0.5.0", path = "../mountain-mqtt", default-features = false, features = [
   "embedded-io-async",
   "embedded-hal-async",
 ] }
@@ -54,7 +54,7 @@ defmt = [
   "embassy-sync/defmt",
   "embassy-time/defmt",
   "embassy-time/defmt-timestamp-uptime",
-  "embedded-io-async/defmt-03",
+  "embedded-io-async/defmt",
   "mountain-mqtt/defmt",
 ]
 
