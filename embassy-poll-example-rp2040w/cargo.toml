@@ -14,99 +14,26 @@ doctest = false
 bench = false
 
 [dependencies]
-################
-# CORE - Start #
-################
-
-embassy-embedded-hal = { version = "0.6.0", features = ["defmt"] }
-embassy-sync = { version = "0.8.0", features = ["defmt"] }
 embassy-executor = { version = "0.10.0", features = [
   "platform-cortex-m",
   "executor-thread",
   "executor-interrupt",
   "defmt",
 ] }
-embassy-time = { version = "0.5.1", features = [
-  "defmt",
-  "defmt-timestamp-uptime",
-] }
-embassy-rp = { version = "0.10.0", features = [
-  "defmt",
-  "unstable-pac",
-  "time-driver",
-  "critical-section-impl",
-] }
-embassy-usb = { version = "0.6.0", features = ["defmt"] }
-embassy-net = { version = "0.9.1", features = [
-  "defmt",
-  "tcp",
-  "udp",
-  "raw",
-  "dhcpv4",
-  "medium-ethernet",
-  "dns",
-] }
-embassy-net-wiznet = { version = "0.3.0", features = ["defmt"] }
-embassy-futures = { version = "0.1.2" }
-embassy-usb-logger = { version = "0.6.0" }
-cyw43 = { version = "0.7.0", features = ["defmt", "firmware-logs"] }
-cyw43-pio = { version = "0.10.0", features = ["defmt"] }
-
-defmt = "1.1"
-defmt-rtt = "1.0.0"
-
-cortex-m = { version = "0.7.6", features = ["inline-asm"] }
 cortex-m-rt = "0.7.0"
-critical-section = "1.1"
-panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 
-
-embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
-embedded-hal-async = "1.0"
-embedded-hal-bus = { version = "0.1", features = ["async"] }
-embedded-sdmmc = "0.7.0"
-embedded-io = { version = "0.7.0", features = ["defmt"] }
-embedded-io-async = { version = "0.7.0", features = ["defmt"] }
-embedded-storage = { version = "0.3" }
-embedded-storage-async = "0.4.1"
-
-static_cell = "2.1"
-portable-atomic = { version = "1.5", features = ["critical-section"] }
-
-pio = "0.3"
-
-usbd-hid = "0.10.0"
-
-sequential-storage = { version = "4.0.1", features = ["defmt-03", "heapless"] }
-
-log = "0.4"
-
-heapless = "0.8"
-
-fixed = "1.29.0"
-fixed-macro = "1.2"
-
-rand = { version = "0.8.5", default-features = false }
-rand_core = "0.6"
-
-bytemuck = { version = "1.24.0", features = ["derive"] }
-byte-slice-cast = { version = "1.2.0", default-features = false }
-strum = { version = "0.26", default-features = false, features = ["derive"] }
-
-serde = { version = "1.0.209", default-features = false, features = ["derive"] }
-serde-json-core = { version = "0.6.0", features = ["defmt"] }
-
-##############
-# CORE - End #
-##############
-
-mountain-mqtt = { path = "../mountain-mqtt", default-features = false, features = [
-  "embedded-io-async",
-  "embedded-hal-async",
-  "defmt",
+embassy-poll-example = { path = "../embassy-poll-example", default-features = false, features = [
+  "rp2040",
 ] }
 
-mountain-mqtt-embassy = { path = "../mountain-mqtt-embassy" }
+[profile.release]
+# note: debug is okay - debuginfo isn't flashed to the device!
+debug = 2
+
+[profile.dev]
+debug = 2
+lto = true
+opt-level = "z"
 
 [patch.crates-io]
 embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
@@ -121,23 +48,3 @@ embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "611474
 embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
 cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
 cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-
-[profile.release]
-# note: debug is okay - debuginfo isn't flashed to the device!
-debug = 2
-
-[profile.dev]
-debug = 2
-lto = true
-opt-level = "z"
-
-[features]
-default = ["rp2040"]
-
-## Choose exactly one of the rp2040, rp235xa or rp235xb features to support the corresponding chip
-rp2040 = ["embassy-rp/rp2040"]
-## Choose exactly one of the rp2040, rp235xa or rp235xb features to support the corresponding chip
-rp235xa = ["embassy-rp/rp235xa", "embassy-rp/binary-info"]
-## Choose exactly one of the rp2040, rp235xa or rp235xb features to support the corresponding chip
-rp235xb = ["embassy-rp/rp235xb", "embassy-rp/binary-info"]
-

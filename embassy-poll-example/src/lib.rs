@@ -22,6 +22,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_net::Ipv4Address;
 use embassy_net::{Config, StackResources};
+#[cfg(not(feature = "rp2040"))]
 use embassy_rp::block::ImageDef;
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Level, Output};
@@ -35,6 +36,7 @@ use mountain_mqtt_embassy::poll_client::Settings;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+#[cfg(not(feature = "rp2040"))]
 #[link_section = ".start_block"]
 #[used]
 pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
