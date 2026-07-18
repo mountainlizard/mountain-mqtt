@@ -2,6 +2,9 @@ use crate::action::Action;
 use crate::channels::ActionSub;
 use crate::channels::EventPub;
 use crate::event::Event;
+use crate::topics::TOPIC_ANNOUNCE;
+use crate::topics::TOPIC_BUTTON;
+use crate::topics::TOPIC_LED;
 use defmt::*;
 use embassy_futures::select::{select, Either};
 use embassy_net::Stack;
@@ -14,10 +17,6 @@ use mountain_mqtt_embassy::packet_bin::PacketBin;
 use mountain_mqtt_embassy::poll_client::{self, PollClient, Settings};
 
 use {defmt_rtt as _, panic_probe as _};
-
-pub const TOPIC_ANNOUNCE: &str = "embassy-example-rp2040w-presence";
-pub const TOPIC_LED: &str = "embassy-example-rp2040w-led";
-pub const TOPIC_BUTTON: &str = "embassy-example-rp2040w-button";
 
 type Client<'a> = PollClient<'a, ClientStateNoQueue, NoopRawMutex, 1024, 16>;
 

@@ -10,6 +10,7 @@ mod channels;
 mod event;
 mod mqtt;
 mod mqtt_poll;
+mod topics;
 mod ui;
 
 use crate::action::Action;
