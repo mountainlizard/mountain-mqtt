@@ -15,7 +15,6 @@ use crate::action::Action;
 use crate::channels::{ActionChannel, EventChannel};
 use crate::event::Event;
 use crate::ui::ui_task;
-use core::fmt::Write;
 use cyw43::{aligned_bytes, JoinOptions};
 use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
 use defmt::*;
@@ -23,7 +22,6 @@ use embassy_executor::Spawner;
 use embassy_net::Ipv4Address;
 use embassy_net::{Config, StackResources};
 use embassy_rp::clocks::RoscRng;
-use embassy_rp::flash::Async;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
@@ -31,8 +29,6 @@ use embassy_rp::{bind_interrupts, dma};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::{Duration, Timer};
-use heapless::String;
-use rand::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -42,11 +38,6 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
 });
 
-// Required to start flash driver and get unique ID - not actually
-// used for anything since we don't read/write actual flash, so
-// we pick a default small value
-const FLASH_SIZE: usize = 2 * 1024 * 1024;
-
 const WIFI_NETWORK: &str = env!("WIFI_NETWORK");
 const WIFI_PASSWORD: &str = env!("WIFI_PASSWORD");
 const MQTT_HOST: &str = env!("MQTT_HOST");
@@ -54,7 +45,6 @@ const MQTT_PORT: &str = env!("MQTT_PORT");
 
 const UID: &str = "embassy-poll-example-uid";
 
-static CHIP_ID: StaticCell<String<64>> = StaticCell::new();
 static EVENT_CHANNEL: StaticCell<EventChannel> = StaticCell::new();
 static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
 
