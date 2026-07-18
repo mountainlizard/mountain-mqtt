@@ -3,7 +3,6 @@ runner = [
   "probe-rs",
   "run",
   "--chip",
-  # "RP2040",
   "RP235x",
   # See https://defmt.ferrous-systems.com/custom-log-output
   "--log-format",
@@ -11,7 +10,6 @@ runner = [
 ]
 
 [build]
-# target = "thumbv6m-none-eabi" # RP2040
 target = "thumbv8m.main-none-eabi" # RP235x
 
 [env]
