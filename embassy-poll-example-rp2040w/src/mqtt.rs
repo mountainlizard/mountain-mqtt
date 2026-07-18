@@ -69,9 +69,9 @@ pub async fn client_function_with_channels(
         .connect(&ConnectionSettings::unauthenticated(uid))
         .await?;
 
-    // From now on we want incoming messages to be handled automatically,
-    // so we convert to a handler client. This will pass any incoming
-    // application messages to the `handler`
+    // From now on we want incoming events from the client to be handled automatically,
+    // so we convert to a handler client. This will pass any incoming events
+    // (including application messages) to the `handler`
     let mut client = client.to_handler_client(handler);
 
     // Subscribe - this sends packet and waits for response

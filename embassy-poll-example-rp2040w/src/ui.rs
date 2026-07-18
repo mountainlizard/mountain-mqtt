@@ -5,13 +5,14 @@ use cyw43::Control;
 use defmt::info;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::peripherals::PIN_12;
+use embassy_rp::Peri;
 use embassy_time::{Duration, Ticker};
 
 #[embassy_executor::task]
 pub async fn ui_task(
     mut event_sub: EventSub,
     action_pub: ActionPub,
-    input: PIN_12,
+    input: Peri<'static, PIN_12>,
     mut control: Control<'static>,
 ) -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(1));

@@ -23,7 +23,7 @@ If you have trouble running the example after changing the environment variables
 If this works you will see the example build, and `probe-rs` will be used to flash the Pico and start running - you should then see output showing the WiFi and MQTT connection process:
 
 ```bash
-❯ MQTT_HOST='192.168.0.201' MQTT_PORT='1883' WIFI_NETWORK='mint' WIFI_PASSWORD='PXgu17wAIcPM' cargo run --release
+❯ MQTT_HOST='192.168.0.201' MQTT_PORT='1883' WIFI_NETWORK='YOUR_SSID' WIFI_PASSWORD='YOUR_WIFI_PASS' cargo run --release
    Compiling embassy-poll-example-rp2040w v0.1.0 (/Users/rebeam/Documents/dev/mountain-mqtt/embassy-poll-example-rp2040w)
     Finished `release` profile [optimized + debuginfo] target(s) in 5.00s
      Running `probe-rs run --chip RP2040 target/thumbv6m-none-eabi/release/embassy-poll-example-rp2040w`
