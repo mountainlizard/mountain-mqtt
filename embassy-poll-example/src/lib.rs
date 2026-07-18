@@ -52,7 +52,7 @@ const WIFI_PASSWORD: &str = env!("WIFI_PASSWORD");
 const MQTT_HOST: &str = env!("MQTT_HOST");
 const MQTT_PORT: &str = env!("MQTT_PORT");
 
-const UID: &str = "embassy-poll-example-rp2350w-uid";
+const UID: &str = "embassy-poll-example-uid";
 
 static EVENT_CHANNEL: StaticCell<EventChannel> = StaticCell::new();
 static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
@@ -85,6 +85,7 @@ pub async fn run_example(spawner: Spawner) {
     let mut rng = RoscRng;
 
     let fw = aligned_bytes!("../cyw43-firmware/43439A0.bin");
+    // Note this is the correct file for both 2040 and 235xx
     let nvram = aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
 
     let pwr = Output::new(p.PIN_23, Level::Low);
