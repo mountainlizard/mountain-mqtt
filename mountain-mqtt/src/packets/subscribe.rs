@@ -269,8 +269,8 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_reader_errors_on_invalid_retain_handing_in_subscription_options(
-    ) -> mqtt_reader::Result<()> {
+    fn mqtt_buf_reader_errors_on_invalid_retain_handing_in_subscription_options()
+    -> mqtt_reader::Result<()> {
         // Bits 4 and 5 set to 1, implies retain handling value 3, the only invalid option
         let buf = [0b0011_0000];
         let mut r = MqttBufReader::new(&buf);
@@ -283,8 +283,8 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_reader_errors_on_reserved_bit6_set_in_subscription_options(
-    ) -> mqtt_reader::Result<()> {
+    fn mqtt_buf_reader_errors_on_reserved_bit6_set_in_subscription_options()
+    -> mqtt_reader::Result<()> {
         let buf = [0b0100_0000];
         let mut r = MqttBufReader::new(&buf);
         assert_eq!(
@@ -296,8 +296,8 @@ mod tests {
     }
 
     #[test]
-    fn mqtt_buf_reader_errors_on_reserved_bit7_set_in_subscription_options(
-    ) -> mqtt_reader::Result<()> {
+    fn mqtt_buf_reader_errors_on_reserved_bit7_set_in_subscription_options()
+    -> mqtt_reader::Result<()> {
         let buf = [0b1000_0000];
         let mut r = MqttBufReader::new(&buf);
         assert_eq!(

@@ -1,8 +1,16 @@
 [package]
-edition = "2021"
+edition = "2024"
 name = "embassy-poll-example"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
+
+# We can't run tests etc. for lib on embedded, so specifically skip them to avoid spurious rust-analyzer errors.
+# This is a more precise solution than adding `"rust-analyzer.cargo.allTargets": false` to vs code settings, since it only
+# disables tests for embedded lib, leaving them enabled for non-embedded crates so we can still see errors in test code there.
+[lib]
+test = false
+doctest = false
+bench = false
 
 [dependencies]
 ################

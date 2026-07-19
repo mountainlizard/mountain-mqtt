@@ -49,17 +49,13 @@ impl<'a, const P: usize, const S: usize> Unsuback<'a, P, S> {
     }
 }
 
-impl<const P: usize, const S: usize> Packet
-    for Unsuback<'_, P, S>
-{
+impl<const P: usize, const S: usize> Packet for Unsuback<'_, P, S> {
     fn packet_type(&self) -> PacketType {
         PacketType::Unsuback
     }
 }
 
-impl<const P: usize, const S: usize> PacketWrite
-    for Unsuback<'_, P, S>
-{
+impl<const P: usize, const S: usize> PacketWrite for Unsuback<'_, P, S> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -79,9 +75,7 @@ impl<const P: usize, const S: usize> PacketWrite
     }
 }
 
-impl<'a, const P: usize, const S: usize> PacketRead<'a>
-    for Unsuback<'a, P, S>
-{
+impl<'a, const P: usize, const S: usize> PacketRead<'a> for Unsuback<'a, P, S> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,

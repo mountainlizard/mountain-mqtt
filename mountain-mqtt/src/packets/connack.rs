@@ -82,8 +82,7 @@ impl<'a, const P: usize> PacketRead<'a> for Connack<'a, P> {
 
         let reason_code = reader.get()?;
 
-        let mut packet: Connack<'a, P> =
-            Connack::new(session_present, reason_code, Vec::new());
+        let mut packet: Connack<'a, P> = Connack::new(session_present, reason_code, Vec::new());
 
         // Add properties into packet
         reader.get_property_list(&mut packet.properties)?;

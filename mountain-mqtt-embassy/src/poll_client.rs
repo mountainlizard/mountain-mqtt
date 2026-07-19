@@ -7,10 +7,10 @@ use crate::{
 };
 #[cfg(feature = "defmt")]
 use defmt::{debug, trace, warn};
-use embassy_futures::select::{select3, Either3};
+use embassy_futures::select::{Either3, select3};
 use embassy_net::{
-    tcp::{ConnectError, TcpSocket},
     Stack,
+    tcp::{ConnectError, TcpSocket},
 };
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
@@ -350,7 +350,7 @@ where
                 _ => {
                     return Err(ClientError::ClientState(
                         ClientStateError::ReceivedPacketOtherThanConnackOrAuthWhenConnecting,
-                    ))
+                    ));
                 }
             }
         }

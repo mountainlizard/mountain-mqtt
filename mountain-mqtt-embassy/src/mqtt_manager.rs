@@ -1,5 +1,5 @@
 use core::cell::RefCell;
-use embassy_net::{tcp::TcpSocket, Ipv4Address, Stack};
+use embassy_net::{Ipv4Address, Stack, tcp::TcpSocket};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use embassy_time::{Delay, Duration, Instant, Timer};

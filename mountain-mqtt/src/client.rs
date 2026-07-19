@@ -18,7 +18,7 @@ use crate::{
     packet_client::{Connection, PacketClient},
     packets::{
         connect::{Connect, Will},
-        packet::{Packet, KEEP_ALIVE_DEFAULT},
+        packet::{KEEP_ALIVE_DEFAULT, Packet},
         packet_generic::PacketGeneric,
         publish::{ApplicationMessage, Publish},
     },
@@ -30,7 +30,7 @@ use crate::{
 /// [ApplicationMessage].
 pub trait FromApplicationMessage<const P: usize>: Sized {
     fn from_application_message(message: &ApplicationMessage<P>)
-        -> Result<Self, EventHandlerError>;
+    -> Result<Self, EventHandlerError>;
 }
 
 /// Errors produced when a [ClientNoQueue] event handler cannot handle
