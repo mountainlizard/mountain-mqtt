@@ -1,5 +1,5 @@
 use super::packet::{
-    Packet, PacketRead, PacketWrite, KEEP_ALIVE_DEFAULT, PROTOCOL_NAME, PROTOCOL_VERSION_5,
+    KEEP_ALIVE_DEFAULT, PROTOCOL_NAME, PROTOCOL_VERSION_5, Packet, PacketRead, PacketWrite,
 };
 use crate::codec::mqtt_writer::{self, MqttWriter};
 use crate::data::{

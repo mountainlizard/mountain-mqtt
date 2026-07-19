@@ -165,18 +165,12 @@ mod tests {
         packet
     }
 
-    fn encode_decode_and_check<const P: usize>(
-        packet: &Pubrec<'_, P>,
-        encoded: &[u8],
-    ) {
+    fn encode_decode_and_check<const P: usize>(packet: &Pubrec<'_, P>, encoded: &[u8]) {
         encode_and_check(packet, encoded);
         decode_and_check(packet, encoded);
     }
 
-    fn encode_and_check<const P: usize>(
-        packet: &Pubrec<'_, P>,
-        encoded: &[u8],
-    ) {
+    fn encode_and_check<const P: usize>(packet: &Pubrec<'_, P>, encoded: &[u8]) {
         let mut buf = [0u8; 1024];
         let len = {
             let mut r = MqttBufWriter::new(&mut buf[0..encoded.len()]);
@@ -186,10 +180,7 @@ mod tests {
         assert_eq!(&buf[0..len], encoded);
     }
 
-    fn decode_and_check<const P: usize>(
-        packet: &Pubrec<'_, P>,
-        encoded: &[u8],
-    ) {
+    fn decode_and_check<const P: usize>(packet: &Pubrec<'_, P>, encoded: &[u8]) {
         let mut r = MqttBufReader::new(encoded);
         let read_packet: Pubrec<'_, P> = r.get().unwrap();
         assert_eq!(&read_packet, packet);

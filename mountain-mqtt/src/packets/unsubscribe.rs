@@ -19,9 +19,7 @@ pub struct Unsubscribe<'a, const P: usize, const S: usize> {
     properties: Vec<UnsubscribeProperty<'a>, P>,
 }
 
-impl<'a, const P: usize, const S: usize>
-    Unsubscribe<'a, P, S>
-{
+impl<'a, const P: usize, const S: usize> Unsubscribe<'a, P, S> {
     pub fn new(
         packet_identifier: PacketIdentifier,
         first_request: &'a str,
@@ -35,23 +33,19 @@ impl<'a, const P: usize, const S: usize>
             properties,
         }
     }
-    
+
     pub fn packet_identifier(&self) -> &PacketIdentifier {
         &self.packet_identifier
     }
 }
 
-impl<const P: usize, const S: usize> Packet
-    for Unsubscribe<'_, P, S>
-{
+impl<const P: usize, const S: usize> Packet for Unsubscribe<'_, P, S> {
     fn packet_type(&self) -> PacketType {
         PacketType::Unsubscribe
     }
 }
 
-impl<const P: usize, const S: usize> PacketWrite
-    for Unsubscribe<'_, P, S>
-{
+impl<const P: usize, const S: usize> PacketWrite for Unsubscribe<'_, P, S> {
     fn put_variable_header_and_payload<'w, W: MqttWriter<'w>>(
         &self,
         writer: &mut W,
@@ -71,9 +65,7 @@ impl<const P: usize, const S: usize> PacketWrite
     }
 }
 
-impl<'a, const P: usize, const S: usize> PacketRead<'a>
-    for Unsubscribe<'a, P, S>
-{
+impl<'a, const P: usize, const S: usize> PacketRead<'a> for Unsubscribe<'a, P, S> {
     fn get_variable_header_and_payload<R: MqttReader<'a>>(
         reader: &mut R,
         _first_header_byte: u8,
@@ -145,9 +137,9 @@ mod tests {
     #[rustfmt::skip]
     const EXAMPLE_DATA: [u8; 40] = [
         0xA2, 0x26, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
-        0x65, 0x68, 0x65, 0x38, 0x39, 
+        0x65, 0x68, 0x65, 0x38, 0x39,
         // test/topic
-        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70, 0x69, 0x63, 
+        0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70, 0x69, 0x63,
         // hehe/#
         0x00, 0x06, 0x68, 0x65, 0x68, 0x65, 0x2F, 0x23,
     ];
@@ -157,7 +149,7 @@ mod tests {
     #[rustfmt::skip]
     const EXAMPLE_DATA_TRUNCATED_REQUEST: [u8; 31] = [
         0xA2, 0x1D, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
-        0x65, 0x68, 0x65, 0x38, 0x39, 
+        0x65, 0x68, 0x65, 0x38, 0x39,
         // test/topic
         0x00, 0x0A, 0x74, 0x65, 0x73, 0x74, 0x2F, 0x74, 0x6F, 0x70, 0x69,
     ];
@@ -166,7 +158,7 @@ mod tests {
     #[rustfmt::skip]
     const EXAMPLE_DATA_NO_REQUEST: [u8; 20] = [
         0xA2, 0x12, 0x15, 0x38, 0x0F, 0x26, 0x00, 0x04, 0x68, 0x61, 0x68, 0x61, 0x00, 0x06, 0x68,
-        0x65, 0x68, 0x65, 0x38, 0x39, 
+        0x65, 0x68, 0x65, 0x38, 0x39,
         // no requests
     ];
 

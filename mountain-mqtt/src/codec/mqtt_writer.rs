@@ -2,8 +2,8 @@ use heapless::Vec;
 
 use crate::{
     data::{
-        reason_code::ReasonCode, string_pair::StringPair,
-        subscription_options::SubscriptionOptions, DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE,
+        DATA_MAX_LEN, VARIABLE_BYTE_INTEGER_MAX_VALUE, reason_code::ReasonCode,
+        string_pair::StringPair, subscription_options::SubscriptionOptions,
     },
     error::PacketWriteError,
     packets::subscribe::SubscriptionRequest,
