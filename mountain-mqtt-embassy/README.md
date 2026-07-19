@@ -1,3 +1,3 @@
-# mountain-mqtt-embassy
+# `mountain-mqtt-embassy`
 
-A no_std compatible, async MQTT v5 client for embassy, using mountain-mqtt
+A no_std compatible, async MQTT v5 client for embassy, using `mountain-mqtt`. See `README.md` in the repo root directory for more details.

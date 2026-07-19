@@ -1,0 +1,11 @@
+DHCP
+Mosquitto
+Pico
+RP2040
+RP2350
+UID
+WiFi
+modelling
+pubsub
+travelling
+v5

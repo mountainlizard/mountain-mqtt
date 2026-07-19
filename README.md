@@ -1,4 +1,4 @@
-# mountain-mqtt
+# `mountain-mqtt`
 
 This is a monorepo of crates for a `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client.
 
@@ -6,7 +6,7 @@ Each folder is a separate rust crate (e.g. `mountain-mqtt` contains the main lib
 
 Note there are also `README.md` files in each crate folder, covering the respective crate.
 
-For development, crates reference each other via relative paths, each crate is also published to `crates.io`.
+For development, crates reference each other via relative paths, each crate is also published to `crates.io` (other than the examples).
 
 ## Development Status
 
@@ -14,17 +14,27 @@ For development, crates reference each other via relative paths, each crate is a
 
 - The `codec`, `data` and `packets` modules in the `mountain-mqtt` crate are relatively stable and complete, with at least some unit and integration tests.
 - The client code in the `mountain-mqtt` crate is much less stable - this is likely to be updated to use a better async approach that doesn't rely on delays (`PollClient` and `HandlerClient` in the `mountain-mqtt-embassy` crate already use this kind of approach).
-- The `mountain-mqtt-embassy` crate is being updated, the new `PollClient` and `HandlerClient` are likely to replace `mqtt_manager` since they promise to be simpler and easier to use, and may also be more reliable. See the `embassy-poll-example-rp2040w` crate for an example of using them.
+- The `mountain-mqtt-embassy` crate is being updated:
+  - `PollClient` and `HandlerClient` are recommended for use instead of the older `mqtt_manager` since they promise to be simpler and easier to use, and may also be more reliable. See the `embassy-poll-example-rp2040w` crate for an example of using them.
+  - `mqtt_manager` will likely be removed in future (most likely in version 0.6).
 
 ## Projects
 
-- `mountain-mqtt` - A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client. Designed to be independent of async implementation, networking etc., this provides encoding/decoding of MQTT packets, and an approximately sans-io approach to modelling the MQTT protocol using a state machine and a connection abstraction. Also contains implementations of connection for [`tokio`](https://tokio.rs) and [`embedded-hal`](https://github.com/rust-embedded/embedded-hal), and a simple client example using `tokio`.
+- `mountain-mqtt` - A `no_std` compatible [MQTT v5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html) client. Designed to be independent of async implementation, networking etc., this provides encoding/decoding of MQTT packets, and an approximately `sans-io` approach to modelling the MQTT protocol using a state machine and a connection abstraction. Also contains implementations of connection for [`tokio`](https://tokio.rs) and [`embedded-hal`](https://github.com/rust-embedded/embedded-hal), and a simple client example using `tokio`.
 
 - `mountain-mqtt-embassy` - A higher-level interface using `embassy` channels to provide an `mqtt_manager` that will handle reconnecting to the server, and slightly lower level clients `PollClient` and `HandlerClient`.
 
 - `embassy-example-rp2040w` - An example application using `embassy` with`mqtt_manager` to demonstrate MQTT on a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) board. The README also has a detailed explanation of an approach to using `mountain-mqtt-embassy`.
 
-- `embassy-poll-example-rp2040w` - similar to the example above, but using `PollClient` or `HandlerClient`.
+- `embassy-poll-example` - similar to the example above, but using `PollClient` or `HandlerClient` - this has shared code that can run on either a [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) or [Raspberry Pi Pico 2](https://www.raspberrypi.com/products/raspberry-pi-pico-2/). See `embassy-poll-example/src/lib.rs` function `run_example` for the code that is run from main.
+
+- `embassy-poll-example-rp2040w` - this just sets up the target and build to run `embassy-poll-example` on a Pico, with the RP2040 chip.
+
+- `embassy-poll-example-rp2350w` - this just sets up the target and build to run `embassy-poll-example` on a Pico 2, with the RP2350 chip.
+
+## Editing with Helix
+
+Just run helix in the repository root, it should handle the multiple crates correctly.
 
 ## Editing with VS Code
 
@@ -33,7 +43,7 @@ There are two approaches:
 1. Open an individual crate as a project, and see just that crate in the VS Code window, or
 2. Open the provided `mountain-mqtt.code-workspace` file as a VS Code workspace. This will open each crate as a separate root in the workspace, so they can all be edited together. Rust Analyzer will run on each crate. The contents of the root of the workspace (including this file) are displayed under the `/` entry in the explorer.
 
-## How is the VS Code workspace configured?
+## How Is the VS Code Workspace Configured?
 
 This is an interesting one, since we want to be able to see each of the crates as a separate project, and at the same time show the root directory itself.
 
@@ -66,7 +76,7 @@ You will need to add any new crates to both the `folders` array, and the `files.
 
 This approach of keeping crates as separate projects without a cargo workspace, and opening them as multiple roots in a VS Code workspace, is [suggested here](https://www.reddit.com/r/rust/comments/14x9q0p/comment/jrm96d4/).The general approach to excluding the crate folders is covered in [this comment on a VS Code issue](https://github.com/microsoft/vscode/issues/82145#issuecomment-859550844).
 
-## Why not a Cargo workspace?
+## Why Not a Cargo Workspace?
 
 A Cargo workspace currently applies the same target to all projects/crates, and we require general-purpose crates like `mountain-mqtt` to run on either the host PC or embedded.
 
