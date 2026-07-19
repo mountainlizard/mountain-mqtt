@@ -3,9 +3,9 @@ use crate::channels::{ActionPub, EventSub};
 use crate::event::Event;
 use cyw43::Control;
 use defmt::info;
+use embassy_rp::Peri;
 use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::peripherals::PIN_12;
-use embassy_rp::Peri;
 use embassy_time::{Duration, Ticker};
 
 #[embassy_executor::task]
