@@ -38,7 +38,7 @@ use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 #[cfg(not(feature = "rp2040"))]
-#[link_section = ".start_block"]
+#[unsafe(link_section = ".start_block")]
 #[used]
 pub static IMAGE_DEF: ImageDef = ImageDef::secure_exe();
 
