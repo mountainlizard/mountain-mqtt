@@ -36,15 +36,15 @@ lto = true
 opt-level = "z"
 
 [patch.crates-io]
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
-cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-net-wiznet = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }
+# cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "611474d" }

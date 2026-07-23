@@ -30,7 +30,7 @@ embassy-net = { version = "0.9.1", features = [
 
 embassy-sync = { version = "0.8.0" }
 
-embassy-time = { version = "0.5.1" }
+embassy-time = { version = "0.5.0" }
 
 embassy-futures = { version = "0.1.2" }
 
