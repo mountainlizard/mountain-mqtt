@@ -17,8 +17,8 @@ use crate::action::Action;
 use crate::channels::{ActionChannel, EventChannel};
 use crate::event::Event;
 use crate::ui::ui_task;
-use cyw43::{aligned_bytes, JoinOptions};
-use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
+use cyw43::{JoinOptions, aligned_bytes};
+use cyw43_pio::{DEFAULT_CLOCK_DIVIDER, PioSpi};
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_net::Ipv4Address;
@@ -60,11 +60,7 @@ static ACTION_CHANNEL: StaticCell<ActionChannel> = StaticCell::new();
 
 #[embassy_executor::task]
 async fn cyw43_task(
-    runner: cyw43::Runner<
-        'static,
-        cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>,
-        cyw43::Cyw43439,
-    >,
+    runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>>,
 ) -> ! {
     runner.run().await
 }
@@ -101,7 +97,6 @@ pub async fn run_example(spawner: Spawner) {
         p.PIN_24,
         p.PIN_29,
         dma::Channel::new(p.DMA_CH0, Irqs),
-        dma::Channel::new(p.DMA_CH1, Irqs),
     );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
